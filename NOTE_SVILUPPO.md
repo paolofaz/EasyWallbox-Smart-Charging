@@ -93,7 +93,7 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Vecchie mappe auto 0.0.1 non migrate automaticamente: manca la capacità batteria, vietato indovinarla. Riconfigurazione necessaria nelle Opzioni.
 
 ### Verifiche da completare
-- CI e pubblicazione release 0.0.2.
+- **Verificato**: test CI statici e pubblicazione release normale 0.0.2 riusciti (runs 43291593790 e 43291593712).
 - Test su HA reale: installazione, aggiunta due veicoli, aggiunta terzo, modifiche/ rimozione, reload, aggiornamento da 0.0.1.
 - Hassfest/HACS action e test Config Flow con mock HA (non coperti dai test statici).
 - Nessuna entità di sessione, dati o Lovelace funzionale in 0.0.2.
@@ -104,3 +104,4 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - 0.0.3 implementa la migrazione: mantiene i dati originali di 0.0.1, aggiunge una lista vuota `vehicles` senza inventare capacità batteria o ID e aggiorna la versione della ConfigEntry.
 - I profili devono essere completati attraverso le Opzioni; nessun comando wallbox o auto.
 - Questa release sostituisce 0.0.2 come candidata alla prova reale. Test HA e Marketplace effettivo ancora aperti.
+- **Verificato**: test statici e pubblicazione GitHub 0.0.3 riusciti (runs 43291913566 e 43291913523); tag 0.0.3 punta al commit 006e5f97d97d7053ff00bd55b34a73f549be5abd. `main` invariato.
