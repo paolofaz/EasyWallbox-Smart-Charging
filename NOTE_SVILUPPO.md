@@ -71,6 +71,6 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Il branch `main` non viene modificato. `main` contiene soltanto `LICENSE` e potrebbe impedire il riconoscimento del repository nel Marketplace: **ipotesi da verificare** e non risolvibile con la sola tipologia release.
 
 ### Verifiche aperte
-- Completamento dell'Action e verifica live che la `0.0.1` non sia più una pre-release.
+- **Verificato 12/11/2026:** workflow `Publish 0.x test releases` riuscito (run `43285119169`), release `0.0.1` trasformata in normale (`prerelease=false`) mantenendo tag e commit originari. Test statici riusciti (run `43285119190`).
 - Nuovo tentativo dal Marketplace e testo esatto dell'errore se permane.
 - Se emerge la necessità di aggiungere file a `main`, chiedere prima consenso esplicito; la policy corrente vieta modifiche a `main`.
