@@ -144,3 +144,17 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Decisione: **nessuna modifica al Config Flow energia per ora**. Confronto programmato con l'utente venerdì 13 novembre 2026 durante una ricarica.
 - Confrontare Shelly piano terra + primo piano + ramo wallbox e letture ESPHome in assenza di carica e durante ricarica stabile, tenendo conto di W/kW, timestamp e latenza (BLE circa 30 s, telemetria stale oltre 100 s).
 - Non usare le letture ESPHome per inseguire picchi, non modificare firmware, DPM (sempre ON), automazioni o switch di pausa ricarica durante il test osservativo.
+
+## 2026-11-12 — Configurazione energetica generica (0.0.5)
+
+### Intervento dopo la proposta multi-sorgente
+- L'utente chiede di non legare l'integrazione a piano terra/piano primo e di ammettere una o più misure casa, uso dei sensori firmware o configurazioni miste.
+- Aggiunto **solo il modello di configurazione**: casa senza EV con 1..N sensori non sovrapposti, oppure totale che include EV e lettura EV indipendente, oppure nessuna misura. Le fonti sono selezionabili esplicitamente, **senza attivare automaticamente la sottrazione dal valore DPM**.
+- `power_model.py` è un modulo offline: valida topologie, converte W/kW, distingue missing e stale e segnala misure contraddittorie; **non** è ancora un lettore di stati Home Assistant né guida il planner.
+- Vecchi 3 campi convertiti solo se la mappatura completa è disponibile (somma dei due sensori casa + sensore EV); le configurazioni incomplete diventano «non configurato». Il resto dei dati è preservato.
+- Traduzioni IT/EN, test, README, Lovelace plan e note release aggiornati. Nessun comando reale, firmware non modificato e DPM sempre ON.
+
+### Punto da validare prima di usare il fallback in decisioni
+- `House total power -DPM-` proviene da AD p[14] e **non è garantito dal solo codice** che includa l'EV. Occorre la prova comparativa con Shelly durante ricarica e pausa (prevista il 13/11/2026).
+- Solo dopo verifica: abilitare la lettura nel planner con controlli di timestamp e `Telemetry Fresh`, senza inseguire picchi.
+- La 0.0.5 resta una milestone di configurazione: **nessun sensore e nessuna dashboard effettiva**, nessun automatismo elettrico.

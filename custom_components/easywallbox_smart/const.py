@@ -12,12 +12,6 @@ WALLBOX_FIELDS = {
     "wallbox_fault": ["binary_sensor", "sensor"],
 }
 
-POWER_FIELDS = {
-    "power_ground": ["sensor"],
-    "power_first_floor": ["sensor"],
-    "power_wallbox": ["sensor"],
-}
-
 # Profiles are not tied to vehicle makes/models.
 VEHICLE_KEYS = (
     "name", "soc", "connected", "charging",

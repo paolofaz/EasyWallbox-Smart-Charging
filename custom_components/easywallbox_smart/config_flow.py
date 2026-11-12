@@ -10,7 +10,8 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 
-from .const import CONF_VEHICLES, DOMAIN, POWER_FIELDS, WALLBOX_FIELDS
+from .const import CONF_VEHICLES, DOMAIN, WALLBOX_FIELDS
+from .power_model import ENERGY_KEYS, MODE_HOUSE, MODE_NONE, MODE_TOTAL, migrate_legacy, normalise
 from .vehicle import build_vehicle, profiles_from_entry
 
 
@@ -42,6 +43,24 @@ def _vehicle_form() -> vol.Schema:
     })
 
 
+def _house_schema() -> vol.Schema:
+    return vol.Schema({
+        vol.Required("house_power_sources"): EntitySelector(
+            EntitySelectorConfig(domain=["sensor"], multiple=True)),
+        vol.Optional("ev_power_sensor"): EntitySelector(
+            EntitySelectorConfig(domain=["sensor"])),
+    })
+
+
+def _total_schema() -> vol.Schema:
+    return vol.Schema({
+        vol.Required("site_total_power"): EntitySelector(
+            EntitySelectorConfig(domain=["sensor"])),
+        vol.Required("ev_power_sensor"): EntitySelector(
+            EntitySelectorConfig(domain=["sensor"])),
+    })
+
+
 def _remove_missing(data: dict, keys: dict, form: dict) -> None:
     """Save only present optional entity selectors, allowing removal."""
     for key in keys:
@@ -54,7 +73,7 @@ def _remove_missing(data: dict, keys: dict, form: dict) -> None:
 class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Wallbox -> one or more named vehicles -> power sources."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         self._selected: dict[str, Any] = {}
@@ -94,24 +113,57 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if user_input["add_another"]:
                 return await self.async_step_vehicle()
-            return await self.async_step_power()
+            return await self.async_step_energy_menu()
         return self.async_show_form(
             step_id="more",
             data_schema=vol.Schema({vol.Required("add_another", default=False): bool}),
         )
 
-    async def async_step_power(
+    async def async_step_energy_menu(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        if user_input is not None:
-            self._selected.update(user_input)
-            self._selected[CONF_VEHICLES] = self._vehicles
-            return self.async_create_entry(
-                title="EasyWallbox Smart Charging", data=self._selected
-            )
-        return self.async_show_form(
-            step_id="power", data_schema=_entities(POWER_FIELDS)
+        return self.async_show_menu(
+            step_id="energy_menu",
+            menu_options=["house_sources", "total_sources", "no_sources"],
         )
+
+    def _finish_energy(self, mode: str, values: dict) -> FlowResult:
+        self._selected.update(normalise(mode, values))
+        self._selected[CONF_VEHICLES] = self._vehicles
+        return self.async_create_entry(
+            title="EasyWallbox Smart Charging", data=self._selected
+        )
+
+    async def async_step_house_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors = {}
+        if user_input is not None:
+            try:
+                return self._finish_energy(MODE_HOUSE, user_input)
+            except ValueError:
+                errors["base"] = "invalid_energy"
+        return self.async_show_form(
+            step_id="house_sources", data_schema=_house_schema(), errors=errors
+        )
+
+    async def async_step_total_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors = {}
+        if user_input is not None:
+            try:
+                return self._finish_energy(MODE_TOTAL, user_input)
+            except ValueError:
+                errors["base"] = "invalid_energy"
+        return self.async_show_form(
+            step_id="total_sources", data_schema=_total_schema(), errors=errors
+        )
+
+    async def async_step_no_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return self._finish_energy(MODE_NONE, {})
 
     @staticmethod
     @callback
@@ -132,6 +184,7 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
         if self._working is None:
             merged = {**self.config_entry.data, **self.config_entry.options}
             merged[CONF_VEHICLES] = profiles_from_entry(merged)
+            merged.update(migrate_legacy(merged))
             self._working = merged
         return self._working
 
@@ -147,7 +200,7 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
         self._data()
         return self.async_show_menu(
             step_id="init",
-            menu_options=["wallbox", "vehicles", "power", "finish"],
+            menu_options=["wallbox", "vehicles", "energy_menu", "finish"],
         )
 
     async def async_step_wallbox(
@@ -264,18 +317,61 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
             data_schema=vol.Schema({vol.Required("confirm", default=False): bool}),
         )
 
-    async def async_step_power(
+    async def async_step_energy_menu(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        if user_input is not None:
-            _remove_missing(self._data(), POWER_FIELDS, user_input)
-            return await self.async_step_init()
-        return self.async_show_form(
-            step_id="power",
-            data_schema=self.add_suggested_values_to_schema(
-                _entities(POWER_FIELDS), self._data()
-            ),
+        return self.async_show_menu(
+            step_id="energy_menu",
+            menu_options=["house_sources", "total_sources", "no_sources", "init"],
         )
+
+    def _set_energy(self, mode: str, values: dict) -> None:
+        new_values = normalise(mode, values)
+        for key in ENERGY_KEYS:
+            self._data().pop(key, None)
+        self._data().update(new_values)
+
+    async def async_step_house_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors = {}
+        if user_input is not None:
+            try:
+                self._set_energy(MODE_HOUSE, user_input)
+            except ValueError:
+                errors["base"] = "invalid_energy"
+            else:
+                return await self.async_step_init()
+        values = self._data() if self._data().get("energy_mode") == MODE_HOUSE else {}
+        return self.async_show_form(
+            step_id="house_sources",
+            data_schema=self.add_suggested_values_to_schema(_house_schema(), values),
+            errors=errors,
+        )
+
+    async def async_step_total_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors = {}
+        if user_input is not None:
+            try:
+                self._set_energy(MODE_TOTAL, user_input)
+            except ValueError:
+                errors["base"] = "invalid_energy"
+            else:
+                return await self.async_step_init()
+        values = self._data() if self._data().get("energy_mode") == MODE_TOTAL else {}
+        return self.async_show_form(
+            step_id="total_sources",
+            data_schema=self.add_suggested_values_to_schema(_total_schema(), values),
+            errors=errors,
+        )
+
+    async def async_step_no_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._set_energy(MODE_NONE, {})
+        return await self.async_step_init()
 
     async def async_step_finish(
         self, user_input: dict[str, Any] | None = None

@@ -32,18 +32,35 @@
           "add_another": "Aggiungi un altro veicolo"
         }
       },
-      "power": {
-        "title": "Misure di potenza",
-        "description": "Seleziona i tre Shelly EM. I campi sono facoltativi soltanto in questa fase pre-alpha.",
+      "energy_menu": {
+        "title": "Misure elettriche",
+        "description": "Scegli una topologia, senza dipendere da Shelly o dal numero di piani dell'abitazione.",
+        "menu_options": {
+          "house_sources": "Uno o più sensori della casa, esclusa l'auto",
+          "total_sources": "Totale con auto meno potenza auto",
+          "no_sources": "Nessun sensore disponibile"
+        }
+      },
+      "house_sources": {
+        "title": "Potenza della casa",
+        "description": "Seleziona da uno a più sensori che coprono tutta la casa senza includere la ricarica e senza sovrapporsi. Potenza auto facoltativa, anche da ESPHome.",
         "data": {
-          "power_ground": "Potenza piano terra",
-          "power_first_floor": "Potenza piano primo",
-          "power_wallbox": "Potenza ramo wallbox"
+          "house_power_sources": "Sensori potenza casa",
+          "ev_power_sensor": "Potenza ricarica auto (facoltativa)"
+        }
+      },
+      "total_sources": {
+        "title": "Totale meno auto",
+        "description": "Il totale deve comprendere anche l'auto. Verifica il posizionamento del misuratore DPM prima di utilizzare la differenza.",
+        "data": {
+          "site_total_power": "Potenza totale inclusa auto",
+          "ev_power_sensor": "Potenza ricarica auto"
         }
       }
     },
     "error": {
-      "invalid_vehicle": "Controlla i dati: nome duplicato, sensore SOC già utilizzato o parametri non validi."
+      "invalid_vehicle": "Controlla i dati: nome duplicato, sensore SOC già utilizzato o parametri non validi.",
+      "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti."
     },
     "abort": {
       "already_configured": "Questa integrazione è già configurata."
@@ -57,8 +74,8 @@
         "menu_options": {
           "wallbox": "Sensori wallbox",
           "vehicles": "Veicoli",
-          "power": "Potenza Shelly",
-          "finish": "Salva modifiche"
+          "finish": "Salva modifiche",
+          "energy_menu": "Misure elettriche"
         }
       },
       "wallbox": {
@@ -121,22 +138,40 @@
           "confirm": "Confermo la rimozione"
         }
       },
-      "power": {
-        "title": "Potenza Shelly",
-        "data": {
-          "power_ground": "Potenza piano terra",
-          "power_first_floor": "Potenza piano primo",
-          "power_wallbox": "Potenza ramo wallbox"
-        }
-      },
       "finish": {
         "title": "Salvataggio",
         "description": "Devi configurare almeno un veicolo."
+      },
+      "energy_menu": {
+        "title": "Misure elettriche",
+        "menu_options": {
+          "house_sources": "Sensori casa",
+          "total_sources": "Totale meno auto",
+          "no_sources": "Nessuna misura",
+          "init": "Indietro"
+        }
+      },
+      "house_sources": {
+        "title": "Potenza della casa",
+        "description": "Seleziona da uno a più sensori che coprono tutta la casa senza includere la ricarica e senza sovrapporsi. Potenza auto facoltativa, anche da ESPHome.",
+        "data": {
+          "house_power_sources": "Sensori potenza casa",
+          "ev_power_sensor": "Potenza ricarica auto (facoltativa)"
+        }
+      },
+      "total_sources": {
+        "title": "Totale meno auto",
+        "description": "Il totale deve comprendere anche l'auto. Verifica il posizionamento del misuratore DPM prima di utilizzare la differenza.",
+        "data": {
+          "site_total_power": "Potenza totale inclusa auto",
+          "ev_power_sensor": "Potenza ricarica auto"
+        }
       }
     },
     "error": {
       "invalid_vehicle": "Nome duplicato, sensore SOC già assegnato o valori non validi.",
-      "vehicle_required": "Configura almeno un veicolo prima di salvare."
+      "vehicle_required": "Configura almeno un veicolo prima di salvare.",
+      "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti."
     }
   }
 }

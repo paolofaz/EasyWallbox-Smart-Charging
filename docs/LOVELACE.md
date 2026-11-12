@@ -18,7 +18,7 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 
 1. **Sintesi sessione**: auto, stato sessione, SOC attuale/target, orario di partenza.
 2. **Pianificazione**: kWh residui, tempo stimato, inizio consigliato, margine e motivo della decisione; per target 100% la stima rappresenta il raggiungimento indicativo del 100%, **non** il termine certo dell'eventuale bilanciamento celle.
-3. **Potenza**: casa (piano terra + primo piano) distinta dal ramo wallbox, con indicazioni di qualità misura.
+3. **Potenza**: casa distinta dalla ricarica, usando una topologia di sorgenti scelta dall'utente (N sensori casa o totale con EV meno EV), con indicazioni di qualità, latenza e metodo impiegato.
 4. **Diagnostica**: connessione wallbox, telemetria fresca, SOC vecchio, stati incoerenti; errori espliciti.
 5. **Impostazioni non attuative v0.1**: obiettivo SOC effettivo della sessione (default dall'abituale), inclusa la scelta del 100%. Nessuno switch «Escludi obiettivo». **Controlli futuri**: Manuale, Pausa, Carica subito soltanto quando autorizzati; nessun comando wallbox in v0.1.
 

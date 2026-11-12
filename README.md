@@ -1,8 +1,8 @@
 # EasyWallbox Smart Charging
 
-Custom integration Python per **Home Assistant** per pianificare la ricarica di **veicoli configurabili da 1 a N** (inclusi Fiat 500e e Kia EV3), utilizzando stati ESPHome, SOC e potenze misurate dai tre Shelly EM.
+Custom integration Python per **Home Assistant** per pianificare la ricarica di **veicoli configurabili da 1 a N** (inclusi Fiat 500e e Kia EV3), utilizzando stati ESPHome, SOC e sorgenti di potenza configurabili (Shelly, ESPHome o altri sensori Home Assistant).
 
-> **Stato: infrastruttura pre-alpha (manifest v0.0.4). Non è ancora la v0.1 di simulazione.** Non stima energia o tempi, non identifica l'auto, non espone sensori calcolati e **non comanda la wallbox o le automobili**. Non usarla come controllore della ricarica.
+> **Stato: infrastruttura pre-alpha (manifest v0.0.5). Non è ancora la v0.1 di simulazione.** Non stima energia o tempi, non identifica l'auto, non espone sensori calcolati e **non comanda la wallbox o le automobili**. Non usarla come controllore della ricarica.
 
 ## Sicurezza e separazione delle responsabilità
 
@@ -16,21 +16,21 @@ Custom integration Python per **Home Assistant** per pianificare la ricarica di 
 
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
-- `0.0.4`: Config Flow con profili veicolo dinamici e obiettivo SOC abituale. La **v0.1** sarà una milestone successiva, interamente in **simulazione**.
+- `0.0.5`: Config Flow con profili veicolo dinamici e obiettivo SOC abituale. La **v0.1** sarà una milestone successiva, interamente in **simulazione**.
 - Le versioni di prova `0.x` vengono pubblicate come **release GitHub normali**, ma sono **software sperimentale e non stabile**. I tag puntano ai commit verificati di `sviluppo-test`, senza modificare `main`. Nessuna compatibilità con HA reale è ancora certificata.
 
 ## Installazione tramite Marketplace (release di prova)
 
-Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.4`:
+Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.5`:
 
 1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
 2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
-3. Selezionare la **release normale** `0.0.4` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
-4. Installare la release `0.0.4`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
+3. Selezionare la **release normale** `0.0.5` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
+4. Installare la release `0.0.5`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
 
 > **Attenzione:** `main` contiene soltanto `LICENSE`. La release punta all'esatto commit di `sviluppo-test`. **Il branch predefinito `main` non contiene ancora `hacs.json` né l'integrazione: il Marketplace potrebbe quindi non riuscire a riconoscere il repository durante l'aggiunta da link.** Se il repository non viene accettato, riportare l'errore e non installare il fallback di `main`.
 
-**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.4` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.5` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
 
 <!-- ha-marketplace:exclude-start -->
 Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
@@ -38,9 +38,9 @@ Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Chargin
 
 Il requisito indicativo dichiarato per il Marketplace è **Home Assistant 2026.11.0+**; la versione effettivamente installata e l'esito del test sono ancora da verificare. **Non è necessaria alcuna configurazione YAML**.
 
-Il Config Flow prevede: (1) sensori wallbox, (2) **uno o più veicoli configurabili**, (3) tre Shelly EM. A ogni veicolo si assegna **nome, sensore SOC, sensore cavo collegato, eventuale sensore ricarica, capacità utilizzabile e obiettivo SOC abituale**. Non richiede un sensore del limite impostato nell'auto. Dopo ogni veicolo, la procedura chiede se aggiungerne un altro.
+Il Config Flow prevede: (1) sensori wallbox, (2) **uno o più veicoli configurabili**, (3) scelta del metodo di misura elettrica. A ogni veicolo si assegna **nome, sensore SOC, sensore cavo collegato, eventuale sensore ricarica, capacità utilizzabile e obiettivo SOC abituale**. Non richiede un sensore del limite impostato nell'auto. Dopo ogni veicolo, la procedura chiede se aggiungerne un altro.
 
-Le Opzioni permettono di aggiungere, modificare o rimuovere profili, preservando i loro identificatori stabili; per salvare premere **Salva modifiche**. La schermata di configurazione **non invia comandi**.
+Le Opzioni permettono di gestire i veicoli e cambiare la **topologia energetica** senza reinstallare l'integrazione. Per salvare premere **Salva modifiche**. La schermata di configurazione **non invia comandi**.
 
 **Migrazione 0.0.1 → 0.0.3:** se avevi già completato la configurazione vecchia, occorre inserire almeno un nuovo profilo nelle Opzioni; i valori batteria sconosciuti **non vengono inventati**. Se invece ti eri fermato prima della fine, configura da zero con il nuovo flusso.
 
@@ -93,4 +93,18 @@ Licenza: MIT.
 
 ## Classificazione nell'interfaccia Home Assistant
 
-Dalla **0.0.4** `integration_type` è **`hub`**, non `helper`. EasyWallbox Smart Charging coordina sorgenti dati provenienti da più dispositivi/servizi, mentre `helper` è riservato a funzioni come i contatori e i sensori derivati. `iot_class: calculated` rimane invariato poiché la nostra integrazione elabora stati forniti da altre integrazioni. Questa modifica **non** cambia le entità mappate e non introduce controlli reali.
+Dalla **0.0.5** `integration_type` è **`hub`**, non `helper`. EasyWallbox Smart Charging coordina sorgenti dati provenienti da più dispositivi/servizi, mentre `helper` è riservato a funzioni come i contatori e i sensori derivati. `iot_class: calculated` rimane invariato poiché la nostra integrazione elabora stati forniti da altre integrazioni. Questa modifica **non** cambia le entità mappate e non introduce controlli reali.
+
+## Misure elettriche flessibili — 0.0.5
+
+Nella configurazione si può scegliere una delle seguenti tre situazioni:
+
+- **Casa senza ricarica:** uno o più sensori (da 1 a N) di potenza istantanea che coprano la casa **esclusa la wallbox**, senza sovrapposizioni. Casa = somma dei sensori. La potenza auto, se disponibile da un Shelly o da ESPHome, si può inserire separatamente.
+- **Totale comprensivo della ricarica:** un sensore del totale che **comprenda l'auto**, più uno della potenza auto. Casa = totale − auto. Possono essere anche sensori di diversa origine, purché descrivano correttamente lo stesso perimetro e letture sufficientemente sincronizzate.
+- **Nessuna misura disponibile:** permesso; il futuro planner dovrà dichiarare indisponibile l'ottimizzazione dei consumi, non sostituire i dati mancanti con zero.
+
+**Firmware controllato:** `Charging Power` e `House total power -DPM-` sono effettivamente esposti da `wallbox.yaml` (`main` firmware, verificato 12/11/2026). Entrambi sono valori in kW calcolati dalla telemetria BLE; il polling nominale è ~30 s e `Telemetry Fresh` segnala dati scaduti dopo ~100 s. **Il codice non prova da solo che il misuratore DPM includa il carico della ricarica**: prima di sottrarre, verificare fisicamente la copertura e confrontare durante una ricarica con un contatore indipendente.
+
+Selezionare sensori di **potenza** (`W` oppure `kW`), non di **energia** (`Wh` o `kWh`). Il nuovo modulo puro `power_model.py` gestisce conversioni, dati assenti, obsoleti, negativi e contraddizioni; nella **0.0.5 non è ancora collegato agli stati HA né espone sensori o dashboard**. Nel futuro planner la qualità e latenza di ogni misura dovranno essere verificate prima dell'uso; il DPM resta responsabile della regolazione rapida.
+
+**Migrazione dalla 0.0.4:** wallbox e profili veicolo vengono conservati. Se i tre sensori preesistenti erano configurati, la vecchia coppia piano terra + primo piano diventa la lista dei sensori casa e il terzo il sensore dell'auto; se il mapping era incompleto, si sceglie «Nessuna misura» fino alla nuova configurazione. Verificare tutto da **Opzioni → Misure elettriche**.

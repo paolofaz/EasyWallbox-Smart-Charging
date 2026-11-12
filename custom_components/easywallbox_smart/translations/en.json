@@ -32,18 +32,35 @@
           "add_another": "Add another vehicle"
         }
       },
-      "power": {
+      "energy_menu": {
         "title": "Power measurements",
-        "description": "Select the three Shelly EM sensors. Inputs are optional only in this pre-alpha.",
+        "description": "Choose a measurement topology, independent of Shelly hardware or the number of floors.",
+        "menu_options": {
+          "house_sources": "One or more house-only power sensors",
+          "total_sources": "Site total including EV minus EV power",
+          "no_sources": "No power sensors available"
+        }
+      },
+      "house_sources": {
+        "title": "House power",
+        "description": "Choose one or more non-overlapping sensors covering the whole house without EV charging. EV power is optional, including ESPHome.",
         "data": {
-          "power_ground": "Ground-floor power",
-          "power_first_floor": "First-floor power",
-          "power_wallbox": "Wallbox branch power"
+          "house_power_sources": "House-only power sensors",
+          "ev_power_sensor": "EV charging power (optional)"
+        }
+      },
+      "total_sources": {
+        "title": "Site total minus EV",
+        "description": "The total must include EV charging. Check DPM meter placement before subtracting.",
+        "data": {
+          "site_total_power": "Total power including EV",
+          "ev_power_sensor": "EV charging power"
         }
       }
     },
     "error": {
-      "invalid_vehicle": "Check vehicle details: duplicate name, duplicate SOC entity or invalid values."
+      "invalid_vehicle": "Check vehicle details: duplicate name, duplicate SOC entity or invalid values.",
+      "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated."
     },
     "abort": {
       "already_configured": "This integration is already configured."
@@ -57,8 +74,8 @@
         "menu_options": {
           "wallbox": "Wallbox sensors",
           "vehicles": "Vehicles",
-          "power": "Shelly power",
-          "finish": "Save changes"
+          "finish": "Save changes",
+          "energy_menu": "Power measurements"
         }
       },
       "wallbox": {
@@ -121,22 +138,40 @@
           "confirm": "Confirm removal"
         }
       },
-      "power": {
-        "title": "Shelly power",
-        "data": {
-          "power_ground": "Ground-floor power",
-          "power_first_floor": "First-floor power",
-          "power_wallbox": "Wallbox branch power"
-        }
-      },
       "finish": {
         "title": "Save changes",
         "description": "At least one vehicle is required."
+      },
+      "energy_menu": {
+        "title": "Power measurements",
+        "menu_options": {
+          "house_sources": "House-only sensors",
+          "total_sources": "Site total minus EV",
+          "no_sources": "No measurements",
+          "init": "Back"
+        }
+      },
+      "house_sources": {
+        "title": "House power",
+        "description": "Choose one or more non-overlapping sensors covering the whole house without EV charging. EV power is optional, including ESPHome.",
+        "data": {
+          "house_power_sources": "House-only power sensors",
+          "ev_power_sensor": "EV charging power (optional)"
+        }
+      },
+      "total_sources": {
+        "title": "Site total minus EV",
+        "description": "The total must include EV charging. Check DPM meter placement before subtracting.",
+        "data": {
+          "site_total_power": "Total power including EV",
+          "ev_power_sensor": "EV charging power"
+        }
       }
     },
     "error": {
       "invalid_vehicle": "Duplicate name or SOC source, or invalid parameters.",
-      "vehicle_required": "Configure at least one vehicle before saving."
+      "vehicle_required": "Configure at least one vehicle before saving.",
+      "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated."
     }
   }
 }

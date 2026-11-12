@@ -17,7 +17,8 @@ STEP_FIELDS = {
         "capacity_kwh", "default_target_soc",
     },
     "more": {"add_another"},
-    "power": {"power_ground", "power_first_floor", "power_wallbox"},
+    "house_sources": {"house_power_sources", "ev_power_sensor"},
+    "total_sources": {"site_total_power", "ev_power_sensor"},
 }
 
 
@@ -30,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.4")
+        self.assertEqual(manifest["version"], "0.0.5")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -51,12 +52,15 @@ class TestScaffold(unittest.TestCase):
                     STEP_FIELDS["vehicle"]
                 )
                 self.assertIn("vehicles", t["options"]["step"])
+                self.assertIn("energy_menu", t["config"]["step"])
+                self.assertIn("energy_menu", t["options"]["step"])
 
     def test_config_entry_migration_present(self):
         text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")
         self.assertIn("async def async_migrate_entry(", text)
         self.assertIn("data.setdefault(CONF_VEHICLES, [])", text)
-        self.assertIn("version=2", text)
+        self.assertIn("version=3", text)
+        self.assertIn("migrate_legacy", text)
 
     def test_no_commands_or_control_entities(self):
         content = "\n".join(
