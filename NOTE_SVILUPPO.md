@@ -180,7 +180,7 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Nessuna modifica a firmware, DPM (sempre ON), switch di pausa ricarica, automazioni esistenti o `main`.
 
 ### Limiti e test necessari
-- Test statici in CI e pubblicazione GitHub da verificare a conclusione del workflow.
+- **Verificato:** CI Static checks superato (run `43317219784`) e GitHub release normale `0.0.6` pubblicata con successo (run `43317219671`), tag sul commit `35009c66f8a5240fd0f0ffbf8b958070f2183bff`. Questo non equivale a un test runtime in HA.
 - Test reale con HA 2026.11, verifica entità generate, aggiornamenti, data quality, `last_reported` e relative soglie.
 - Non ancora presenti dashboard dedicata, target SOC della singola sessione, planner, calcolo tempi e lettura affidabile del consumo domestico.
 - I kWh esposti rappresentano energia teorica mancante **alla batteria** senza perdite di ricarica.
