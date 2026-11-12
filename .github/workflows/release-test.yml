@@ -1,4 +1,4 @@
-name: Publish test pre-release
+name: Publish 0.x test releases
 
 on:
   push:
@@ -12,11 +12,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: test-prerelease-sviluppo
+  group: test-release-sviluppo
   cancel-in-progress: false
 
 jobs:
-  prerelease:
+  publish:
     if: github.ref == 'refs/heads/sviluppo-test'
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release $VERSION already exists: no overwrite"
+            echo "Release $VERSION already exists: updating only its pre-release flag"
           elif git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
             echo "::error::Tag $VERSION already exists without a release; refusing to overwrite it"
             exit 1
@@ -71,7 +71,7 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish prerelease from development commit
+      - name: Publish normal release from development commit
         if: steps.check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,4 +83,20 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "EasyWallbox Smart Charging $VERSION (pre-alpha)" \
             --notes-file "docs/releases/$VERSION.md" \
-            --prerelease
+            --latest
+
+      - name: Convert existing pre-release to normal release
+        if: steps.check.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          is_prerelease="$(gh release view "$VERSION" --json isPrerelease --jq '.isPrerelease')"
+          if [ "$is_prerelease" = "true" ]; then
+            gh release edit "$VERSION" --prerelease=false --latest
+            echo "Converted $VERSION to a regular release, keeping its original tag and commit"
+          else
+            echo "$VERSION already is a regular release"
+          fi

@@ -17,23 +17,23 @@ Custom integration Python per **Home Assistant** che pianificherà la ricarica d
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
 - `0.0.1`: solo infrastruttura. La **v0.1** sarà una milestone successiva, interamente in **simulazione**.
-- Le versioni di prova `0.x` vengono pubblicate come **pre-release** dal branch `sviluppo-test`; il workflow rilascia una versione solo se il tag non esiste già. Nessuna compatibilità con HA reale è ancora certificata.
+- Le versioni di prova `0.x` vengono pubblicate come **release GitHub normali**, ma sono **software sperimentale e non stabile**. I tag puntano ai commit verificati di `sviluppo-test`, senza modificare `main`. Nessuna compatibilità con HA reale è ancora certificata.
 
-## Installazione tramite Marketplace (pre-release)
+## Installazione tramite Marketplace (release di prova)
 
 Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.1`:
 
 1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
 2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
-3. Abilitare la voce **Pre-release** del repository: in **Impostazioni → Dispositivi e servizi → Marketplace**, trovare il dispositivo del repository, abilitare l'entità disabilitata **Pre-release** e accendere lo switch. Se necessario, scegliere manualmente la versione `0.0.1` dalle versioni disponibili.
+3. Selezionare la **release normale** `0.0.1` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
 4. Installare la release `0.0.1`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
 
-> **Attenzione:** `main` contiene soltanto `LICENSE`. La pre-release punta all'esatto commit di `sviluppo-test`. Se il Marketplace non permette di aggiungere il repository o la versione `0.0.1` non compare, **non installare la versione di default** e segnalarlo per diagnosi.
+> **Attenzione:** `main` contiene soltanto `LICENSE`. La release punta all'esatto commit di `sviluppo-test`. **Il branch predefinito `main` non contiene ancora `hacs.json` né l'integrazione: il Marketplace potrebbe quindi non riuscire a riconoscere il repository durante l'aggiunta da link.** Se il repository non viene accettato, riportare l'errore e non installare il fallback di `main`.
 
-**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della pre-release `0.0.1` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.1` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
 
 <!-- ha-marketplace:exclude-start -->
-Link alle [pre-release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
+Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
 <!-- ha-marketplace:exclude-end -->
 
 Il requisito indicativo dichiarato per il Marketplace è **Home Assistant 2026.11.0+**; la versione effettivamente installata e l'esito del test sono ancora da verificare. **Non è necessaria alcuna configurazione YAML**.
@@ -71,9 +71,9 @@ Per attività, verifiche e limiti vedi [NOTE_SVILUPPO.md](NOTE_SVILUPPO.md).
 
 ## Processo di release di test
 
-Ogni nuova versione pubblicabile richiede **un cambio esplicito** del campo `version` in `custom_components/easywallbox_smart/manifest.json` e la creazione di `docs/releases/<versione>.md`. Un workflow GitHub Actions sul branch `sviluppo-test` esegue i test statici, rifiuta versioni non `0.x` o tag preesistenti privi di release e crea una **GitHub pre-release** dal commit corrente. Non pubblica su `main`, non fa merge, non crea PR. Non creare una release di un commit non testato.
+Ogni nuova versione pubblicabile richiede **un cambio esplicito** del campo `version` in `custom_components/easywallbox_smart/manifest.json` e la creazione di `docs/releases/<versione>.md`. Un workflow GitHub Actions sul branch `sviluppo-test` esegue i test statici, rifiuta versioni non `0.x` o tag preesistenti privi di release, e crea una **GitHub release normale** dal commit corrente. Per la release esistente `0.0.1` aggiorna soltanto la classificazione senza alterare il tag. Non pubblica su `main`, non fa merge, non crea PR. Non creare una release di un commit non testato.
 
-Le vecchie pre-release verranno riesaminate **dopo il rilascio 1.0**, conservando le versioni necessarie per rollback e migrazione; cancellazioni non automatiche.
+Le vecchie release `0.x` verranno riesaminate **dopo il rilascio 1.0**, conservando le versioni necessarie per rollback e migrazione; cancellazioni non automatiche.
 
 ## Compatibilità Marketplace
 

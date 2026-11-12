@@ -57,3 +57,20 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Possibile limite del Marketplace nel registrare una custom repository con `main` ancora privo di `hacs.json`: non installare il fallback di `main`.
 - Installazione e Config Flow su Home Assistant 2026.11 dell'utente.
 - Validazione hassfest/HACS action e successive verifiche di compatibilità reale.
+
+## 2026-11-12 — Passaggio alle release normali 0.x
+
+### Richiesta utente e motivo
+- L'aggiunta del repository personalizzato nel Marketplace non ha funzionato con la pre-release `0.0.1`; l'errore esatto lato HA resta da acquisire.
+- Scelta: pubblicare release **normali** anche per le versioni 0.x, mantenendo il codice di sviluppo e i tag provenienti esclusivamente da `sviluppo-test`.
+- Una release normale in questo contesto **non significa software collaudato o pronto per produzione**.
+
+### Modifiche
+- Workflow adattato per creare release normali 0.x e convertire la release 0.0.1 già esistente, senza spostare il tag e senza nuove versioni inutili.
+- README aggiornato per l'installazione senza switch Pre-release.
+- Il branch `main` non viene modificato. `main` contiene soltanto `LICENSE` e potrebbe impedire il riconoscimento del repository nel Marketplace: **ipotesi da verificare** e non risolvibile con la sola tipologia release.
+
+### Verifiche aperte
+- Completamento dell'Action e verifica live che la `0.0.1` non sia più una pre-release.
+- Nuovo tentativo dal Marketplace e testo esatto dell'errore se permane.
+- Se emerge la necessità di aggiungere file a `main`, chiedere prima consenso esplicito; la policy corrente vieta modifiche a `main`.
