@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.5")
+        self.assertEqual(manifest["version"], "0.0.6")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -61,6 +61,15 @@ class TestScaffold(unittest.TestCase):
         self.assertIn("data.setdefault(CONF_VEHICLES, [])", text)
         self.assertIn("version=3", text)
         self.assertIn("migrate_legacy", text)
+
+    def test_read_only_sensor_platform(self):
+        sensor = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
+        init = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('async_forward_entry_setups(entry, ["sensor"])', init)
+        self.assertIn('async_unload_platforms(entry, ["sensor"])', init)
+        self.assertIn("async_track_state_change_event", sensor)
+        self.assertIn("async_track_time_interval", sensor)
+        self.assertNotIn("hass.services", sensor)
 
     def test_no_commands_or_control_entities(self):
         content = "\n".join(

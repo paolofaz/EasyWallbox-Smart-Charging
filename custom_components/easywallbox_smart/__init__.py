@@ -1,8 +1,4 @@
-"""EasyWallbox Smart Charging: configuration-only pre-alpha.
-
-This milestone registers a config entry and MUST NOT call any device service.
-No HA state listeners, polling or entities are installed yet.
-"""
+"""EasyWallbox Smart Charging passive simulation, no device commands."""
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -12,13 +8,14 @@ from .power_model import migrate_legacy
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Accept a configuration entry without acting on any device."""
+    """Register the read-only sensor platform; no service or BLE calls."""
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload the configuration-only integration."""
-    return True
+    """Unload sensors; config entry callbacks are released automatically."""
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor"])
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Upgrade old layouts without losing sensors, vehicles or user options."""

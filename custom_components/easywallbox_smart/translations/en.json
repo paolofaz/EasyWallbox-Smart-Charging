@@ -173,5 +173,24 @@
       "vehicle_required": "Configure at least one vehicle before saving.",
       "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated."
     }
+  },
+  "entity": {
+    "sensor": {
+      "active_vehicle": {
+        "name": "Active vehicle"
+      },
+      "current_soc": {
+        "name": "Current SOC"
+      },
+      "target_soc": {
+        "name": "Target SOC"
+      },
+      "remaining_energy": {
+        "name": "Battery energy needed"
+      },
+      "data_quality": {
+        "name": "Data quality"
+      }
+    }
   }
 }

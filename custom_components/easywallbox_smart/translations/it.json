@@ -173,5 +173,24 @@
       "vehicle_required": "Configura almeno un veicolo prima di salvare.",
       "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti."
     }
+  },
+  "entity": {
+    "sensor": {
+      "active_vehicle": {
+        "name": "Veicolo collegato"
+      },
+      "current_soc": {
+        "name": "SOC attuale"
+      },
+      "target_soc": {
+        "name": "Obiettivo SOC"
+      },
+      "remaining_energy": {
+        "name": "Energia residua nella batteria"
+      },
+      "data_quality": {
+        "name": "Qualità dati"
+      }
+    }
   }
 }

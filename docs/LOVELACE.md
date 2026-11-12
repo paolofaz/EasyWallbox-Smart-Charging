@@ -55,3 +55,7 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 - **Switch di pausa ricarica**: lo Start-Stop della integrazione ESPHome (entity ID specifico da confermare live). Nelle future versioni autorizzate la pausa è ottenuta richiedendo il limite DPM **0 A**, senza spegnere la funzione DPM. Il ripristino usa il limite valido precedentemente confermato, con verifiche e senza retry ciechi.
 - Non confondere comando richiesto, conferma DPM non-zero, stato di ricarica e lettura elettrica Shelly.
 - Obiettivo HA **100%**: nessuna pausa automatica per SOC; non interpretare il valore 100% come prova che il processo di bilanciamento sia terminato.
+
+## Sensori iniziali di osservazione (0.0.6)
+
+La 0.0.6 espone veicolo identificato, SOC attuale, obiettivo abituale, kWh teorici batteria e qualità dati, ma **non costituisce ancora la dashboard v0.1**. I valori sconosciuti non sono zero. Nella dashboard futura si aggiungeranno diagnostica completa, override della sessione, tempistiche, pianificazione in simulazione e fonti energetiche validate.

@@ -163,3 +163,24 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Static checks CI: **successo**, run `43315382062`.
 - Release normale GitHub `0.0.5`: **presente e verificata**, tag su commit `6d711ed4cd349bb317deb5d9f0a332697da12508`.
 - Config Flow/Options Flow nella vera istanza Home Assistant e misure reali: **non ancora verificati**.
+
+## 2026-11-12 — Release read-only 0.0.6: osservazione veicolo e SOC
+
+### Motivazione
+- L'utente ha chiesto i primi sensori prima della verifica energetica del 13/11/2026.
+- La versione 0.0.5 è stata nel frattempo già pubblicata con mappatura energia flessibile: mantenere quel tag immutabile. La prima osservazione diventa perciò **0.0.6**.
+- La validazione del totale DPM e la logica di pianificazione dei carichi restano in sospeso; questa modifica non le usa.
+
+### Modifiche
+- `snapshot.py`: calcolo puro e verificabile di auto collegata, SOC, target abituale, kWh teorici nella batteria, diagnostica. Richiede stato wallbox e unicità del profilo.
+- `sensor.py`: cinque entità HA native read-only, ascolto solo delle entità configurate, ricontrollo obsolescenza ogni 2 minuti. Nessuna interrogazione BLE o servizio Home Assistant.
+- Piattaforma `sensor` caricata e scaricata correttamente attraverso ConfigEntry; callback registrati in `async_on_unload`.
+- Test offline per auto ambigua, vecchi SOC, telemetria indisponibile, target 100% e assenza profili.
+- Versione manifest 0.0.6; traduzioni italiane e inglesi per i nomi predisposte.
+- Nessuna modifica a firmware, DPM (sempre ON), switch di pausa ricarica, automazioni esistenti o `main`.
+
+### Limiti e test necessari
+- Test statici in CI e pubblicazione GitHub da verificare a conclusione del workflow.
+- Test reale con HA 2026.11, verifica entità generate, aggiornamenti, data quality, `last_reported` e relative soglie.
+- Non ancora presenti dashboard dedicata, target SOC della singola sessione, planner, calcolo tempi e lettura affidabile del consumo domestico.
+- I kWh esposti rappresentano energia teorica mancante **alla batteria** senza perdite di ricarica.
