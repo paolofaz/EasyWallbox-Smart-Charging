@@ -134,3 +134,13 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 ### Verifiche ancora necessarie
 - **Verificato:** test statici CI superati (run `43305338006`) e release GitHub **0.0.4** pubblicata regolarmente (run `43305338160`), tag su commit `7f7b41d03a0ca8d42d19b9f7a49443d78e51b072`. Restano da verificare installazione Marketplace su HA 2026.11, riavvio e classificazione visualizzata nell'istanza dell'utente.
 - Validazione runtime Config Flow e compatibilità completa non ancora certificata.
+
+## 2026-11-12 — Misure energetiche: fallback non ancora approvato
+
+- Nella configurazione dell'utente i tre Shelly EM (piano terra, piano primo, wallbox) rimangono le sorgenti preferite. Non serve sostituirle con le letture ESPHome.
+- Per altri utenti senza misure dedicate si potrà valutare un fallback documentato e facoltativo: ESPHome espone `House total power -DPM-` (corrente AD p[14] convertita in kW) e `Charging Power` (AD p[11] / 1000, in kW).
+- Non è ancora dimostrato con misure reali che il primo comprenda l'intero impianto incluso il veicolo. La sottrazione totale - ricarica è **una ipotesi da validare**, non una formula abilitata.
+- Configurazioni con più sensori o miste Shelly/ESPHome sono candidate future; non imporre a tutti la struttura piano terra / primo piano / wallbox.
+- Decisione: **nessuna modifica al Config Flow energia per ora**. Confronto programmato con l'utente venerdì 13 novembre 2026 durante una ricarica.
+- Confrontare Shelly piano terra + primo piano + ramo wallbox e letture ESPHome in assenza di carica e durante ricarica stabile, tenendo conto di W/kW, timestamp e latenza (BLE circa 30 s, telemetria stale oltre 100 s).
+- Non usare le letture ESPHome per inseguire picchi, non modificare firmware, DPM (sempre ON), automazioni o switch di pausa ricarica durante il test osservativo.
