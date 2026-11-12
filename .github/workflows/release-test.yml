@@ -43,7 +43,7 @@ jobs:
 
           manifest = json.loads(Path("custom_components/easywallbox_smart/manifest.json").read_text())
           version = manifest["version"]
-          if not re.fullmatch(r"0\\.\\d+\\.\\d+", version):
+          if not re.fullmatch(r"0\.\d+\.\d+", version):
               raise SystemExit("Test-release workflow accepts only numeric 0.x.y versions")
           notes = Path("docs/releases") / f"{version}.md"
           if not notes.is_file():
