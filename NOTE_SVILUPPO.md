@@ -74,3 +74,26 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - **Verificato 12/11/2026:** workflow `Publish 0.x test releases` riuscito (run `43285119169`), release `0.0.1` trasformata in normale (`prerelease=false`) mantenendo tag e commit originari. Test statici riusciti (run `43285119190`).
 - Nuovo tentativo dal Marketplace e testo esatto dell'errore se permane.
 - Se emerge la necessità di aggiungere file a `main`, chiedere prima consenso esplicito; la policy corrente vieta modifiche a `main`.
+
+## 2026-11-12 — V0.0.2: profili veicolo senza vincolo marca
+
+### Feedback test reale
+- Marketplace ha installato correttamente la release 0.0.1 su HA 2026.11.
+- Config Flow wallbox visualizzato e compilato; schermata auto Fiat/Kia mostrata, ma l'utente si è fermato perché era richiesto un inesistente sensore target. Non è ancora verificato il completamento integrale del flow.
+
+### Decisioni approvate
+- Da 1 a N veicoli, nome e sensori specifici, senza nomi Fiat/Kia codificati.
+- Obiettivo SOC **abituale** numerico in Opzioni; override di sessione nella Lovelace v0.1 (mostra un unico target effettivo) e **Escludi obiettivo** per lasciare che l'auto interrompa autonomamente.
+- Limite interno auto non letto. Se auto interrompe prima dell'obiettivo HA, annotare arresto prematuro senza ritentare comandi.
+- DPM 0 A come futura azione a target HA raggiunto **solo dopo fase simulazione e autorizzazione**; non inviare comandi se ricarica è già arrestata dalla macchina. Conferme fisiche richieste.
+
+### Codice 0.0.2
+- Nuova selezione ripetibile veicoli nel Config Flow; obiettivo abituale e capacità utilizzabile configurabili; gestione profili in Options Flow e ID stabile.
+- Test di normalizzazione profili, duplicati e validazione; manifest aggiornato per release normale 0.0.2.
+- Vecchie mappe auto 0.0.1 non migrate automaticamente: manca la capacità batteria, vietato indovinarla. Riconfigurazione necessaria nelle Opzioni.
+
+### Verifiche da completare
+- CI e pubblicazione release 0.0.2.
+- Test su HA reale: installazione, aggiunta due veicoli, aggiunta terzo, modifiche/ rimozione, reload, aggiornamento da 0.0.1.
+- Hassfest/HACS action e test Config Flow con mock HA (non coperti dai test statici).
+- Nessuna entità di sessione, dati o Lovelace funzionale in 0.0.2.

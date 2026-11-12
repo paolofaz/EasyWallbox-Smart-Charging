@@ -4,79 +4,139 @@
     "step": {
       "user": {
         "title": "Wallbox",
-        "description": "Seleziona i sensori esistenti della wallbox. Nessun comando verrà inviato.",
+        "description": "Seleziona le entità di stato della wallbox. Nessun comando sarà inviato.",
         "data": {
-          "wallbox_car_connected": "Wallbox — auto collegata",
-          "wallbox_charging": "Wallbox — ricarica in corso",
-          "wallbox_telemetry_fresh": "Wallbox — telemetria aggiornata",
-          "wallbox_ble_connection": "Wallbox — connessione BLE",
-          "wallbox_fault": "Wallbox — guasto"
+          "wallbox_car_connected": "Auto collegata alla wallbox",
+          "wallbox_charging": "Wallbox in carica",
+          "wallbox_telemetry_fresh": "Telemetria aggiornata",
+          "wallbox_ble_connection": "Connessione BLE",
+          "wallbox_fault": "Guasto wallbox"
         }
       },
-      "cars": {
-        "title": "Automobili",
-        "description": "Seleziona i sensori disponibili di Fiat 500e e Kia EV3.",
+      "vehicle": {
+        "title": "Aggiungi veicolo",
+        "description": "Inserisci un nome e seleziona i sensori esistenti. Il limite SOC si imposta qui, non serve un sensore del limite in auto.",
         "data": {
-          "fiat_cable": "Fiat 500e — cavo collegato",
-          "fiat_charging": "Fiat 500e — in ricarica",
-          "fiat_soc": "Fiat 500e — stato di carica (%)",
-          "fiat_target": "Fiat 500e — obiettivo di carica (%)",
-          "kia_cable": "Kia EV3 — cavo collegato",
-          "kia_charging": "Kia EV3 — in ricarica",
-          "kia_soc": "Kia EV3 — stato di carica (%)",
-          "kia_target": "Kia EV3 — obiettivo di carica (%)"
+          "name": "Nome veicolo",
+          "soc": "Sensore SOC (%)",
+          "connected": "Sensore cavo collegato",
+          "charging": "Sensore ricarica in corso (facoltativo)",
+          "capacity_kwh": "Capacità utilizzabile batteria (kWh)",
+          "default_target_soc": "Obiettivo SOC abituale (%)"
+        }
+      },
+      "more": {
+        "title": "Altri veicoli",
+        "description": "Vuoi configurare un altro veicolo?",
+        "data": {
+          "add_another": "Aggiungi un altro veicolo"
         }
       },
       "power": {
-        "title": "Misure elettriche",
-        "description": "Seleziona i tre sensori di potenza Shelly. La configurazione incompleta è ammessa in questa pre-alpha.",
+        "title": "Misure di potenza",
+        "description": "Seleziona i tre Shelly EM. I campi sono facoltativi soltanto in questa fase pre-alpha.",
         "data": {
-          "power_ground": "Shelly — potenza piano terra",
-          "power_first_floor": "Shelly — potenza piano primo",
-          "power_wallbox": "Shelly — potenza ramo wallbox"
+          "power_ground": "Potenza piano terra",
+          "power_first_floor": "Potenza piano primo",
+          "power_wallbox": "Potenza ramo wallbox"
         }
       }
     },
+    "error": {
+      "invalid_vehicle": "Controlla i dati: nome duplicato, sensore SOC già utilizzato o parametri non validi."
+    },
     "abort": {
-      "already_configured": "È già presente una configurazione."
+      "already_configured": "Questa integrazione è già configurata."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Modifica sorgenti dati",
-        "description": "Aggiorna le entità lette. Nessun comando viene eseguito.",
-        "data": {
-          "wallbox_car_connected": "Wallbox — auto collegata",
-          "wallbox_charging": "Wallbox — ricarica in corso",
-          "wallbox_telemetry_fresh": "Wallbox — telemetria aggiornata",
-          "wallbox_ble_connection": "Wallbox — connessione BLE",
-          "wallbox_fault": "Wallbox — guasto"
+        "title": "Configurazione",
+        "description": "Scegli cosa modificare e salva soltanto alla fine.",
+        "menu_options": {
+          "wallbox": "Sensori wallbox",
+          "vehicles": "Veicoli",
+          "power": "Potenza Shelly",
+          "finish": "Salva modifiche"
         }
       },
-      "cars": {
-        "title": "Automobili",
-        "description": "Seleziona i sensori disponibili di Fiat 500e e Kia EV3.",
+      "wallbox": {
+        "title": "Sensori wallbox",
         "data": {
-          "fiat_cable": "Fiat 500e — cavo collegato",
-          "fiat_charging": "Fiat 500e — in ricarica",
-          "fiat_soc": "Fiat 500e — stato di carica (%)",
-          "fiat_target": "Fiat 500e — obiettivo di carica (%)",
-          "kia_cable": "Kia EV3 — cavo collegato",
-          "kia_charging": "Kia EV3 — in ricarica",
-          "kia_soc": "Kia EV3 — stato di carica (%)",
-          "kia_target": "Kia EV3 — obiettivo di carica (%)"
+          "wallbox_car_connected": "Auto collegata alla wallbox",
+          "wallbox_charging": "Wallbox in carica",
+          "wallbox_telemetry_fresh": "Telemetria aggiornata",
+          "wallbox_ble_connection": "Connessione BLE",
+          "wallbox_fault": "Guasto wallbox"
+        }
+      },
+      "vehicles": {
+        "title": "Gestione veicoli",
+        "menu_options": {
+          "add_vehicle": "Aggiungi veicolo",
+          "select_vehicle": "Modifica veicolo",
+          "remove_vehicle": "Rimuovi veicolo",
+          "init": "Torna alle impostazioni"
+        }
+      },
+      "add_vehicle": {
+        "title": "Aggiungi veicolo",
+        "data": {
+          "name": "Nome veicolo",
+          "soc": "SOC (%)",
+          "connected": "Cavo collegato",
+          "charging": "In carica (facoltativo)",
+          "capacity_kwh": "Capacità utilizzabile (kWh)",
+          "default_target_soc": "Obiettivo abituale (%)"
+        }
+      },
+      "select_vehicle": {
+        "title": "Scegli un veicolo da modificare",
+        "data": {
+          "vehicle_id": "Veicolo"
+        }
+      },
+      "edit_vehicle": {
+        "title": "Modifica veicolo",
+        "data": {
+          "name": "Nome veicolo",
+          "soc": "SOC (%)",
+          "connected": "Cavo collegato",
+          "charging": "In carica (facoltativo)",
+          "capacity_kwh": "Capacità utilizzabile (kWh)",
+          "default_target_soc": "Obiettivo abituale (%)"
+        }
+      },
+      "remove_vehicle": {
+        "title": "Scegli un veicolo da rimuovere",
+        "data": {
+          "vehicle_id": "Veicolo"
+        }
+      },
+      "confirm_remove": {
+        "title": "Conferma rimozione",
+        "description": "Eliminare il profilo selezionato? Non viene inviato alcun comando.",
+        "data": {
+          "confirm": "Confermo la rimozione"
         }
       },
       "power": {
-        "title": "Misure elettriche",
-        "description": "Seleziona i tre sensori di potenza Shelly. La configurazione incompleta è ammessa in questa pre-alpha.",
+        "title": "Potenza Shelly",
         "data": {
-          "power_ground": "Shelly — potenza piano terra",
-          "power_first_floor": "Shelly — potenza piano primo",
-          "power_wallbox": "Shelly — potenza ramo wallbox"
+          "power_ground": "Potenza piano terra",
+          "power_first_floor": "Potenza piano primo",
+          "power_wallbox": "Potenza ramo wallbox"
         }
+      },
+      "finish": {
+        "title": "Salvataggio",
+        "description": "Devi configurare almeno un veicolo."
       }
+    },
+    "error": {
+      "invalid_vehicle": "Nome duplicato, sensore SOC già assegnato o valori non validi.",
+      "vehicle_required": "Configura almeno un veicolo prima di salvare."
     }
   }
 }

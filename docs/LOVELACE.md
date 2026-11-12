@@ -17,10 +17,10 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 ## Layout previsto (da implementare e testare in v0.1)
 
 1. **Sintesi sessione**: auto, stato sessione, SOC attuale/target, orario di partenza.
-2. **Pianificazione**: kWh residui, tempo stimato, inizio consigliato, margine e motivo della decisione.
+2. **Pianificazione**: kWh residui, tempo stimato, inizio consigliato, margine e motivo della decisione; se l'obiettivo SOC è escluso, mostrare chiaramente che la previsione del completamento non è disponibile.
 3. **Potenza**: casa (piano terra + primo piano) distinta dal ramo wallbox, con indicazioni di qualità misura.
 4. **Diagnostica**: connessione wallbox, telemetria fresca, SOC vecchio, stati incoerenti; errori espliciti.
-5. **Controlli futuri**: Manuale, Pausa, Carica subito e deroghe solo quando esisteranno semantiche/test autorizzati. **Nessun controllo operativo in v0.1**.
+5. **Impostazioni non attuative v0.1**: obiettivo SOC effettivo della sessione (default dall'abituale) e scelta **Escludi obiettivo**. Non inviano comandi. **Controlli futuri**: Manuale, Pausa, Carica subito soltanto quando autorizzati; nessun comando wallbox in v0.1.
 
 ## Scelte tecniche iniziali
 
@@ -39,3 +39,12 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 - Nessun firmware o automazione esistente deve essere cambiato per visualizzarla.
 
 **Stato:** requisito e progetto preliminare registrati; dashboard non ancora realizzata o collaudata.
+
+## Modello dei target approvato il 12/11/2026
+
+- Ogni veicolo ha `default_target_soc` **abituale**, modificabile nelle Opzioni dell'integrazione.
+- La dashboard della v0.1 mostrerà **un solo target effettivo**, con modifica opzionale valida solo per la sessione; un override non diventa automaticamente il nuovo abituale. Riavvii HA non cancellano l'override di una sessione ancora valida.
+- `Escludi obiettivo` è un override **di sessione**, non uno switch che comanda la wallbox. Se attivo, la futura logica non fermerà per target HA: sarà l'automobile a fermarsi al proprio limite interno e non si mostreranno previsioni di completamento non calcolabili.
+- Il limite SOC interno alla Kia/altre auto **non viene letto o impostato**. Se l'automobile interrompe prima del target HA, segnalare stop anticipato / obiettivo non raggiunto, senza retry Start/Stop.
+- Solo dopo v0.1, test e consenso esplicito: target HA raggiunto → eventuale comando ESPHome Start-Stop mediante DPM 0 A, conferma indipendente, rispetto dello stop già effettuato dall'auto.
+- In v0.1 **nessun comando elettrico**; le automazioni preesistenti restano operative.

@@ -2,7 +2,7 @@
 
 Custom integration Python per **Home Assistant** che pianificherà la ricarica di **Fiat 500e** e **Kia EV3**, utilizzando stati ESPHome, SOC e potenze misurate dai tre Shelly EM.
 
-> **Stato: infrastruttura pre-alpha (manifest v0.0.1). Non è ancora la v0.1 di simulazione.** Non stima energia o tempi, non identifica l'auto, non espone sensori calcolati e **non comanda la wallbox o le automobili**. Non usarla come controllore della ricarica.
+> **Stato: infrastruttura pre-alpha (manifest v0.0.2). Non è ancora la v0.1 di simulazione.** Non stima energia o tempi, non identifica l'auto, non espone sensori calcolati e **non comanda la wallbox o le automobili**. Non usarla come controllore della ricarica.
 
 ## Sicurezza e separazione delle responsabilità
 
@@ -16,21 +16,21 @@ Custom integration Python per **Home Assistant** che pianificherà la ricarica d
 
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
-- `0.0.1`: solo infrastruttura. La **v0.1** sarà una milestone successiva, interamente in **simulazione**.
+- `0.0.2`: Config Flow con profili veicolo dinamici e obiettivo SOC abituale. La **v0.1** sarà una milestone successiva, interamente in **simulazione**.
 - Le versioni di prova `0.x` vengono pubblicate come **release GitHub normali**, ma sono **software sperimentale e non stabile**. I tag puntano ai commit verificati di `sviluppo-test`, senza modificare `main`. Nessuna compatibilità con HA reale è ancora certificata.
 
 ## Installazione tramite Marketplace (release di prova)
 
-Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.1`:
+Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.2`:
 
 1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
 2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
 3. Selezionare la **release normale** `0.0.1` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
-4. Installare la release `0.0.1`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
+4. Installare la release `0.0.2`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
 
 > **Attenzione:** `main` contiene soltanto `LICENSE`. La release punta all'esatto commit di `sviluppo-test`. **Il branch predefinito `main` non contiene ancora `hacs.json` né l'integrazione: il Marketplace potrebbe quindi non riuscire a riconoscere il repository durante l'aggiunta da link.** Se il repository non viene accettato, riportare l'errore e non installare il fallback di `main`.
 
-**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.1` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.2` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
 
 <!-- ha-marketplace:exclude-start -->
 Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
@@ -38,10 +38,11 @@ Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Chargin
 
 Il requisito indicativo dichiarato per il Marketplace è **Home Assistant 2026.11.0+**; la versione effettivamente installata e l'esito del test sono ancora da verificare. **Non è necessaria alcuna configurazione YAML**.
 
-Il config flow offre tre schermate:
-1. wallbox (sensori di stato, connessione e freschezza);
-2. Fiat 500e e Kia EV3 (cavo, ricarica, SOC e target);
-3. tre Shelly EM (ramo piano terra, primo piano, wallbox).
+Il Config Flow prevede: (1) sensori wallbox, (2) **uno o più veicoli configurabili**, (3) tre Shelly EM. A ogni veicolo si assegna **nome, sensore SOC, sensore cavo collegato, eventuale sensore ricarica, capacità utilizzabile e obiettivo SOC abituale**. Non richiede un sensore del limite impostato nell'auto. Dopo ogni veicolo, la procedura chiede se aggiungerne un altro.
+
+Le Opzioni permettono di aggiungere, modificare o rimuovere profili, preservando i loro identificatori stabili; per salvare premere **Salva modifiche**. La schermata di configurazione **non invia comandi**.
+
+**Migrazione 0.0.1 → 0.0.2:** se avevi già completato la configurazione vecchia, occorre inserire almeno un nuovo profilo nelle Opzioni; i valori batteria sconosciuti **non vengono inventati**. Se invece ti eri fermato prima della fine, configura da zero con il nuovo flusso.
 
 Tutti i campi sono facoltativi **solo in questa pre-alpha**, per consentire di creare l'entry mentre si raccolgono gli entity_id. Una mappatura incompleta non sarà ritenuta valida per il planner delle prossime milestone. Gli entity_id vengono selezionati nella GUI, non scritti nel codice. Le selezioni potranno essere aggiornate dalle **Opzioni** dell'integrazione. Non sono presenti switch o pulsanti per inviare comandi.
 
@@ -64,6 +65,8 @@ In sviluppo, disabilitare/rimuovere l'integrazione da *Dispositivi e servizi* e 
 - **v0.1 — simulazione**: validazione/qualità dati, identificazione auto, energia e tempi, scadenza, raccomandazione spiegabile, sensori, test e **dashboard Lovelace dedicata**.
 - **v0.2 — supervisione (solo previa autorizzazione)**: controllore unico e comandi sicuri con conferma.
 - **v1.0 — automazione (solo dopo collaudo e consenso)**: gestione completa della sessione, eccezioni, modalità manuale, pausa e Carica subito.
+
+**Decisione SOC (12/11/2026):** ogni veicolo ha un obiettivo **abituale** configurato nelle Opzioni. La futura dashboard mostrerà un solo obiettivo effettivo, modificabile **per la sessione corrente**; alla sessione successiva ritorna all'abituale. L'opzione **Escludi obiettivo** consentirà di lasciare fermare la carica all'auto; il limite interno non viene letto né modificato. In assenza di un target HA applicabile il planner non prometterà una stima di completamento. La logica di sessione e le relative entità **non sono ancora presenti** nella 0.0.2. Il comando DPM 0 A resta riservato alle versioni future autorizzate.
 
 La dashboard Lovelace è **parte obbligatoria della v0.1**, non un accessorio opzionale. La progettazione e le schermate previste sono in [docs/LOVELACE.md](docs/LOVELACE.md). Si partirà dalle card native HA; eventuali card frontend personalizzate andranno motivate e approvate prima di aggiungere codice JavaScript.
 

@@ -1,7 +1,4 @@
-"""Offline pre-alpha checks; requires Python stdlib only.
-
-These tests do NOT substitute for hassfest or an HA runtime smoke test.
-"""
+"""Offline static tests. Home Assistant runtime/config flow tests still required."""
 
 import ast
 import json
@@ -10,25 +7,17 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "easywallbox_smart"
-STEPS = {
-    "user": (
-        "wallbox_car_connected",
-        "wallbox_charging",
-        "wallbox_telemetry_fresh",
-        "wallbox_ble_connection",
-        "wallbox_fault",
-    ),
-    "cars": (
-        "fiat_cable",
-        "fiat_charging",
-        "fiat_soc",
-        "fiat_target",
-        "kia_cable",
-        "kia_charging",
-        "kia_soc",
-        "kia_target",
-    ),
-    "power": ("power_ground", "power_first_floor", "power_wallbox"),
+STEP_FIELDS = {
+    "user": {
+        "wallbox_car_connected", "wallbox_charging", "wallbox_telemetry_fresh",
+        "wallbox_ble_connection", "wallbox_fault",
+    },
+    "vehicle": {
+        "name", "soc", "connected", "charging",
+        "capacity_kwh", "default_target_soc",
+    },
+    "more": {"add_another"},
+    "power": {"power_ground", "power_first_floor", "power_wallbox"},
 }
 
 
@@ -41,31 +30,37 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
+        self.assertEqual(manifest["version"], "0.0.2")
         self.assertTrue(manifest["config_flow"])
-        self.assertEqual(manifest["iot_class"], "calculated")
         self.assertEqual(manifest["requirements"], [])
 
-    def test_translations_cover_all_fields(self):
+    def test_translations_for_all_steps(self):
         for lang in ("it", "en"):
             with self.subTest(lang=lang):
                 t = json.loads(
-                    (INTEGRATION / "translations" / (lang + ".json")).read_text()
+                    (INTEGRATION / "translations" / f"{lang}.json").read_text()
                 )
-                for step, keys in STEPS.items():
-                    config_keys = t["config"]["step"][step]["data"]
-                    options_step = "init" if step == "user" else step
-                    options_keys = t["options"]["step"][options_step]["data"]
-                    self.assertEqual(set(config_keys), set(keys))
-                    self.assertEqual(set(options_keys), set(keys))
+                for step, keys in STEP_FIELDS.items():
+                    self.assertEqual(
+                        set(t["config"]["step"][step]["data"]), keys
+                    )
+                self.assertEqual(
+                    set(t["options"]["step"]["edit_vehicle"]["data"]),
+                    STEP_FIELDS["vehicle"]
+                )
+                self.assertIn("vehicles", t["options"]["step"])
 
-    def test_no_control_calls(self):
-        """A limited static guard: manually review future changes as well."""
+    def test_no_commands_or_control_entities(self):
         content = "\n".join(
             p.read_text(encoding="utf-8") for p in INTEGRATION.glob("*.py")
         )
-        for expression in (".services.async_call(", "switch.turn_on", "switch.turn_off",
-                           "button.press", "number.set_value"):
+        for expression in (
+            ".services.async_call(", "switch.turn_off", "switch.turn_on",
+            "button.press", "number.set_value"
+        ):
             self.assertNotIn(expression, content)
+        self.assertNotIn('"fiat_target"', content)
+        self.assertNotIn('"kia_target"', content)
 
 
 if __name__ == "__main__":
