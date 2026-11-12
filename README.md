@@ -93,9 +93,9 @@ Licenza: MIT.
 
 ## Classificazione nell'interfaccia Home Assistant
 
-Dalla **0.0.6** `integration_type` è **`hub`**, non `helper`. EasyWallbox Smart Charging coordina sorgenti dati provenienti da più dispositivi/servizi, mentre `helper` è riservato a funzioni come i contatori e i sensori derivati. `iot_class: calculated` rimane invariato poiché la nostra integrazione elabora stati forniti da altre integrazioni. Questa modifica **non** cambia le entità mappate e non introduce controlli reali.
+Dalla **0.0.4** `integration_type` è **`hub`**, non `helper`. EasyWallbox Smart Charging coordina sorgenti dati provenienti da più dispositivi/servizi, mentre `helper` è riservato a funzioni come i contatori e i sensori derivati. `iot_class: calculated` rimane invariato poiché la nostra integrazione elabora stati forniti da altre integrazioni. Questa modifica **non** cambia le entità mappate e non introduce controlli reali.
 
-## Misure elettriche flessibili — 0.0.6
+## Misure elettriche flessibili — 0.0.5
 
 Nella configurazione si può scegliere una delle seguenti tre situazioni:
 
@@ -105,7 +105,7 @@ Nella configurazione si può scegliere una delle seguenti tre situazioni:
 
 **Firmware controllato:** `Charging Power` e `House total power -DPM-` sono effettivamente esposti da `wallbox.yaml` (`main` firmware, verificato 12/11/2026). Entrambi sono valori in kW calcolati dalla telemetria BLE; il polling nominale è ~30 s e `Telemetry Fresh` segnala dati scaduti dopo ~100 s. **Il codice non prova da solo che il misuratore DPM includa il carico della ricarica**: prima di sottrarre, verificare fisicamente la copertura e confrontare durante una ricarica con un contatore indipendente.
 
-Selezionare sensori di **potenza** (`W` oppure `kW`), non di **energia** (`Wh` o `kWh`). Il nuovo modulo puro `power_model.py` gestisce conversioni, dati assenti, obsoleti, negativi e contraddizioni; nella **0.0.6 non è ancora collegato agli stati HA né espone sensori o dashboard**. Nel futuro planner la qualità e latenza di ogni misura dovranno essere verificate prima dell'uso; il DPM resta responsabile della regolazione rapida.
+Selezionare sensori di **potenza** (`W` oppure `kW`), non di **energia** (`Wh` o `kWh`). Il nuovo modulo puro `power_model.py` gestisce conversioni, dati assenti, obsoleti, negativi e contraddizioni; nella **0.0.6 non è ancora collegato agli stati HA né espone sensori energetici o dashboard**. Nel futuro planner la qualità e latenza di ogni misura dovranno essere verificate prima dell'uso; il DPM resta responsabile della regolazione rapida.
 
 **Migrazione dalla 0.0.4:** wallbox e profili veicolo vengono conservati. Se i tre sensori preesistenti erano configurati, la vecchia coppia piano terra + primo piano diventa la lista dei sensori casa e il terzo il sensore dell'auto; se il mapping era incompleto, si sceglie «Nessuna misura» fino alla nuova configurazione. Verificare tutto da **Opzioni → Misure elettriche**.
 
