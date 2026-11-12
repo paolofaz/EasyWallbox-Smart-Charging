@@ -119,3 +119,18 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - README e specifica Lovelace allineati; conservato nel diario lo storico delle decisioni superate.
 - Aggiunto modulo puro `soc_policy.py` che valuta esclusivamente la soglia SOC e test offline (nessun servizio Home Assistant, nessun comando BLE).
 - Nessun incremento del manifest e nessuna nuova GitHub release per questa sola decisione; includere nel prossimo rilascio con il planner v0.1.
+
+## 2026-11-12 — Correzione tipo integrazione (0.0.4)
+
+### Problema segnalato
+- Home Assistant mostra EasyWallbox Smart Charging nella categoria **Helper** a causa del valore `integration_type: helper` introdotto nello scaffolding.
+
+### Correzione e motivazione
+- Documentazione ufficiale Home Assistant consultata: `helper` per entità di ausilio; `hub` per una integrazione che aggrega più dispositivi/servizi.
+- Cambiato solo `integration_type` da `helper` a **`hub`**; mantenuto `iot_class: calculated`.
+- Incrementata versione manifest a **0.0.4**, test statico esplicito sul tipo; README e note release aggiornati. Nessun cambio a config entry, firmware, DPM, automazioni, servizi o comandi.
+- La regola della pausa di ricarica per target 100%, definita nel commit precedente, è inclusa nel codice sorgente ma **non ancora collegata a un controllore**.
+
+### Verifiche ancora necessarie
+- CI e pubblicazione GitHub della 0.0.4, installazione da Marketplace su HA 2026.11, riavvio e classificazione osservata dall'utente.
+- Validazione runtime Config Flow e compatibilità completa non ancora certificata.

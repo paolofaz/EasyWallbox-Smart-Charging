@@ -30,7 +30,9 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.3")
+        self.assertEqual(manifest["version"], "0.0.4")
+        self.assertEqual(manifest["integration_type"], "hub")
+        self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(manifest["requirements"], [])
 
