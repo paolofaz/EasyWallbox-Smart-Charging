@@ -132,5 +132,5 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - La regola della pausa di ricarica per target 100%, definita nel commit precedente, è inclusa nel codice sorgente ma **non ancora collegata a un controllore**.
 
 ### Verifiche ancora necessarie
-- CI e pubblicazione GitHub della 0.0.4, installazione da Marketplace su HA 2026.11, riavvio e classificazione osservata dall'utente.
+- **Verificato:** test statici CI superati (run `43305338006`) e release GitHub **0.0.4** pubblicata regolarmente (run `43305338160`), tag su commit `7f7b41d03a0ca8d42d19b9f7a49443d78e51b072`. Restano da verificare installazione Marketplace su HA 2026.11, riavvio e classificazione visualizzata nell'istanza dell'utente.
 - Validazione runtime Config Flow e compatibilità completa non ancora certificata.
