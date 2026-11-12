@@ -158,3 +158,8 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - `House total power -DPM-` proviene da AD p[14] e **non è garantito dal solo codice** che includa l'EV. Occorre la prova comparativa con Shelly durante ricarica e pausa (prevista il 13/11/2026).
 - Solo dopo verifica: abilitare la lettura nel planner con controlli di timestamp e `Telemetry Fresh`, senza inseguire picchi.
 - La 0.0.5 resta una milestone di configurazione: **nessun sensore e nessuna dashboard effettiva**, nessun automatismo elettrico.
+
+### Verifica della release 0.0.5
+- Static checks CI: **successo**, run `43315382062`.
+- Release normale GitHub `0.0.5`: **presente e verificata**, tag su commit `6d711ed4cd349bb317deb5d9f0a332697da12508`.
+- Config Flow/Options Flow nella vera istanza Home Assistant e misure reali: **non ancora verificati**.
