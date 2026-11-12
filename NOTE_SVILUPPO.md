@@ -39,3 +39,21 @@
 
 ### Decisioni di sicurezza immutate
 DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazioni Fiat SOC e potenza mattutina mantenute. Ogni controllo reale è riservato a release future dopo autorizzazione e collaudo.
+
+## 2026-11-12 — Processo pre-release dal branch sviluppo-test
+
+### Decisione approvata
+- L'utente desidera installare direttamente dal Marketplace anche durante lo sviluppo.
+- Pubblicare **pre-release 0.x** da `sviluppo-test`, mantenendo `main` invariato fino a 1.0 esplicitamente approvata.
+- Alla v1.0 valutare rimozione delle pre-release obsolete **solo dopo migrazione e verifica rollback**, evitando cancellazioni automatiche.
+
+### Modifiche
+- Aggiunto workflow `.github/workflows/release-test.yml`: su modifica del manifest o del workflow nel branch di sviluppo, esegue test statici e crea release GitHub pre-release con tag uguale al manifest. Rifiuta tag esistenti privi di release e versioni fuori serie 0.x.
+- Aggiunte note `docs/releases/0.0.1.md` e istruzioni Marketplace nel README.
+- Nessun comando al caricatore/automobili, nessuna modifica firmware, nessuna modifica `main`.
+
+### Da verificare
+- Workflow di pubblicazione e presenza della release/tag `0.0.1` su GitHub.
+- Possibile limite del Marketplace nel registrare una custom repository con `main` ancora privo di `hacs.json`: non installare il fallback di `main`.
+- Installazione e Config Flow su Home Assistant 2026.11 dell'utente.
+- Validazione hassfest/HACS action e successive verifiche di compatibilità reale.

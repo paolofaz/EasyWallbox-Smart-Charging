@@ -17,11 +17,24 @@ Custom integration Python per **Home Assistant** che pianificherà la ricarica d
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
 - `0.0.1`: solo infrastruttura. La **v0.1** sarà una milestone successiva, interamente in **simulazione**.
-- Non c'è ancora una release pubblicata né una compatibilità con HA reale certificata.
+- Le versioni di prova `0.x` vengono pubblicate come **pre-release** dal branch `sviluppo-test`; il workflow rilascia una versione solo se il tag non esiste già. Nessuna compatibilità con HA reale è ancora certificata.
 
-## Installazione per test in Home Assistant
+## Installazione tramite Marketplace (pre-release)
 
-**Non installare da `main`: contiene solo la licenza iniziale.** Per una prova locale, copiare la directory `custom_components/easywallbox_smart/` dal branch `sviluppo-test` nella cartella di configurazione Home Assistant, mantenendo la struttura. Riavviare Home Assistant se necessario, quindi aggiungere l'integrazione da *Impostazioni → Dispositivi e servizi → Aggiungi integrazione*.
+Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.1`:
+
+1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
+2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
+3. Abilitare la voce **Pre-release** del repository: in **Impostazioni → Dispositivi e servizi → Marketplace**, trovare il dispositivo del repository, abilitare l'entità disabilitata **Pre-release** e accendere lo switch. Se necessario, scegliere manualmente la versione `0.0.1` dalle versioni disponibili.
+4. Installare la release `0.0.1`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
+
+> **Attenzione:** `main` contiene soltanto `LICENSE`. La pre-release punta all'esatto commit di `sviluppo-test`. Se il Marketplace non permette di aggiungere il repository o la versione `0.0.1` non compare, **non installare la versione di default** e segnalarlo per diagnosi.
+
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della pre-release `0.0.1` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+
+<!-- ha-marketplace:exclude-start -->
+Link alle [pre-release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
+<!-- ha-marketplace:exclude-end -->
 
 Il requisito indicativo dichiarato per il Marketplace è **Home Assistant 2026.11.0+**; la versione effettivamente installata e l'esito del test sono ancora da verificare. **Non è necessaria alcuna configurazione YAML**.
 
@@ -55,6 +68,12 @@ In sviluppo, disabilitare/rimuovere l'integrazione da *Dispositivi e servizi* e 
 La dashboard Lovelace è **parte obbligatoria della v0.1**, non un accessorio opzionale. La progettazione e le schermate previste sono in [docs/LOVELACE.md](docs/LOVELACE.md). Si partirà dalle card native HA; eventuali card frontend personalizzate andranno motivate e approvate prima di aggiungere codice JavaScript.
 
 Per attività, verifiche e limiti vedi [NOTE_SVILUPPO.md](NOTE_SVILUPPO.md).
+
+## Processo di release di test
+
+Ogni nuova versione pubblicabile richiede **un cambio esplicito** del campo `version` in `custom_components/easywallbox_smart/manifest.json` e la creazione di `docs/releases/<versione>.md`. Un workflow GitHub Actions sul branch `sviluppo-test` esegue i test statici, rifiuta versioni non `0.x` o tag preesistenti privi di release e crea una **GitHub pre-release** dal commit corrente. Non pubblica su `main`, non fa merge, non crea PR. Non creare una release di un commit non testato.
+
+Le vecchie pre-release verranno riesaminate **dopo il rilascio 1.0**, conservando le versioni necessarie per rollback e migrazione; cancellazioni non automatiche.
 
 ## Compatibilità Marketplace
 

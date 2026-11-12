@@ -1,0 +1,86 @@
+name: Publish test pre-release
+
+on:
+  push:
+    branches:
+      - sviluppo-test
+    paths:
+      - .github/workflows/release-test.yml
+      - custom_components/easywallbox_smart/manifest.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: test-prerelease-sviluppo
+  cancel-in-progress: false
+
+jobs:
+  prerelease:
+    if: github.ref == 'refs/heads/sviluppo-test'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run static checks
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate version and release notes
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          manifest = json.loads(Path("custom_components/easywallbox_smart/manifest.json").read_text())
+          version = manifest["version"]
+          if not re.fullmatch(r"0\\.\\d+\\.\\d+", version):
+              raise SystemExit("Test-release workflow accepts only numeric 0.x.y versions")
+          notes = Path("docs/releases") / f"{version}.md"
+          if not notes.is_file():
+              raise SystemExit(f"Missing release notes: {notes}")
+          print(version)
+          PY
+          )"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether version exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $VERSION already exists: no overwrite"
+          elif git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists without a release; refusing to overwrite it"
+            exit 1
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish prerelease from development commit
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "EasyWallbox Smart Charging $VERSION (pre-alpha)" \
+            --notes-file "docs/releases/$VERSION.md" \
+            --prerelease
