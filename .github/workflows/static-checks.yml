@@ -1,0 +1,17 @@
+name: Static checks
+
+on:
+  push:
+    branches: [sviluppo-test]
+  workflow_dispatch:
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Syntax and structure tests (no Home Assistant runtime)
+        run: python -m unittest discover -s tests -v

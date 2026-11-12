@@ -1,0 +1,82 @@
+{
+  "title": "EasyWallbox Smart Charging",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wallbox",
+        "description": "Seleziona i sensori esistenti della wallbox. Nessun comando verrà inviato.",
+        "data": {
+          "wallbox_car_connected": "Wallbox — auto collegata",
+          "wallbox_charging": "Wallbox — ricarica in corso",
+          "wallbox_telemetry_fresh": "Wallbox — telemetria aggiornata",
+          "wallbox_ble_connection": "Wallbox — connessione BLE",
+          "wallbox_fault": "Wallbox — guasto"
+        }
+      },
+      "cars": {
+        "title": "Automobili",
+        "description": "Seleziona i sensori disponibili di Fiat 500e e Kia EV3.",
+        "data": {
+          "fiat_cable": "Fiat 500e — cavo collegato",
+          "fiat_charging": "Fiat 500e — in ricarica",
+          "fiat_soc": "Fiat 500e — stato di carica (%)",
+          "fiat_target": "Fiat 500e — obiettivo di carica (%)",
+          "kia_cable": "Kia EV3 — cavo collegato",
+          "kia_charging": "Kia EV3 — in ricarica",
+          "kia_soc": "Kia EV3 — stato di carica (%)",
+          "kia_target": "Kia EV3 — obiettivo di carica (%)"
+        }
+      },
+      "power": {
+        "title": "Misure elettriche",
+        "description": "Seleziona i tre sensori di potenza Shelly. La configurazione incompleta è ammessa in questa pre-alpha.",
+        "data": {
+          "power_ground": "Shelly — potenza piano terra",
+          "power_first_floor": "Shelly — potenza piano primo",
+          "power_wallbox": "Shelly — potenza ramo wallbox"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "È già presente una configurazione."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modifica sorgenti dati",
+        "description": "Aggiorna le entità lette. Nessun comando viene eseguito.",
+        "data": {
+          "wallbox_car_connected": "Wallbox — auto collegata",
+          "wallbox_charging": "Wallbox — ricarica in corso",
+          "wallbox_telemetry_fresh": "Wallbox — telemetria aggiornata",
+          "wallbox_ble_connection": "Wallbox — connessione BLE",
+          "wallbox_fault": "Wallbox — guasto"
+        }
+      },
+      "cars": {
+        "title": "Automobili",
+        "description": "Seleziona i sensori disponibili di Fiat 500e e Kia EV3.",
+        "data": {
+          "fiat_cable": "Fiat 500e — cavo collegato",
+          "fiat_charging": "Fiat 500e — in ricarica",
+          "fiat_soc": "Fiat 500e — stato di carica (%)",
+          "fiat_target": "Fiat 500e — obiettivo di carica (%)",
+          "kia_cable": "Kia EV3 — cavo collegato",
+          "kia_charging": "Kia EV3 — in ricarica",
+          "kia_soc": "Kia EV3 — stato di carica (%)",
+          "kia_target": "Kia EV3 — obiettivo di carica (%)"
+        }
+      },
+      "power": {
+        "title": "Misure elettriche",
+        "description": "Seleziona i tre sensori di potenza Shelly. La configurazione incompleta è ammessa in questa pre-alpha.",
+        "data": {
+          "power_ground": "Shelly — potenza piano terra",
+          "power_first_floor": "Shelly — potenza piano primo",
+          "power_wallbox": "Shelly — potenza ramo wallbox"
+        }
+      }
+    }
+  }
+}

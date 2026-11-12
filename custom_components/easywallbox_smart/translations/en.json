@@ -1,0 +1,82 @@
+{
+  "title": "EasyWallbox Smart Charging",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wallbox",
+        "description": "Select existing wallbox sensors. No commands will be sent.",
+        "data": {
+          "wallbox_car_connected": "Wallbox — car connected",
+          "wallbox_charging": "Wallbox — charging",
+          "wallbox_telemetry_fresh": "Wallbox — telemetry fresh",
+          "wallbox_ble_connection": "Wallbox — BLE connection",
+          "wallbox_fault": "Wallbox — fault"
+        }
+      },
+      "cars": {
+        "title": "Vehicles",
+        "description": "Select the available Fiat 500e and Kia EV3 sensors.",
+        "data": {
+          "fiat_cable": "Fiat 500e — cable connected",
+          "fiat_charging": "Fiat 500e — charging",
+          "fiat_soc": "Fiat 500e — state of charge (%)",
+          "fiat_target": "Fiat 500e — target charge (%)",
+          "kia_cable": "Kia EV3 — cable connected",
+          "kia_charging": "Kia EV3 — charging",
+          "kia_soc": "Kia EV3 — state of charge (%)",
+          "kia_target": "Kia EV3 — target charge (%)"
+        }
+      },
+      "power": {
+        "title": "Power measurements",
+        "description": "Select the three Shelly power sensors. Incomplete mapping is allowed in this pre-alpha.",
+        "data": {
+          "power_ground": "Shelly — ground floor power",
+          "power_first_floor": "Shelly — first floor power",
+          "power_wallbox": "Shelly — wallbox branch power"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This integration is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Edit data sources",
+        "description": "Update the source entities. No commands are executed.",
+        "data": {
+          "wallbox_car_connected": "Wallbox — car connected",
+          "wallbox_charging": "Wallbox — charging",
+          "wallbox_telemetry_fresh": "Wallbox — telemetry fresh",
+          "wallbox_ble_connection": "Wallbox — BLE connection",
+          "wallbox_fault": "Wallbox — fault"
+        }
+      },
+      "cars": {
+        "title": "Vehicles",
+        "description": "Select the available Fiat 500e and Kia EV3 sensors.",
+        "data": {
+          "fiat_cable": "Fiat 500e — cable connected",
+          "fiat_charging": "Fiat 500e — charging",
+          "fiat_soc": "Fiat 500e — state of charge (%)",
+          "fiat_target": "Fiat 500e — target charge (%)",
+          "kia_cable": "Kia EV3 — cable connected",
+          "kia_charging": "Kia EV3 — charging",
+          "kia_soc": "Kia EV3 — state of charge (%)",
+          "kia_target": "Kia EV3 — target charge (%)"
+        }
+      },
+      "power": {
+        "title": "Power measurements",
+        "description": "Select the three Shelly power sensors. Incomplete mapping is allowed in this pre-alpha.",
+        "data": {
+          "power_ground": "Shelly — ground floor power",
+          "power_first_floor": "Shelly — first floor power",
+          "power_wallbox": "Shelly — wallbox branch power"
+        }
+      }
+    }
+  }
+}
