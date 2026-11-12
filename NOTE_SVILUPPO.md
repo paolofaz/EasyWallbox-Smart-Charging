@@ -53,7 +53,7 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Nessun comando al caricatore/automobili, nessuna modifica firmware, nessuna modifica `main`.
 
 ### Da verificare
-- Workflow di pubblicazione e presenza della release/tag `0.0.1` su GitHub.
+- **Verificato:** workflow Publish test pre-release riuscito (run `43261535382`), tag `0.0.1` pubblicato come pre-release sul commit `d6c5dbd2c0fbd563de85930a3182daa27a9d7387`; verificato anche il test statico (run `43261535410`). Prima esecuzione del workflow fallita per regex troppo escapata, corretta in commit successivo; nessun tag/release creato da quella prima esecuzione.
 - Possibile limite del Marketplace nel registrare una custom repository con `main` ancora privo di `hacs.json`: non installare il fallback di `main`.
 - Installazione e Config Flow su Home Assistant 2026.11 dell'utente.
 - Validazione hassfest/HACS action e successive verifiche di compatibilità reale.
