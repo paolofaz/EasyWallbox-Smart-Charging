@@ -17,10 +17,10 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 ## Layout previsto (da implementare e testare in v0.1)
 
 1. **Sintesi sessione**: auto, stato sessione, SOC attuale/target, orario di partenza.
-2. **Pianificazione**: kWh residui, tempo stimato, inizio consigliato, margine e motivo della decisione; se l'obiettivo SOC è escluso, mostrare chiaramente che la previsione del completamento non è disponibile.
+2. **Pianificazione**: kWh residui, tempo stimato, inizio consigliato, margine e motivo della decisione; per target 100% la stima rappresenta il raggiungimento indicativo del 100%, **non** il termine certo dell'eventuale bilanciamento celle.
 3. **Potenza**: casa (piano terra + primo piano) distinta dal ramo wallbox, con indicazioni di qualità misura.
 4. **Diagnostica**: connessione wallbox, telemetria fresca, SOC vecchio, stati incoerenti; errori espliciti.
-5. **Impostazioni non attuative v0.1**: obiettivo SOC effettivo della sessione (default dall'abituale) e scelta **Escludi obiettivo**. Non inviano comandi. **Controlli futuri**: Manuale, Pausa, Carica subito soltanto quando autorizzati; nessun comando wallbox in v0.1.
+5. **Impostazioni non attuative v0.1**: obiettivo SOC effettivo della sessione (default dall'abituale), inclusa la scelta del 100%. Nessuno switch «Escludi obiettivo». **Controlli futuri**: Manuale, Pausa, Carica subito soltanto quando autorizzati; nessun comando wallbox in v0.1.
 
 ## Scelte tecniche iniziali
 
@@ -44,7 +44,14 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 
 - Ogni veicolo ha `default_target_soc` **abituale**, modificabile nelle Opzioni dell'integrazione.
 - La dashboard della v0.1 mostrerà **un solo target effettivo**, con modifica opzionale valida solo per la sessione; un override non diventa automaticamente il nuovo abituale. Riavvii HA non cancellano l'override di una sessione ancora valida.
-- `Escludi obiettivo` è un override **di sessione**, non uno switch che comanda la wallbox. Se attivo, la futura logica non fermerà per target HA: sarà l'automobile a fermarsi al proprio limite interno e non si mostreranno previsioni di completamento non calcolabili.
+- **Nessuna opzione «Escludi obiettivo»**. Impostando **100%**, il planner calcola energia e tempo fino al 100% ma il futuro controllo **non mette in pausa per SOC**, lasciando all'auto eventuale gestione/bilanciamento finale delle celle. Non deve forzare il riavvio di una sessione interrotta manualmente.
 - Il limite SOC interno alla Kia/altre auto **non viene letto o impostato**. Se l'automobile interrompe prima del target HA, segnalare stop anticipato / obiettivo non raggiunto, senza retry Start/Stop.
-- Solo dopo v0.1, test e consenso esplicito: target HA raggiunto → eventuale comando ESPHome Start-Stop mediante DPM 0 A, conferma indipendente, rispetto dello stop già effettuato dall'auto.
+- Solo dopo v0.1, test e consenso esplicito: **target HA inferiore a 100%** raggiunto → valutazione di una pausa mediante lo **switch di pausa ricarica** (ESPHome Start-Stop, limite DPM posto a 0 A). **DPM attivo sempre; non è uno switch di disattivazione DPM**. Occorrono conferma indipendente ed esclusione di stop già effettuati dall'auto.
 - In v0.1 **nessun comando elettrico**; le automazioni preesistenti restano operative.
+
+## Terminologia vincolante (12/11/2026)
+
+- **DPM**: protezione e gestione dinamica del carico **sempre attiva**. Mai introdurre un controllo per metterlo su OFF.
+- **Switch di pausa ricarica**: lo Start-Stop della integrazione ESPHome (entity ID specifico da confermare live). Nelle future versioni autorizzate la pausa è ottenuta richiedendo il limite DPM **0 A**, senza spegnere la funzione DPM. Il ripristino usa il limite valido precedentemente confermato, con verifiche e senza retry ciechi.
+- Non confondere comando richiesto, conferma DPM non-zero, stato di ricarica e lettura elettrica Shelly.
+- Obiettivo HA **100%**: nessuna pausa automatica per SOC; non interpretare il valore 100% come prova che il processo di bilanciamento sia terminato.

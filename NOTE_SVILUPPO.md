@@ -105,3 +105,17 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - I profili devono essere completati attraverso le Opzioni; nessun comando wallbox o auto.
 - Questa release sostituisce 0.0.2 come candidata alla prova reale. Test HA e Marketplace effettivo ancora aperti.
 - **Verificato**: test statici e pubblicazione GitHub 0.0.3 riusciti (runs 43291913566 e 43291913523); tag 0.0.3 punta al commit 006e5f97d97d7053ff00bd55b34a73f549be5abd. `main` invariato.
+
+## 2026-11-12 — Requisito target SOC 100% e terminologia DPM
+
+### Decisioni dell'utente (sostituiscono indicazioni precedenti)
+- **Eliminata** l'opzione «Escludi obiettivo». Il target SOC può essere 100%, sempre con previsione energetica/temporale fino al 100%.
+- Target **inferiore al 100%**: una futura release di controllo potrà considerare una pausa raggiunto l'obiettivo, con stato coerente e conferma indipendente. Non attiva in simulazione.
+- Target **100%**: **mai azionare lo switch di pausa ricarica per raggiungimento SOC**, anche se il valore raggiunge 100%; lasciare che il veicolo termini autonomamente l'eventuale bilanciamento delle celle. Mai riavviare una pausa manuale per effetto di questa regola.
+- Terminologia obbligatoria: **switch di pausa ricarica** = comando Start-Stop ESPHome, pausa con **limite DPM a 0 A**. **Il DPM deve sempre rimanere attivo e non deve mai essere impostato OFF**. La pausa del flusso non equivale a disattivazione DPM.
+- Distinguere comando, conferma, carica reale e potenza Shelly. Stop automatici futuri solo dopo consenso e test.
+
+### Modifiche nel branch di test (non rilasciate)
+- README e specifica Lovelace allineati; conservato nel diario lo storico delle decisioni superate.
+- Aggiunto modulo puro `soc_policy.py` che valuta esclusivamente la soglia SOC e test offline (nessun servizio Home Assistant, nessun comando BLE).
+- Nessun incremento del manifest e nessuna nuova GitHub release per questa sola decisione; includere nel prossimo rilascio con il planner v0.1.

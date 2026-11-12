@@ -7,7 +7,7 @@ Custom integration Python per **Home Assistant** che pianificherà la ricarica d
 ## Sicurezza e separazione delle responsabilità
 
 - Il firmware ESPHome rimane proprietario della comunicazione BLE.
-- Il **DPM della wallbox rimane attivo** e gestisce autonomamente picchi e limiti elettrici; non è sostituito da Home Assistant.
+- Il **DPM della wallbox rimane sempre attivo** e gestisce autonomamente picchi e limiti elettrici; **mai disattivarlo**. Lo **switch di pausa ricarica** è lo Start-Stop ESPHome: quando usato nelle future fasi di controllo, richiede una pausa impostando il **limite DPM a 0 A**, senza spegnere il DPM. Lo stato dello switch da solo non dimostra che l'erogazione elettrica si sia arrestata.
 - Questa pre-alpha salva esclusivamente la mappatura delle entità HA, **senza listener, polling, servizi o attuatori**.
 - L'automazione Fiat per il limite SOC e quella di riduzione mattutina della potenza **restano attive** fino a una migrazione futura verificata.
 - Nessuna credenziale, PIN BLE o file `.storage` va pubblicato.
@@ -66,7 +66,7 @@ In sviluppo, disabilitare/rimuovere l'integrazione da *Dispositivi e servizi* e 
 - **v0.2 — supervisione (solo previa autorizzazione)**: controllore unico e comandi sicuri con conferma.
 - **v1.0 — automazione (solo dopo collaudo e consenso)**: gestione completa della sessione, eccezioni, modalità manuale, pausa e Carica subito.
 
-**Decisione SOC (12/11/2026):** ogni veicolo ha un obiettivo **abituale** configurato nelle Opzioni. La futura dashboard mostrerà un solo obiettivo effettivo, modificabile **per la sessione corrente**; alla sessione successiva ritorna all'abituale. L'opzione **Escludi obiettivo** consentirà di lasciare fermare la carica all'auto; il limite interno non viene letto né modificato. In assenza di un target HA applicabile il planner non prometterà una stima di completamento. La logica di sessione e le relative entità **non sono ancora presenti** nella 0.0.3. Il comando DPM 0 A resta riservato alle versioni future autorizzate.
+**Decisione SOC (aggiornamento 12/11/2026):** ogni veicolo ha un obiettivo **abituale** configurabile nelle Opzioni. La dashboard v0.1 mostrerà un solo obiettivo effettivo, eventualmente modificabile **per la sessione corrente**; alla sessione successiva tornerà all'abituale. **Non esiste «Escludi obiettivo».** Se il target HA è inferiore a 100%, al suo raggiungimento la logica futura **potrà valutare** una pausa attraverso lo **switch di pausa ricarica** (ESPHome Start-Stop), soltanto dopo verifica delle condizioni e autorizzazione delle funzionalità attuative. Se il target è **100%**, il planner stima energia e tempo fino al 100%, ma **non aziona lo switch di pausa ricarica per SOC**, anche se l'auto dichiara 100% e continua a gestire le celle. Non riattiva nemmeno una sessione fermata manualmente. Il limite interno dell'auto non viene letto o modificato. In v0.1 **nessun comando reale**; la logica della sessione e la dashboard sono ancora da implementare.
 
 La dashboard Lovelace è **parte obbligatoria della v0.1**, non un accessorio opzionale. La progettazione e le schermate previste sono in [docs/LOVELACE.md](docs/LOVELACE.md). Si partirà dalle card native HA; eventuali card frontend personalizzate andranno motivate e approvate prima di aggiungere codice JavaScript.
 
