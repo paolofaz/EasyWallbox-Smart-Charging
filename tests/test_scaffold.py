@@ -30,7 +30,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.2")
+        self.assertEqual(manifest["version"], "0.0.3")
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(manifest["requirements"], [])
 
@@ -49,6 +49,12 @@ class TestScaffold(unittest.TestCase):
                     STEP_FIELDS["vehicle"]
                 )
                 self.assertIn("vehicles", t["options"]["step"])
+
+    def test_config_entry_migration_present(self):
+        text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("async def async_migrate_entry(", text)
+        self.assertIn("data.setdefault(CONF_VEHICLES, [])", text)
+        self.assertIn("version=2", text)
 
     def test_no_commands_or_control_entities(self):
         content = "\n".join(

@@ -97,3 +97,10 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Test su HA reale: installazione, aggiunta due veicoli, aggiunta terzo, modifiche/ rimozione, reload, aggiornamento da 0.0.1.
 - Hassfest/HACS action e test Config Flow con mock HA (non coperti dai test statici).
 - Nessuna entità di sessione, dati o Lovelace funzionale in 0.0.2.
+
+## 2026-11-12 — Correzione 0.0.3: migrazione ConfigEntry
+
+- Durante la revisione di 0.0.2 verificata la documentazione Home Assistant 2026.11 sulla migrazione: quando `ConfigFlow.VERSION` passa da 1 a 2 serve `async_migrate_entry`.
+- 0.0.3 implementa la migrazione: mantiene i dati originali di 0.0.1, aggiunge una lista vuota `vehicles` senza inventare capacità batteria o ID e aggiorna la versione della ConfigEntry.
+- I profili devono essere completati attraverso le Opzioni; nessun comando wallbox o auto.
+- Questa release sostituisce 0.0.2 come candidata alla prova reale. Test HA e Marketplace effettivo ancora aperti.
