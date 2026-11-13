@@ -10,7 +10,6 @@ class Request:
     now: datetime
     departure: datetime
     battery_kwh: float
-    contract_kw: float
     continuous_kw: float
     house_reference_kw: float
     vehicle_cap_kw: float
@@ -50,7 +49,7 @@ def plan(request: Request) -> Plan:
     if request.departure <= request.now:
         return invalid("departure_not_future")
     if not all(_valid(v) for v in (
-        request.contract_kw, request.continuous_kw,
+        request.continuous_kw,
         request.vehicle_cap_kw, request.efficiency
     )) or request.efficiency > 1:
         return invalid("invalid_power_or_efficiency")

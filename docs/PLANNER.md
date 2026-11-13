@@ -3,12 +3,12 @@
 **Stato:** funzione pura in `planner.py`, disconnessa da HA e dagli attuatori. La versione installabile resta 0.0.7.
 
 ## Principio
-Ogni casa può avere un contratto, un misuratore e abitudini differenti.
+Ogni casa può avere una potenza disponibile, un misuratore e abitudini differenti.
 L'algoritmo non contiene riferimenti a Fiat/Kia, Shelly, induzione o lavastoviglie.
 
 Gli ingressi del prototipo sono:
 - kWh mancanti **nella batteria**, orario di partenza e ora attuale;
-- kW contrattuali e **potenza continuativa disponibile** (distinti);
+- **un solo valore di impianto**: potenza massima continuativa disponibile in kW (4,4 kW nel caso dell'utente). Non chiedere il dato contrattuale, non applicare incrementi automatici del 10%;
 - consumo domestico di riferimento **esplicito** e prudente;
 - limite di carica dell'auto e rendimento AC ipotizzato;
 - margine temporale e possibile orario preferito.
@@ -21,7 +21,7 @@ Il DPM rimane attivo e intoccato. Non è aggiunto un secondo controllore di picc
 
 ## Due prove indicative, non misure dell'impianto
 
-Arrivo 18:00, partenza 08:00, 4 kW contrattuali, 4,4 kW continui, consumo casa di riferimento IPOTETICO 0,6 kW, efficienza IPOTETICA 90%, margine 45 minuti:
+Arrivo 18:00, partenza 08:00, 4,4 kW di disponibilità continuativa, consumo casa di riferimento IPOTETICO 0,6 kW, efficienza IPOTETICA 90%, margine 45 minuti:
 - Fiat 30→80%: circa 18,65 kWh nella batteria. L'avvio alle 01:00 potrebbe essere compatibile.
 - Kia EV3 Long Range 30→80%: circa 39 kWh nella batteria. Aspettare le 01:00 è troppo tardi: il prototipo consiglia di partire prima.
 

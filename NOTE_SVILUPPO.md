@@ -221,3 +221,12 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 ### Riferimenti
 - E-Distribuzione: https://www.e-distribuzione.it/open-meter/come-leggere-contatore-luce.html
 - ARERA: https://www.arera.it/consumatori/potenza-del-contatore
+
+## 2026-11-13 — Potenza unica e fasce condizionali (requisiti)
+
+- Decisione: un solo campo elettrico di impianto, «Potenza massima disponibile dell'impianto (kW)», 4,4 kW per il proprietario. Non chiedere 4 kW di contratto né 5,2 kW di sovraccarico temporaneo, e non calcolare aumenti automatici.
+- Eliminato dal prototipo puro `planner.py` il campo `contract_kw`, che era ridondante e inutilizzato. Test e specifica aggiornati; nessuna modifica alla GUI esistente.
+- Proposta ancora da simulare: fasce potenzialmente critiche configurabili e facoltative, eventualmente condizionate a sensore ON oppure a consumi persistentemente elevati. Non codificare lavastoviglie, piano cottura o orari domestici.
+- I sensori in stato OFF disattivano soltanto la propria condizione; gli stati unknown/unavailable non devono diventare OFF impliciti. ON non equivale sempre ad assorbimento elevato. Le fasce condizionali non prevedono accensioni future.
+- Il planner è subordinato al target SOC entro la partenza. Nessun Start/Stop o variazione immediata a ogni cambio sensore. DPM sempre attivo e unico responsabile dei picchi.
+- Nessuna nuova release; il prototipo non è collegato ad HA e non comanda nulla. Aggiornare la fonte di progetto quando saranno stabiliti i dettagli delle fasce.

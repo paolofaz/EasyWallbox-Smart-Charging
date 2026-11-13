@@ -22,7 +22,7 @@ NOW = datetime(2026, 11, 13, 18, tzinfo=timezone.utc)
 
 def inputs(kwh, **kw):
     args = dict(now=NOW, departure=NOW + timedelta(hours=14),
-                battery_kwh=kwh, contract_kw=4, continuous_kw=4.4,
+                battery_kwh=kwh, continuous_kw=4.4,
                 house_reference_kw=.6, vehicle_cap_kw=6,
                 efficiency=.9, reserve_minutes=45,
                 preferred_start=NOW + timedelta(hours=7))
