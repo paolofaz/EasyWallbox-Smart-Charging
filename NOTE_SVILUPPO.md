@@ -355,3 +355,39 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - In uno screenshot precedente erano visibili 222 V (non necessariamente contemporanei). A parità di corrente, una potenza teorica di 3,19 kW a 230 V equivale a circa 3,08 kW a 222 V: circa 110 W dello scarto possono essere spiegati solo dalla tensione. I restanti ~50 W possono dipendere da regolazione dell'auto o misure; serve acquisizione sincronizzata.
 - Non confondere differenza pilot/assorbimento con perdite energetiche o intervento DPM. Per il modello usare Charging Power/Shelly come assorbimento effettivo; pilot come limite teorico di corrente. Non introdurre correzioni fisse.
 - Nessun cambio software attuativo, release, DPM o firmware.
+
+## 2026-11-13 — Calcolo della domanda media invece della falsa proiezione della cena (0.0.11)
+
+### Problema osservato
+- In carica EV3 alle 19:44: SOC 39%, target 80%, 31,98 kWh da
+  reintegrare nella batteria, consumo domestico circa 2,07 kW,
+  limite impianto 4,4 kW. La precedente anteprima mostrava
+  `deadline_at_risk` e ~15 ore perché assumeva consumi domestici
+  della cena costanti tutta la notte. Non è una previsione credibile.
+- Priorità del progetto: SOC entro la partenza, controllo lento e
+  spiegabile, nessun nuovo comando.
+
+### Modifiche in sviluppo-test
+- Aggiunta funzione pura `departure_demand` in `planner.py`.
+  Calcola potenza media richiesta **lato rete**, con obiettivo SOC,
+  tempo utile fino alla partenza meno riserva ed efficienza ipotetica,
+  senza usare il consumo istantaneo domestico.
+- `live_planning.py` separa `DepartureDemand` dallo scenario
+  `current_load_scenario_*`; restituisce domanda media anche con
+  casa non misurata, se auto e orari sono validi. Evidenzia separatamente
+  quando la domanda supera il limite continuo di impianto.
+- Nuova entità read-only `required_mean_power`; attributi del
+  sensore scenario e scenario 30% espongono la domanda. Labels IT/EN
+  distinguono scenario da previsione reale.
+- Esempio **non attuale**: ore 19:44→08:00 = 12h16; 31,98 kWh
+  batteria, 90% ipotetico, 45m riserva → **3,09 kW medi**;
+  senza riserva servono circa 2,90 kW.
+- Test unitari per carichi temporanei, calcolo medio, SOC zero,
+  input incoerenti e dati domestici mancanti. Verifica finale CI e HA
+  reale ancora necessarie.
+
+### Limiti confermati
+- Nessuna previsione futura realistica dei carichi, nessun profilo orario
+  codificato e nessuna modifica alla potenza EV, wallbox, DPM,
+  automazioni o firmware. Non usare il dato di potenza media richiesta
+  per dichiarare garantita la partenza.

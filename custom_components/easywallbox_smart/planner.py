@@ -29,6 +29,49 @@ class Plan:
     estimated_finish: datetime | None
 
 
+
+@dataclass(frozen=True)
+class DepartureDemand:
+    """Grid-side mean power required, regardless of current house load."""
+
+    status: str
+    required_grid_kw: float | None
+    usable_hours: float | None
+
+
+def departure_demand(
+    now: datetime,
+    departure: datetime,
+    battery_kwh: float,
+    efficiency: float,
+    reserve_minutes: int,
+) -> DepartureDemand:
+    """Compute deadline pressure, NOT an estimate of what power is available.
+
+    The mean applies from *now* until departure minus reserve. It cannot
+    certify completion, because vehicle limits and future loads are unknown.
+    """
+    if (
+        now.tzinfo is None or departure.tzinfo is None
+        or now.utcoffset() is None or departure.utcoffset() is None
+        or not _valid(battery_kwh, allow_zero=True)
+        or not _valid(efficiency) or efficiency > 1
+        or isinstance(reserve_minutes, bool)
+        or not isinstance(reserve_minutes, int)
+        or not 0 <= reserve_minutes <= 1440
+    ):
+        return DepartureDemand("invalid_inputs", None, None)
+    seconds = (departure - now).total_seconds() - reserve_minutes * 60
+    if battery_kwh == 0:
+        return DepartureDemand("target_estimated_reached", 0.0, max(0.0, seconds / 3600))
+    if seconds <= 0:
+        return DepartureDemand("no_time_left_with_reserve", None, 0.0)
+    hours = seconds / 3600
+    average = battery_kwh / (efficiency * hours)
+    if not isfinite(average):
+        return DepartureDemand("invalid_inputs", None, None)
+    return DepartureDemand("ok", round(average, 3), round(hours, 3))
+
 def _valid(value, allow_zero=False):
     return (
         isinstance(value, (float, int)) and not isinstance(value, bool)

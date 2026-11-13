@@ -212,10 +212,16 @@
         "name": "Recommended start (preview)"
       },
       "estimated_finish": {
-        "name": "Estimated finish (preview)"
+        "name": "Finish if home power stays constant (preview)"
       },
       "plan_status": {
-        "name": "Plan status (preview)"
+        "name": "Current home load scenario (preview)"
+      },
+      "required_mean_power": {
+        "name": "Mean power required by departure (preview)"
+      },
+      "demo_plan": {
+        "name": "Hypothetical 30% SOC scenario"
       }
     }
   }

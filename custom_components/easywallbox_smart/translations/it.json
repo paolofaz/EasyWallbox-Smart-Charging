@@ -212,10 +212,16 @@
         "name": "Inizio consigliato (simulazione)"
       },
       "estimated_finish": {
-        "name": "Fine stimata (simulazione)"
+        "name": "Fine se consumo casa restasse costante (simulazione)"
       },
       "plan_status": {
-        "name": "Stato piano (simulazione)"
+        "name": "Scenario con consumo casa attuale (simulazione)"
+      },
+      "required_mean_power": {
+        "name": "Potenza media necessaria alla partenza (simulazione)"
+      },
+      "demo_plan": {
+        "name": "Scenario ipotetico dal 30%"
       }
     }
   }

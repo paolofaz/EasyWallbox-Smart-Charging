@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.10")
+        self.assertEqual(manifest["version"], "0.0.11")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -79,6 +79,16 @@ class TestScaffold(unittest.TestCase):
         self.assertIn("departure_weekday", flow)
         self.assertIn("departure_weekend", flow)
         self.assertIn("SensorDeviceClass.TIMESTAMP", sensor)
+        self.assertIn('"required_mean_power"', sensor)
+        self.assertIn('"scenario_not_a_prediction"', sensor)
+        self.assertIn("required_average_exceeds_site_limit", (
+            INTEGRATION / "live_planning.py"
+        ).read_text(encoding="utf-8"))
+        for lang in ("it", "en"):
+            data = json.loads(
+                (INTEGRATION / "translations" / f"{lang}.json").read_text()
+            )
+            self.assertIn("required_mean_power", data["entity"]["sensor"])
         for lang in ("it", "en"):
             tr = json.loads(
                 (INTEGRATION / "translations" / f"{lang}.json").read_text()

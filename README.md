@@ -2,7 +2,7 @@
 
 Custom integration Python per **Home Assistant** per pianificare la ricarica di **veicoli configurabili da 1 a N** (inclusi Fiat 500e e Kia EV3), utilizzando stati ESPHome, SOC e sorgenti di potenza configurabili (Shelly, ESPHome o altri sensori Home Assistant).
 
-> **Stato: anteprima di pianificazione read-only v0.0.10, ancora precedente alla v0.1 completa.** Espone stime di partenza/termine, potenza domestica e scenari dimostrativi per le auto scollegate. **Non invia comandi alla wallbox o alle auto** e non dispone ancora della dashboard completa.
+> **Stato: anteprima di pianificazione read-only v0.0.11, ancora precedente alla v0.1 completa.** Espone stime di partenza/termine, potenza domestica e scenari dimostrativi per le auto scollegate. **Non invia comandi alla wallbox o alle auto** e non dispone ancora della dashboard completa.
 
 ## Sicurezza e separazione delle responsabilità
 
@@ -16,21 +16,21 @@ Custom integration Python per **Home Assistant** per pianificare la ricarica di 
 
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
-- `0.0.10`: mantiene l'anteprima read-only e gli scenari 30% introdotti nella 0.0.8, e corregge la scadenza errata degli stati ON/OFF di collegamento e telemetria. Restano le diagnosi e la lettura indipendente dei sensori di casa introdotte nella 0.0.9. La **v0.1** aggiungerà un planner più completo e Lovelace dedicata, sempre senza comandi.
+- `0.0.11`: aggiunge la media di potenza necessaria entro la partenza, indipendente dai consumi domestici correnti; distingue esplicitamente lo scenario del carico costante da una previsione futura. Conserva il fix dei sensori ON/OFF di 0.0.10. Restano le diagnosi e la lettura indipendente dei sensori di casa introdotte nella 0.0.9. La **v0.1** aggiungerà un planner più completo e Lovelace dedicata, sempre senza comandi.
 - Le versioni di prova `0.x` vengono pubblicate come **release GitHub normali**, ma sono **software sperimentale e non stabile**. I tag puntano ai commit verificati di `sviluppo-test`, senza modificare `main`. Nessuna compatibilità con HA reale è ancora certificata.
 
 ## Installazione tramite Marketplace (release di prova)
 
-Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.10`:
+Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.11`:
 
 1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
 2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
-3. Selezionare la **release normale** `0.0.10` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
-4. Installare la release `0.0.10`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
+3. Selezionare la **release normale** `0.0.11` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
+4. Installare la release `0.0.11`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
 
 > **Attenzione:** `main` contiene soltanto `LICENSE`. La release punta all'esatto commit di `sviluppo-test`. **Il branch predefinito `main` non contiene ancora `hacs.json` né l'integrazione: il Marketplace potrebbe quindi non riuscire a riconoscere il repository durante l'aggiunta da link.** Se il repository non viene accettato, riportare l'errore e non installare il fallback di `main`.
 
-**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.10` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.11` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
 
 <!-- ha-marketplace:exclude-start -->
 Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
@@ -209,3 +209,27 @@ oltre i due minuti mentre l'auto è collegata e i dati sono validi;
 controllare nuovamente dopo un intervallo superiore ai 45 minuti.
 Nessun comando al firmware, wallbox, auto o DPM. Dettagli:
 [docs/releases/0.0.10.md](docs/releases/0.0.10.md).
+
+## 0.0.11 — Il parametro centrale: potenza media richiesta alla partenza
+
+La 0.0.11 aggiunge il sensore `Mean power needed by departure` in kW.
+Partendo dai kWh mancanti nel veicolo e dalla prossima partenza,
+calcola la potenza media **lato rete** necessaria con le ipotesi
+temporanee del 90% di rendimento AC e 45 minuti di riserva.
+
+**È indipendente dal consumo domestico momentaneo.** Un forno acceso
+non significa che resterà acceso per tutto il resto della notte;
+invece la vecchia `Estimated finish` resta soltanto uno **scenario
+teorico con l'attuale carico domestico mantenuto costante**. I relativi
+stati non devono essere letti come previsione attendibile della
+partenza. Il nuovo sensore è calcolabile anche se manca un sensore
+Shelly, purché SOC/veicolo/orari siano validi.
+
+Se la media richiesta supera la potenza continuativa configurata
+dell'intero impianto, viene segnalato separatamente l'impossibilità
+teorica con quel margine. Non viene ancora verificato il limite
+effettivamente impostato sulla wallbox, né stimato il carico futuro.
+
+Per la spiegazione tecnica e il rollback vedi
+[docs/releases/0.0.11.md](docs/releases/0.0.11.md). Nessuna modifica
+ai comandi, alle automazioni o al firmware.

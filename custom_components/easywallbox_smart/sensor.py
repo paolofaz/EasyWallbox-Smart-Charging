@@ -24,10 +24,13 @@ FIELDS = {
     "remaining_energy": ("Battery energy needed", "kWh", SensorStateClass.MEASUREMENT),
     "data_quality": ("Data quality", None, None),
     "house_power": ("House power preview", "kW", SensorStateClass.MEASUREMENT),
+    "required_mean_power": (
+        "Mean power needed by departure", "kW", SensorStateClass.MEASUREMENT
+    ),
     "departure_time": ("Next departure preview", None, None),
     "recommended_start": ("Recommended start preview", None, None),
-    "estimated_finish": ("Estimated finish preview", None, None),
-    "plan_status": ("Plan status preview", None, None),
+    "estimated_finish": ("Finish if home load stays constant", None, None),
+    "plan_status": ("Current home load scenario", None, None),
     "demo_plan": ("Scenario 30% preview", None, None),
 }
 CHECK_INTERVAL = timedelta(minutes=2)
@@ -112,10 +115,13 @@ class SmartSensor(SensorEntity):
                 return "unconfigured"
             if all(s["status"] == "unconfigured" for s in self._monitor.demo_plans):
                 return "unconfigured"
-            return "available" if any(s["status"] == "feasible_estimate"
+            return "available" if any(s["status"] == "current_load_scenario_feasible"
                 for s in self._monitor.demo_plans) else "review"
         if self._kind == "house_power":
             return preview.house_kw if preview else None
+        if self._kind == "required_mean_power":
+            demand = preview.demand if preview else None
+            return demand.required_grid_kw if demand else None
         if self._kind == "departure_time":
             return preview.departure if preview else None
         if self._kind == "plan_status":
@@ -168,15 +174,24 @@ class SmartSensor(SensorEntity):
             attrs["scenario_description"] = "30_to_usual_target_without_car"
             attrs["vehicle_scenarios"] = self._monitor.demo_plans
         if preview and self._kind in (
-            "plan_status", "house_power", "recommended_start", "estimated_finish"
+            "plan_status", "house_power", "required_mean_power",
+            "recommended_start", "estimated_finish"
         ):
             attrs.update({
                 "reason": preview.reason,
                 "power_quality": preview.power_quality,
                 "forecast_basis": "current_house_power_held_constant",
+                "scenario_not_a_prediction": True,
                 "assumed_ac_efficiency": ASSUMED_EFFICIENCY,
                 "assumed_reserve_minutes": ASSUMED_RESERVE_MINUTES,
             })
+            if preview.demand is not None:
+                attrs["required_mean_grid_kw"] = preview.demand.required_grid_kw
+                attrs["required_mean_basis"] = "battery_kwh_divided_by_time_and_efficiency"
+                attrs["time_until_departure_less_reserve_hours"] = (
+                    preview.demand.usable_hours
+                )
+                attrs["deadline_demand_status"] = preview.demand.status
             if preview.result is not None:
                 attrs["estimated_ev_kw"] = preview.result.estimated_ev_kw
                 attrs["required_charge_hours"] = preview.result.required_hours

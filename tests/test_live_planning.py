@@ -63,7 +63,7 @@ class TestLivePlanning(unittest.TestCase):
         ha = FakeHA({"sensor.h1": FakeState(500, "W"),
                      "sensor.h2": FakeState(100, "W")})
         result = evaluate(ha, settings(), active(), NOW.astimezone(timezone.utc))
-        self.assertEqual(result.status, "feasible_estimate")
+        self.assertEqual(result.status, "current_load_scenario_feasible")
         self.assertAlmostEqual(result.house_kw, .6)
         self.assertAlmostEqual(result.result.estimated_ev_kw, 3.8)
         self.assertEqual(result.result.recommended_start, NOW)
@@ -122,6 +122,44 @@ class TestLivePlanning(unittest.TestCase):
         self.assertEqual(result.status, "unconfigured")
         self.assertEqual(result.house_kw, .6)
         self.assertIsNone(result.departure)
+
+    def test_required_average_survives_missing_house_meter(self):
+        ha = FakeHA({"sensor.h1": FakeState(500, "W")})
+        result = evaluate(ha, settings(), active(31.98), NOW.astimezone(timezone.utc))
+        self.assertEqual(result.status, "unavailable")
+        self.assertIsNone(result.result)
+        self.assertIsNotNone(result.demand)
+        self.assertIsNotNone(result.demand.required_grid_kw)
+
+    def test_busy_kitchen_is_only_a_current_load_scenario(self):
+        time = datetime(2026, 11, 13, 19, 44, tzinfo=ROMA)
+        ha = FakeHA({
+            "sensor.h1": FakeState(1900, "W", time),
+            "sensor.h2": FakeState(170, "W", time),
+        })
+        preview = evaluate(
+            ha, settings(), active(31.98), time.astimezone(timezone.utc)
+        )
+        self.assertEqual(preview.status, "current_load_scenario_at_risk")
+        self.assertAlmostEqual(preview.house_kw, 2.07)
+        self.assertAlmostEqual(preview.demand.required_grid_kw, 3.086, places=2)
+        self.assertEqual(preview.result.status, "deadline_at_risk")
+
+    def test_impossible_even_with_zero_house_is_separate_status(self):
+        ha = FakeHA({
+            "sensor.h1": FakeState(500, "W"),
+            "sensor.h2": FakeState(100, "W"),
+        })
+        changed = settings()
+        changed["continuous_kw"] = 1.5
+        preview = evaluate(
+            ha, changed, active(31.98), NOW.astimezone(timezone.utc)
+        )
+        self.assertEqual(
+            preview.status, "deadline_unreachable_even_without_house_load"
+        )
+        self.assertIsNone(preview.result)
+        self.assertIsNotNone(preview.demand.required_grid_kw)
 
     def test_bad_time_is_rejected(self):
         with self.assertRaises(ValueError):

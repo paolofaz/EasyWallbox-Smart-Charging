@@ -17,6 +17,7 @@ sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 Request = module.Request
 plan = module.plan
+departure_demand = module.departure_demand
 NOW = datetime(2026, 11, 13, 18, tzinfo=timezone.utc)
 
 
@@ -45,6 +46,33 @@ class TestPlanner(unittest.TestCase):
     def test_high_house_use_makes_deadline_risky(self):
         result = plan(inputs(39, house_reference_kw=2))
         self.assertEqual(result.status, "deadline_at_risk")
+
+    def test_required_mean_is_independent_of_current_house(self):
+        departure = NOW + timedelta(hours=12, minutes=16)
+        result = departure_demand(
+            NOW, departure, 31.98, .9, 45
+        )
+        self.assertEqual(result.status, "ok")
+        self.assertAlmostEqual(result.required_grid_kw, 3.086, places=2)
+        self.assertAlmostEqual(result.usable_hours, 11.517, places=2)
+
+    def test_power_requirement_never_guesses_data(self):
+        departure = NOW + timedelta(hours=1)
+        result = departure_demand(NOW, departure, 31.98, .9, 65)
+        self.assertEqual(result.status, "no_time_left_with_reserve")
+        self.assertIsNone(result.required_grid_kw)
+        for value in (float("nan"), None, -1):
+            self.assertEqual(
+                departure_demand(NOW, departure, value, .9, 45).status,
+                "invalid_inputs",
+            )
+
+    def test_target_reached_requires_no_power(self):
+        result = departure_demand(
+            NOW, NOW + timedelta(hours=7), 0, .9, 45
+        )
+        self.assertEqual(result.required_grid_kw, 0.0)
+        self.assertEqual(result.status, "target_estimated_reached")
 
     def test_no_temporary_30_percent_budget(self):
         result = plan(inputs(8))

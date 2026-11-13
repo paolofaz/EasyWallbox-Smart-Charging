@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from math import isfinite
 
-from .planner import Plan, Request, plan
+from .planner import DepartureDemand, Plan, Request, departure_demand, plan
 from .power_model import Reading, calculate, migrate_legacy
 from .schedule import next_departure
 
@@ -22,6 +22,7 @@ class Preview:
     house_kw: float | None
     power_quality: str
     result: Plan | None
+    demand: DepartureDemand | None = None
 
 
 @dataclass(frozen=True)
@@ -89,15 +90,33 @@ def evaluate(hass, config: dict, snapshot, now: datetime | None = None) -> Previ
         return Preview("unavailable", "invalid_planning_options",
                        None, house_kw, power.quality, None)
 
-    if power.house_kw is None:
-        return Preview("unavailable", "house_power_" + power.quality,
-                       departure, None, power.quality, None)
+    # Demand is independent of current domestic load. This is a useful
+    # deadline metric even when power sensors are unknown or house is busy.
     if snapshot.quality != "ok" or snapshot.remaining_kwh is None:
         return Preview("unavailable", "vehicle_" + snapshot.quality,
                        departure, house_kw, power.quality, None)
+    demand = departure_demand(
+        current, departure, snapshot.remaining_kwh,
+        ASSUMED_EFFICIENCY, ASSUMED_RESERVE_MINUTES,
+    )
+    if demand.status != "ok" and demand.status != "target_estimated_reached":
+        return Preview("unavailable", "deadline_" + demand.status,
+                       departure, house_kw, power.quality, None, demand)
+    if (
+        demand.required_grid_kw is not None
+        and demand.required_grid_kw > capacity
+    ):
+        return Preview(
+            "deadline_unreachable_even_without_house_load",
+            "required_average_exceeds_site_limit",
+            departure, house_kw, power.quality, None, demand,
+        )
+    if power.house_kw is None:
+        return Preview("unavailable", "house_power_" + power.quality,
+                       departure, None, power.quality, None, demand)
 
-    # Preview assumption: current house load persists. Site headroom is
-    # NOT the confirmed vehicle/charger maximum, so time can be optimistic.
+    # ONLY a hypothetical scenario: current house load remains constant.
+    # This is not a forecast of the actual future household demand.
     estimate = plan(Request(
         now=current, departure=departure,
         battery_kwh=snapshot.remaining_kwh,
@@ -107,9 +126,15 @@ def evaluate(hass, config: dict, snapshot, now: datetime | None = None) -> Previ
         efficiency=ASSUMED_EFFICIENCY,
         reserve_minutes=ASSUMED_RESERVE_MINUTES,
     ))
+    if estimate.status == "feasible_estimate":
+        status = "current_load_scenario_feasible"
+    elif estimate.status == "deadline_at_risk":
+        status = "current_load_scenario_at_risk"
+    else:
+        status = estimate.status
     return Preview(
-        estimate.status, estimate.reason,
-        departure, house_kw, power.quality, estimate,
+        status, estimate.reason,
+        departure, house_kw, power.quality, estimate, demand,
     )
 
 
@@ -143,6 +168,10 @@ def demo_scenarios(hass, config: dict, now: datetime | None = None) -> list[dict
             ),
             "estimated_hours": (
                 prediction.required_hours if prediction else None
+            ),
+            "required_mean_grid_kw": (
+                preview.demand.required_grid_kw
+                if preview.demand else None
             ),
             "recommended_start": (
                 prediction.recommended_start.isoformat()
