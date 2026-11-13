@@ -309,3 +309,11 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Test isolati e statici aggiunti; README e changelog 0.0.9 aggiornati.
 - **Nessun comando BLE o elettrico, nessun cambio DPM o automazione, nessuna modifica firmware o main.**
 - Prossima verifica nell'HA dell'utente: leggere gli attributi del sensore Data quality e confrontarli con Telemetry Fresh ESPHome. Il problema di telemetria non può essere considerato risolto dalla sola patch UI.
+
+## 2026-11-13 — Osservazione empirica: potenza richiesta, erogata e confronto Shelly
+
+- L'utente riferisce che, **anche senza un intervento evidente del DPM**, la potenza di ricarica effettiva della wallbox tende a essere circa **100–200 W inferiore** a quella impostata. È una caratteristica osservata, non una calibrazione universalmente verificata e non un nuovo setpoint.
+- Le misure di **consumo domestico** e di **potenza/energia della ricarica** rese disponibili dalla wallbox risultano generalmente coerenti con quelle degli Shelly; gli scostamenti **di potenza** osservati sono dell'ordine di **100 W al massimo**. Distinguere la verifica di potenza istantanea dalla validazione di energia cumulata, che necessita confronto nelle stesse finestre temporali.
+- Implicazione per il planner: distinguere `potenza richiesta`, `potenza effettiva` e `limitazione DPM`. Non dedurre automaticamente un intervento DPM da 100–200 W di differenza; non applicare però una sottrazione fissa nascosta ai setpoint.
+- Preferire per la stima dell'energia erogata e per il feedback sensori di potenza effettiva adeguatamente freschi e verificati; gestire piccoli disaccordi tra fonti come diagnostica/tolleranza da collaudare, **mai** come margine aggiuntivo di sicurezza elettrica. Il DPM resta attivo e impostato normalmente a 4,4 kW nell'impianto utente.
+- Nessuna modifica firmware, controllo, parametri o versione. Osservazione registrata per i successivi test del simulatore.
