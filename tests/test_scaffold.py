@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.8")
+        self.assertEqual(manifest["version"], "0.0.9")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -87,6 +87,15 @@ class TestScaffold(unittest.TestCase):
                 set(tr["options"]["step"]["planning"]["data"]),
                 {"continuous_kw", "departure_weekday", "departure_weekend"}
             )
+
+    def test_telemetry_diagnostics_without_safety_bypass(self):
+        source = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
+        self.assertIn("wallbox_telemetry_age_seconds", source)
+        self.assertIn("wallbox_telemetry_diagnostic", source)
+        self.assertIn("wallbox_telemetry_max_age_seconds", source)
+        snapshot = (INTEGRATION / "snapshot.py").read_text(encoding="utf-8")
+        self.assertIn("wallbox_telemetry_unavailable", snapshot)
+        self.assertIn("WALLBOX_MAX_AGE = 120", snapshot)
 
     def test_config_entry_migration_present(self):
         text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")

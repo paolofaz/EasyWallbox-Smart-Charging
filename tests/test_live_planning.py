@@ -98,6 +98,31 @@ class TestLivePlanning(unittest.TestCase):
         self.assertEqual(result.status, "unavailable")
         self.assertIsNone(result.result)
 
+    def test_house_power_and_departure_survive_missing_wallbox_telemetry(self):
+        ha = FakeHA({"sensor.h1": FakeState(500, "W"),
+                     "sensor.h2": FakeState(100, "W")})
+        unavailable = types.SimpleNamespace(
+            quality="wallbox_telemetry_unavailable", remaining_kwh=None
+        )
+        result = evaluate(
+            ha, settings(), unavailable, NOW.astimezone(timezone.utc)
+        )
+        self.assertEqual(result.status, "unavailable")
+        self.assertEqual(result.reason, "vehicle_wallbox_telemetry_unavailable")
+        self.assertAlmostEqual(result.house_kw, .6)
+        self.assertEqual(result.departure.hour, 8)
+        self.assertIsNone(result.result)
+
+    def test_house_power_available_without_planning_options(self):
+        ha = FakeHA({"sensor.h1": FakeState(500, "W"),
+                     "sensor.h2": FakeState(100, "W")})
+        config = settings()
+        del config["continuous_kw"]
+        result = evaluate(ha, config, active(), NOW.astimezone(timezone.utc))
+        self.assertEqual(result.status, "unconfigured")
+        self.assertEqual(result.house_kw, .6)
+        self.assertIsNone(result.departure)
+
     def test_bad_time_is_rejected(self):
         with self.assertRaises(ValueError):
             next_departure(NOW, "25:00", "08:00")

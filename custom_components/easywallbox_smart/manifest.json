@@ -1,7 +1,7 @@
 {
   "domain": "easywallbox_smart",
   "name": "EasyWallbox Smart Charging",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "documentation": "https://github.com/paolofaz/EasyWallbox-Smart-Charging#readme",
   "issue_tracker": "https://github.com/paolofaz/EasyWallbox-Smart-Charging/issues",
   "codeowners": [

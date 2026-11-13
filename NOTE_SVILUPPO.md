@@ -294,3 +294,18 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
   verificare: release finale, Home Assistant 2026.11 reale, formato
   timestamp, validazione dati e presentazione della UI.
 - Nessun merge su `main`.
+
+## 2026-11-13 — Correzione diagnostica e indipendenza letture (0.0.9)
+
+### Anomalia osservata su HA
+- Durante una ricarica reale della Kia EV3, in EasyWallbox Smart Charging v0.0.8 comparivano `Active vehicle`, SOC, piano e potenza casa come sconosciuti, con `Data quality = wallbox_telemetry_unavailable`.
+- DPM reale 4,4 kW, limite EV richiesto 3,2 kW, misure contestuali circa 2.526 W EV e 4.349 W totali, indicative di riduzione DPM. L'automazione domestica avvisa oltre 4.600 W globali o 3.700 W sui singoli rami. Uno screenshot istantaneo non dimostra assenza di picchi precedenti.
+- Verifica GitHub: `snapshot.py` è identico tra tag 0.0.7 e 0.0.8. Il blocco del riconoscimento per `Telemetry Fresh` configurato e non valido è preesistente. Lo stato reale dell'entità Telemetry Fresh è ancora da verificare in HA; NON presumere regressione o errore del firmware.
+- Firmware main prevede Telemetry Fresh OFF dopo ~100s senza messaggi AD validi (default), Smart Charging richiede stato ON e lettura non più vecchia di 120s.
+
+### Correzioni read-only
+- `live_planning.py`: valutare i sensori di potenza di casa e la prossima partenza in modo indipendente dallo snapshot auto. Solo il piano reale continua a richiedere SOC, identificazione e dati validi. Nessun dato mancante diventa zero.
+- `sensor.py`: aggiunti a `Data quality` gli attributi dell'entità configurata Telemetry Fresh, stato, età, soglia e causa distinta (off, non trovata, unavailable, obsoleta, ecc.). Non vengono allentate le verifiche di sicurezza.
+- Test isolati e statici aggiunti; README e changelog 0.0.9 aggiornati.
+- **Nessun comando BLE o elettrico, nessun cambio DPM o automazione, nessuna modifica firmware o main.**
+- Prossima verifica nell'HA dell'utente: leggere gli attributi del sensore Data quality e confrontarli con Telemetry Fresh ESPHome. Il problema di telemetria non può essere considerato risolto dalla sola patch UI.

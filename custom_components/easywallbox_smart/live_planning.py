@@ -44,26 +44,17 @@ def dependency_ids(config: dict) -> set[str]:
 
 
 def evaluate(hass, config: dict, snapshot, now: datetime | None = None) -> Preview:
-    """Missing or stale states never become zero watts."""
-    if snapshot.quality != "ok" or snapshot.remaining_kwh is None:
-        return Preview("unavailable", "vehicle_" + snapshot.quality,
-                       None, None, "not_evaluated", None)
-    required = ("continuous_kw", "departure_weekday", "departure_weekend")
-    if not all(config.get(key) is not None for key in required):
-        return Preview("unconfigured", "planning_options_required",
-                       None, None, "not_evaluated", None)
+    """Report independent site data even if vehicle/telemetry is unavailable.
+
+    No missing or stale reading is silently interpreted as zero watts.
+    """
     try:
         zone = ZoneInfo(hass.config.time_zone)
         current = (now or datetime.now(timezone.utc)).astimezone(zone)
-        departure = next_departure(
-            current, config["departure_weekday"], config["departure_weekend"]
-        )
-        capacity = float(config["continuous_kw"])
-        if not isfinite(capacity) or capacity <= 0:
-            raise ValueError("invalid_capacity")
     except (ValueError, TypeError, KeyError):
-        return Preview("unavailable", "invalid_planning_options",
-                       None, None, "not_evaluated", None)
+        return Preview("unavailable", "invalid_timezone", None, None,
+                       "not_evaluated", None)
+
     readings = {}
     for entity_id in dependency_ids(config):
         state = hass.states.get(entity_id)
@@ -81,11 +72,32 @@ def evaluate(hass, config: dict, snapshot, now: datetime | None = None) -> Previ
         )
     topology = {**config, **migrate_legacy(config)}
     power = calculate(topology, readings)
+    house_kw = round(power.house_kw, 3) if power.house_kw is not None else None
+
+    required = ("continuous_kw", "departure_weekday", "departure_weekend")
+    if not all(config.get(key) is not None for key in required):
+        return Preview("unconfigured", "planning_options_required",
+                       None, house_kw, power.quality, None)
+    try:
+        departure = next_departure(
+            current, config["departure_weekday"], config["departure_weekend"]
+        )
+        capacity = float(config["continuous_kw"])
+        if not isfinite(capacity) or capacity <= 0:
+            raise ValueError("invalid_capacity")
+    except (ValueError, TypeError, KeyError):
+        return Preview("unavailable", "invalid_planning_options",
+                       None, house_kw, power.quality, None)
+
     if power.house_kw is None:
         return Preview("unavailable", "house_power_" + power.quality,
                        departure, None, power.quality, None)
-    # Assumption: house load remains constant; site headroom is not the
-    # verified vehicle/charger maximum, so estimates may be optimistic.
+    if snapshot.quality != "ok" or snapshot.remaining_kwh is None:
+        return Preview("unavailable", "vehicle_" + snapshot.quality,
+                       departure, house_kw, power.quality, None)
+
+    # Preview assumption: current house load persists. Site headroom is
+    # NOT the confirmed vehicle/charger maximum, so time can be optimistic.
     estimate = plan(Request(
         now=current, departure=departure,
         battery_kwh=snapshot.remaining_kwh,
@@ -97,7 +109,7 @@ def evaluate(hass, config: dict, snapshot, now: datetime | None = None) -> Previ
     ))
     return Preview(
         estimate.status, estimate.reason,
-        departure, round(power.house_kw, 3), power.quality, estimate,
+        departure, house_kw, power.quality, estimate,
     )
 
 

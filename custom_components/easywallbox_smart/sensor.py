@@ -14,7 +14,7 @@ from homeassistant.helpers.event import (
 
 from .const import DOMAIN
 from .live_planning import ASSUMED_EFFICIENCY, ASSUMED_RESERVE_MINUTES, demo_scenarios, dependency_ids, evaluate
-from .snapshot import Source, assess
+from .snapshot import Source, WALLBOX_MAX_AGE, assess
 
 
 FIELDS = {
@@ -61,6 +61,7 @@ class Monitor:
         self.dependency_ids.update(dependency_ids(self.config))
         self.entities: list[SmartSensor] = []
         self.snapshot = None
+        self.telemetry_source = None
         self.preview = None
         self.demo_plans = []
         self.refresh()
@@ -70,6 +71,8 @@ class Monitor:
         now = datetime.now(timezone.utc)
         states = {name: _source(self.hass, name, now) for name in self.dependency_ids}
         self.snapshot = assess(self.config, states)
+        telemetry_id = self.config.get("wallbox_telemetry_fresh")
+        self.telemetry_source = states.get(telemetry_id) if telemetry_id else None
         self.preview = evaluate(self.hass, self.config, self.snapshot, now)
         self.demo_plans = demo_scenarios(self.hass, self.config, now)
         for entity in self.entities:
@@ -142,6 +145,36 @@ class SmartSensor(SensorEntity):
             "data_quality": result.quality if result else "initializing",
             "no_device_commands": True,
         }
+        if self._kind == "data_quality":
+            sensor_id = self._monitor.config.get("wallbox_telemetry_fresh")
+            source = self._monitor.telemetry_source
+            attrs["wallbox_telemetry_entity"] = sensor_id or None
+            attrs["wallbox_telemetry_state"] = (
+                source.value if source is not None else None
+            )
+            attrs["wallbox_telemetry_age_seconds"] = (
+                round(source.age_seconds, 1)
+                if source is not None and source.age_seconds is not None
+                else None
+            )
+            attrs["wallbox_telemetry_max_age_seconds"] = WALLBOX_MAX_AGE
+            if not sensor_id:
+                attrs["wallbox_telemetry_diagnostic"] = "not_configured"
+            elif source is None or source.value is None:
+                attrs["wallbox_telemetry_diagnostic"] = "entity_not_found"
+            elif source.value.lower() in ("unknown", "unavailable", "none", ""):
+                attrs["wallbox_telemetry_diagnostic"] = "entity_unavailable"
+            elif (
+                source.age_seconds is None
+                or not -5 <= source.age_seconds <= WALLBOX_MAX_AGE
+            ):
+                attrs["wallbox_telemetry_diagnostic"] = "reading_stale"
+            elif source.value.lower() in ("on", "true", "connected"):
+                attrs["wallbox_telemetry_diagnostic"] = "fresh"
+            elif source.value.lower() in ("off", "false", "disconnected"):
+                attrs["wallbox_telemetry_diagnostic"] = "telemetry_off"
+            else:
+                attrs["wallbox_telemetry_diagnostic"] = "unexpected_state"
         if self._kind == "demo_plan":
             attrs["scenario_description"] = "30_to_usual_target_without_car"
             attrs["vehicle_scenarios"] = self._monitor.demo_plans
