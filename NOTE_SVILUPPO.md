@@ -202,3 +202,22 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 ### Verifiche
 - **Verificato**: test statici GitHub Actions superati (run `43403413847`); release normale GitHub `0.0.7` pubblicata con successo (run `43403413504`) sul commit `3926f327440f309029826ec92dd6eb2dcb901b20`. Resta da verificare su HA reale.
 - Verifica delle nuove etichette su Home Assistant reale; con la v0.1 sarà necessario il collaudo della pianificazione in sola simulazione.
+
+## 2026-11-13 — Prototipo isolato di pianificazione verso la partenza
+
+### Motivazione
+- L'utente ha confermato contratto da 4 kW, con disponibilità continuativa italiana ordinaria di 4,4 kW; i superamenti temporanei non sono un budget garantito per la pianificazione.
+- Confermata la priorità del SOC alla partenza, evitando quando possibile sovrapposizioni domestiche e oscillazioni del DPM.
+- Universalità tramite **parametri di installazione**, senza codificare gli orari della cena o modelli di elettrodomestici.
+- DPM sempre attivo e soglia normale DPM mai regolata dal planner.
+
+### Modifiche in sviluppo-test, non rilasciate
+- `planner.py`: funzione matematica pura, nessun Home Assistant, nessun comando. Distingue potenza contrattuale e continuativa, richiede una stima prudente esplicita dei consumi domestici, calcola potenza EV, durata, ultimo avvio utile e compatibilità di un orario preferito.
+- `tests/test_planner.py`: prove Fiat/Kia 30→80%, assenza dati, casa impegnata, tolleranze temporanee non utilizzate, obiettivo già raggiunto.
+- `docs/PLANNER.md`: specifiche e limiti di validità del calcolo.
+- **Nessun cambio manifest, nessuna nuova release, nessuna nuova entità HA o configurazione grafica**. Versione installabile 0.0.7 invariata. Non modificati firmware, automazioni, `main`, DPM o switch di pausa ricarica.
+- Collegamento dei calcoli ai sensori e alla dashboard rinviato a una milestone successiva dopo convalida dei dati reali.
+
+### Riferimenti
+- E-Distribuzione: https://www.e-distribuzione.it/open-meter/come-leggere-contatore-luce.html
+- ARERA: https://www.arera.it/consumatori/potenza-del-contatore
