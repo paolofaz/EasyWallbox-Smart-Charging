@@ -14,7 +14,7 @@ from homeassistant.helpers.event import (
 
 from .const import DOMAIN
 from .live_planning import ASSUMED_EFFICIENCY, ASSUMED_RESERVE_MINUTES, demo_scenarios, dependency_ids, evaluate
-from .snapshot import Source, WALLBOX_MAX_AGE, assess
+from .snapshot import Source, assess, telemetry_diagnostic
 
 
 FIELDS = {
@@ -157,24 +157,13 @@ class SmartSensor(SensorEntity):
                 if source is not None and source.age_seconds is not None
                 else None
             )
-            attrs["wallbox_telemetry_max_age_seconds"] = WALLBOX_MAX_AGE
-            if not sensor_id:
-                attrs["wallbox_telemetry_diagnostic"] = "not_configured"
-            elif source is None or source.value is None:
-                attrs["wallbox_telemetry_diagnostic"] = "entity_not_found"
-            elif source.value.lower() in ("unknown", "unavailable", "none", ""):
-                attrs["wallbox_telemetry_diagnostic"] = "entity_unavailable"
-            elif (
-                source.age_seconds is None
-                or not -5 <= source.age_seconds <= WALLBOX_MAX_AGE
-            ):
-                attrs["wallbox_telemetry_diagnostic"] = "reading_stale"
-            elif source.value.lower() in ("on", "true", "connected"):
-                attrs["wallbox_telemetry_diagnostic"] = "fresh"
-            elif source.value.lower() in ("off", "false", "disconnected"):
-                attrs["wallbox_telemetry_diagnostic"] = "telemetry_off"
-            else:
-                attrs["wallbox_telemetry_diagnostic"] = "unexpected_state"
+            # An ON/OFF watchdog is a persistent state, not a numerical
+            # sample requiring a fresh timestamp every 120 seconds.
+            attrs["wallbox_telemetry_freshness_policy"] = "esphome_watchdog_state"
+            attrs["wallbox_telemetry_age_is_timeout"] = False
+            attrs["wallbox_telemetry_diagnostic"] = (
+                telemetry_diagnostic(source) if sensor_id else "not_configured"
+            )
         if self._kind == "demo_plan":
             attrs["scenario_description"] = "30_to_usual_target_without_car"
             attrs["vehicle_scenarios"] = self._monitor.demo_plans

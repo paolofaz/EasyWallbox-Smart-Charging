@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from math import isfinite
 
 SOC_MAX_AGE = 45 * 60
-VEHICLE_MAX_AGE = 45 * 60
-WALLBOX_MAX_AGE = 120
 
 
 @dataclass(frozen=True)
@@ -38,14 +36,35 @@ def _fresh(source: Source | None, max_age: float) -> bool:
     )
 
 
-def _binary(source: Source | None, max_age: float) -> bool | None:
-    if not _fresh(source, max_age):
+def _binary(source: Source | None) -> bool | None:
+    """A persistent ON/OFF state does not expire merely because it is unchanged.
+
+    Availability and stateful watchdogs are the source of truth.
+    Numeric telemetry such as SOC is checked for age separately.
+    """
+    if source is None or not isinstance(source.value, str):
         return None
-    if source.value.lower() in ("on", "true", "connected"):
+    value = source.value.lower()
+    if value in ("on", "true", "connected"):
         return True
-    if source.value.lower() in ("off", "false", "disconnected"):
+    if value in ("off", "false", "disconnected"):
         return False
     return None
+
+
+def telemetry_diagnostic(source: Source | None) -> str:
+    """Explain the ESPHome watchdog without inventing a time-based timeout."""
+    if source is None or source.value is None:
+        return "entity_not_found"
+    if not isinstance(source.value, str):
+        return "unexpected_state"
+    if source.value.lower() in ("unknown", "unavailable", "none", ""):
+        return "entity_unavailable"
+    if _binary(source) is True:
+        return "watchdog_on"
+    if _binary(source) is False:
+        return "telemetry_off"
+    return "unexpected_state"
 
 
 def _soc(source: Source | None) -> tuple[float | None, str]:
@@ -76,9 +95,9 @@ def assess(config: dict, states: dict[str, Source]) -> Snapshot:
     if not wallbox_id:
         return unknown("wallbox_connection_unconfigured")
     freshness_id = config.get("wallbox_telemetry_fresh")
-    if freshness_id and _binary(states.get(freshness_id), WALLBOX_MAX_AGE) is not True:
+    if freshness_id and _binary(states.get(freshness_id)) is not True:
         return unknown("wallbox_telemetry_unavailable")
-    plugged = _binary(states.get(wallbox_id), WALLBOX_MAX_AGE)
+    plugged = _binary(states.get(wallbox_id))
     if plugged is None:
         return unknown("wallbox_connection_unavailable")
     if not plugged:
@@ -86,9 +105,7 @@ def assess(config: dict, states: dict[str, Source]) -> Snapshot:
 
     matches = []
     for profile in profiles:
-        connected = _binary(
-            states.get(profile.get("connected", "")), VEHICLE_MAX_AGE
-        )
+        connected = _binary(states.get(profile.get("connected", "")))
         if connected is None:
             return unknown("vehicle_connection_unavailable")
         if connected:

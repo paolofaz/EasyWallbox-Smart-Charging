@@ -19,6 +19,7 @@ sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 Source = module.Source
 assess = module.assess
+telemetry_diagnostic = module.telemetry_diagnostic
 
 
 def config():
@@ -82,14 +83,52 @@ class TestSnapshot(unittest.TestCase):
             assess(config(), data).quality, "vehicle_connection_unavailable"
         )
 
-    def test_wallbox_unplugged_or_stale(self):
+    def test_wallbox_unplugged_or_unavailable(self):
         data = readings()
         data["binary_sensor.wallbox"] = Source("off", 30)
         self.assertEqual(assess(config(), data).quality, "no_vehicle_at_wallbox")
-        data["binary_sensor.wallbox"] = Source("on", 150)
+        data["binary_sensor.wallbox"] = Source("unavailable", 5)
         self.assertEqual(
             assess(config(), data).quality, "wallbox_connection_unavailable"
         )
+
+    def test_persistent_binary_states_stay_valid_during_long_charge(self):
+        data = readings()
+        # No new ON/OFF state report for many hours: normal for a plugged EV.
+        data["binary_sensor.wallbox"] = Source("on", 8 * 3600)
+        data["binary_sensor.fresh"] = Source("on", 8 * 3600)
+        data["binary_sensor.a"] = Source("on", 8 * 3600)
+        data["binary_sensor.b"] = Source("off", 8 * 3600)
+        # SOC is independently refreshed by the vehicle source.
+        data["sensor.soc_a"] = Source("45", 12 * 60)
+        self.assertEqual(assess(config(), data).quality, "ok")
+        self.assertEqual(
+            telemetry_diagnostic(data["binary_sensor.fresh"]), "watchdog_on"
+        )
+
+    def test_watchdog_off_or_unavailable_always_blocks(self):
+        for state in ("off", "unknown", "unavailable"):
+            with self.subTest(state=state):
+                data = readings()
+                data["binary_sensor.fresh"] = Source(state, 8 * 3600)
+                self.assertEqual(
+                    assess(config(), data).quality, "wallbox_telemetry_unavailable"
+                )
+                self.assertNotEqual(
+                    telemetry_diagnostic(data["binary_sensor.fresh"]), "watchdog_on"
+                )
+
+    def test_old_soc_still_blocks_despite_healthy_watchdog(self):
+        data = readings()
+        data["binary_sensor.fresh"] = Source("on", 8 * 3600)
+        data["binary_sensor.wallbox"] = Source("on", 8 * 3600)
+        data["sensor.soc_a"] = Source("45", 46 * 60)
+        self.assertEqual(assess(config(), data).quality, "soc_missing_or_stale")
+
+    def test_unchanged_off_vehicle_does_not_block_identity(self):
+        data = readings()
+        data["binary_sensor.b"] = Source("off", 2 * 24 * 3600)
+        self.assertEqual(assess(config(), data).vehicle, "Fiat 500e")
 
     def test_telemetry_fresh_required_when_configured(self):
         data = readings()

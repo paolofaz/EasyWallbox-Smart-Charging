@@ -317,3 +317,34 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Implicazione per il planner: distinguere `potenza richiesta`, `potenza effettiva` e `limitazione DPM`. Non dedurre automaticamente un intervento DPM da 100–200 W di differenza; non applicare però una sottrazione fissa nascosta ai setpoint.
 - Preferire per la stima dell'energia erogata e per il feedback sensori di potenza effettiva adeguatamente freschi e verificati; gestire piccoli disaccordi tra fonti come diagnostica/tolleranza da collaudare, **mai** come margine aggiuntivo di sicurezza elettrica. Il DPM resta attivo e impostato normalmente a 4,4 kW nell'impianto utente.
 - Nessuna modifica firmware, controllo, parametri o versione. Osservazione registrata per i successivi test del simulatore.
+
+## 2026-11-13 — Fix: stati ON/OFF indebitamente scaduti (0.0.10)
+
+### Regressione funzionale osservata nell'installazione HA
+- All'avvio di Smart Charging 0.0.8/0.0.9 si vedono EV3, SOC 37,5%,
+  obiettivo 80%, energia batteria 33,15 kWh, potenza casa 0,824 kW
+  e la prima previsione. Poco dopo i sensori diventano indisponibili.
+  Non significa che la Kia abbia smesso di caricare.
+- Analisi di `snapshot.py`: la funzione `_binary` usava `_fresh` con
+  timeout 120 secondi per stato wallbox/Telemetry Fresh e 45 minuti
+  per collegamento delle auto. Questi stati sono persistenti e possono
+  restare ON/OFF a lungo senza aggiornare `last_reported` in HA.
+- Il watchdog `Telemetry Fresh` è già gestito da ESPHome e va a OFF
+  in caso di assenza di telemetria BLE (default circa 100 secondi);
+  questo controllo sorgente e l'availability HA non vengono aggirati.
+  SOC e potenza numerica continuano a richiedere letture aggiornate.
+
+### Correzioni
+- `snapshot.py`: nessuna TTL sugli stati binari ON/OFF; nessun bypass
+  di `unknown/unavailable`; l'identificazione richiede ancora
+  `Telemetry Fresh = ON` se configurato, wallbox collegata e veicolo univoco.
+- `sensor.py`: diagnostica coerente con stato del watchdog e non con
+  età dell'ultimo cambio ON/OFF. Lo stato ON è `watchdog_on` anche
+  se invariato a lungo; timestamp esposto solo informativamente.
+- `tests/test_snapshot.py`: caso con 8 ore di ON/OFF invariati,
+  OFF/unavailable, SOC >45 minuti non aggiornato, altri stati.
+- Manif. 0.0.10 e changelog; test automatici CI da verificare.
+- Nessun firmware, DPM, automazioni, `main` o comandi reali modificati.
+  Per il collaudo in HA servono stato corretto oltre 2 minuti, poi
+  oltre 45 minuti con SOC aggiornato; controllare un eventuale vero
+  stato Telemetry Fresh OFF/unavailable.
