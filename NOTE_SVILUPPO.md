@@ -184,3 +184,21 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Test reale con HA 2026.11, verifica entità generate, aggiornamenti, data quality, `last_reported` e relative soglie.
 - Non ancora presenti dashboard dedicata, target SOC della singola sessione, planner, calcolo tempi e lettura affidabile del consumo domestico.
 - I kWh esposti rappresentano energia teorica mancante **alla batteria** senza perdite di ricarica.
+
+## 2026-11-13 — Etichette energia alternative e principio anti-oscillazione (0.0.7)
+
+### Feedback
+- Il menu «Sensori casa / Totale meno auto / Nessuna misura» non rendeva abbastanza evidente che le tre scelte sono alternative.
+- Confermata la priorità: raggiungere il SOC richiesto **entro la partenza**, preferendo se possibile evitare ricarica ad alta potenza durante periodi domestici impegnativi; il DPM rimane responsabile delle protezioni rapide.
+
+### Modifiche
+- UI IT/EN: modalità A (casa misurata con sensori dedicati tipo Shelly), B (casa dedotta da totale comprensivo auto, spesso DPM, meno potenza auto), C (nessuna misura). Menu chiaramente alternativi anche nelle Opzioni.
+- Nella descrizione del metodo B è confermato che il totale deve includere l'auto: non assumere che il DPM lo includa finché non verificato.
+- Nessuna variazione a formule, configurazioni salvate, entità, firmware, attuatori o automazioni. Solo etichette, documentazione e test di coerenza.
+- Esaminato un campione di carico domestico fornito dall'utente (file CSV **non pubblicati** e non committati): il profilo mostra più brevi intervalli a carico elevato invece di una richiesta continua. Lo stato dell'elettrodomestico include periodi sconosciuti, quindi non adottarlo come prerequisito del planner.
+- Nessuna integrazione per singoli elettrodomestici approvata. Periodi domestici impegnativi, se utilizzati, restano preferenze generiche subordinate all'orario di partenza; non inseguire campioni istantanei.
+- Manifest 0.0.7; release normale generata da sviluppo-test, main invariato.
+
+### Verifiche
+- Test statici e pubblicazione da registrare dopo esecuzione CI.
+- Verifica delle nuove etichette su Home Assistant reale; con la v0.1 sarà necessario il collaudo della pianificazione in sola simulazione.

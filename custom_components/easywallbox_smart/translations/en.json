@@ -33,25 +33,25 @@
         }
       },
       "energy_menu": {
-        "title": "Power measurements",
-        "description": "Choose a measurement topology, independent of Shelly hardware or the number of floors.",
+        "title": "Power measurements — choose one method",
+        "description": "Choose ONE of three alternatives, not a combination: A direct home-only measurements; B site total (including EV) minus EV charging (wallbox DPM or another meter); C no power sensors.",
         "menu_options": {
-          "house_sources": "One or more house-only power sensors",
-          "total_sources": "Site total including EV minus EV power",
-          "no_sources": "No power sensors available"
+          "house_sources": "A · Home measured (e.g. Shelly)",
+          "total_sources": "B · Home calculated (DPM − EV)",
+          "no_sources": "C · No power sensors"
         }
       },
       "house_sources": {
-        "title": "House power",
-        "description": "Choose one or more non-overlapping sensors covering the whole house without EV charging. EV power is optional, including ESPHome.",
+        "title": "Method A — Direct sensors (e.g. Shelly)",
+        "description": "Choose one or more non-overlapping sensors covering the house WITHOUT EV charging. An independent EV power sensor is optional.",
         "data": {
           "house_power_sources": "House-only power sensors",
           "ev_power_sensor": "EV charging power (optional)"
         }
       },
       "total_sources": {
-        "title": "Site total minus EV",
-        "description": "The total must include EV charging. Check DPM meter placement before subtracting.",
+        "title": "Method B — Total minus EV (DPM or meter)",
+        "description": "Home = site total − EV. The total sensor (wallbox DPM or another meter) MUST include EV charging; verify coverage before use. EV power can come from ESPHome, Shelly or another sensor.",
         "data": {
           "site_total_power": "Total power including EV",
           "ev_power_sensor": "EV charging power"
@@ -75,7 +75,7 @@
           "wallbox": "Wallbox sensors",
           "vehicles": "Vehicles",
           "finish": "Save changes",
-          "energy_menu": "Power measurements"
+          "energy_menu": "Power measurement method"
         }
       },
       "wallbox": {
@@ -143,25 +143,26 @@
         "description": "At least one vehicle is required."
       },
       "energy_menu": {
-        "title": "Power measurements",
+        "title": "Power measurements — choose one method",
         "menu_options": {
-          "house_sources": "House-only sensors",
-          "total_sources": "Site total minus EV",
-          "no_sources": "No measurements",
+          "house_sources": "A · Home measured (e.g. Shelly)",
+          "total_sources": "B · Home calculated (DPM − EV)",
+          "no_sources": "C · No power sensors",
           "init": "Back"
-        }
+        },
+        "description": "Choose ONE of three alternatives, not a combination: A direct home-only measurements; B site total (including EV) minus EV charging (wallbox DPM or another meter); C no power sensors."
       },
       "house_sources": {
-        "title": "House power",
-        "description": "Choose one or more non-overlapping sensors covering the whole house without EV charging. EV power is optional, including ESPHome.",
+        "title": "Method A — Direct sensors (e.g. Shelly)",
+        "description": "Choose one or more non-overlapping sensors covering the house WITHOUT EV charging. An independent EV power sensor is optional.",
         "data": {
           "house_power_sources": "House-only power sensors",
           "ev_power_sensor": "EV charging power (optional)"
         }
       },
       "total_sources": {
-        "title": "Site total minus EV",
-        "description": "The total must include EV charging. Check DPM meter placement before subtracting.",
+        "title": "Method B — Total minus EV (DPM or meter)",
+        "description": "Home = site total − EV. The total sensor (wallbox DPM or another meter) MUST include EV charging; verify coverage before use. EV power can come from ESPHome, Shelly or another sensor.",
         "data": {
           "site_total_power": "Total power including EV",
           "ev_power_sensor": "EV charging power"

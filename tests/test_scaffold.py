@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.6")
+        self.assertEqual(manifest["version"], "0.0.7")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -54,6 +54,22 @@ class TestScaffold(unittest.TestCase):
                 self.assertIn("vehicles", t["options"]["step"])
                 self.assertIn("energy_menu", t["config"]["step"])
                 self.assertIn("energy_menu", t["options"]["step"])
+
+    def test_energy_methods_clearly_alternative(self):
+        for lang in ("it", "en"):
+            with self.subTest(lang=lang):
+                tr = json.loads(
+                    (INTEGRATION / "translations" / f"{lang}.json").read_text()
+                )
+                for section in ("config", "options"):
+                    step = tr[section]["step"]["energy_menu"]
+                    self.assertIn("ONE" if lang == "en" else "UNA", step["description"])
+                    expected = ("house_sources", "total_sources", "no_sources")
+                    for letter, key in zip("ABC", expected):
+                        self.assertTrue(step["menu_options"][key].startswith(letter + " · "))
+                    self.assertIn("DPM", step["menu_options"]["total_sources"])
+                    self.assertIn("EV" if lang == "en" else "ricarica",
+                                  tr[section]["step"]["total_sources"]["description"])
 
     def test_config_entry_migration_present(self):
         text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")

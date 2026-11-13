@@ -33,25 +33,25 @@
         }
       },
       "energy_menu": {
-        "title": "Misure elettriche",
-        "description": "Scegli una topologia, senza dipendere da Shelly o dal numero di piani dell'abitazione.",
+        "title": "Misure elettriche — scegli un metodo",
+        "description": "Scegli UNA delle tre modalità alternative, non vanno combinate: A misura diretta dei consumi della casa; B calcolo da potenza totale comprensiva dell'auto meno la ricarica (DPM wallbox o altro contatore); C nessun sensore.",
         "menu_options": {
-          "house_sources": "Uno o più sensori della casa, esclusa l'auto",
-          "total_sources": "Totale con auto meno potenza auto",
-          "no_sources": "Nessun sensore disponibile"
+          "house_sources": "A · Casa misurata (es. Shelly)",
+          "total_sources": "B · Casa calcolata (DPM − ricarica)",
+          "no_sources": "C · Nessun sensore di potenza"
         }
       },
       "house_sources": {
-        "title": "Potenza della casa",
-        "description": "Seleziona da uno a più sensori che coprono tutta la casa senza includere la ricarica e senza sovrapporsi. Potenza auto facoltativa, anche da ESPHome.",
+        "title": "Metodo A — Misura diretta (es. Shelly)",
+        "description": "Seleziona uno o più sensori che misurano la casa SENZA la wallbox, senza sovrapposizioni. Facoltativo: un sensore separato per la potenza della ricarica.",
         "data": {
           "house_power_sources": "Sensori potenza casa",
           "ev_power_sensor": "Potenza ricarica auto (facoltativa)"
         }
       },
       "total_sources": {
-        "title": "Totale meno auto",
-        "description": "Il totale deve comprendere anche l'auto. Verifica il posizionamento del misuratore DPM prima di utilizzare la differenza.",
+        "title": "Metodo B — Calcolo dal totale (DPM o altro)",
+        "description": "Casa = potenza totale − ricarica. Il sensore totale (DPM wallbox o altro contatore) DEVE comprendere anche la ricarica; verificarlo prima dell'uso. Potenza auto da ESPHome, Shelly o altro sensore.",
         "data": {
           "site_total_power": "Potenza totale inclusa auto",
           "ev_power_sensor": "Potenza ricarica auto"
@@ -75,7 +75,7 @@
           "wallbox": "Sensori wallbox",
           "vehicles": "Veicoli",
           "finish": "Salva modifiche",
-          "energy_menu": "Misure elettriche"
+          "energy_menu": "Metodo di misura dei consumi"
         }
       },
       "wallbox": {
@@ -143,25 +143,26 @@
         "description": "Devi configurare almeno un veicolo."
       },
       "energy_menu": {
-        "title": "Misure elettriche",
+        "title": "Misure elettriche — scegli un metodo",
         "menu_options": {
-          "house_sources": "Sensori casa",
-          "total_sources": "Totale meno auto",
-          "no_sources": "Nessuna misura",
+          "house_sources": "A · Casa misurata (es. Shelly)",
+          "total_sources": "B · Casa calcolata (DPM − ricarica)",
+          "no_sources": "C · Nessun sensore di potenza",
           "init": "Indietro"
-        }
+        },
+        "description": "Scegli UNA delle tre modalità alternative, non vanno combinate: A misura diretta dei consumi della casa; B calcolo da potenza totale comprensiva dell'auto meno la ricarica (DPM wallbox o altro contatore); C nessun sensore."
       },
       "house_sources": {
-        "title": "Potenza della casa",
-        "description": "Seleziona da uno a più sensori che coprono tutta la casa senza includere la ricarica e senza sovrapporsi. Potenza auto facoltativa, anche da ESPHome.",
+        "title": "Metodo A — Misura diretta (es. Shelly)",
+        "description": "Seleziona uno o più sensori che misurano la casa SENZA la wallbox, senza sovrapposizioni. Facoltativo: un sensore separato per la potenza della ricarica.",
         "data": {
           "house_power_sources": "Sensori potenza casa",
           "ev_power_sensor": "Potenza ricarica auto (facoltativa)"
         }
       },
       "total_sources": {
-        "title": "Totale meno auto",
-        "description": "Il totale deve comprendere anche l'auto. Verifica il posizionamento del misuratore DPM prima di utilizzare la differenza.",
+        "title": "Metodo B — Calcolo dal totale (DPM o altro)",
+        "description": "Casa = potenza totale − ricarica. Il sensore totale (DPM wallbox o altro contatore) DEVE comprendere anche la ricarica; verificarlo prima dell'uso. Potenza auto da ESPHome, Shelly o altro sensore.",
         "data": {
           "site_total_power": "Potenza totale inclusa auto",
           "ev_power_sensor": "Potenza ricarica auto"

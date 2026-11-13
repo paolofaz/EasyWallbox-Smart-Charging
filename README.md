@@ -2,7 +2,7 @@
 
 Custom integration Python per **Home Assistant** per pianificare la ricarica di **veicoli configurabili da 1 a N** (inclusi Fiat 500e e Kia EV3), utilizzando stati ESPHome, SOC e sorgenti di potenza configurabili (Shelly, ESPHome o altri sensori Home Assistant).
 
-> **Stato: osservazione read-only v0.0.6, ancora precedente alla v0.1 di simulazione.** Espone veicolo, SOC, target abituale, kWh teorici nella batteria e qualità dei dati. **Non invia comandi alla wallbox o alle auto**. Non pianifica ancora orari e non espone una dashboard completa.
+> **Stato: osservazione read-only v0.0.7, ancora precedente alla v0.1 di simulazione.** Espone veicolo, SOC, target abituale, kWh teorici nella batteria e qualità dei dati. **Non invia comandi alla wallbox o alle auto**. Non pianifica ancora orari e non espone una dashboard completa.
 
 ## Sicurezza e separazione delle responsabilità
 
@@ -16,21 +16,21 @@ Custom integration Python per **Home Assistant** per pianificare la ricarica di 
 
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
-- `0.0.6`: primi cinque sensori HA in sola lettura (veicolo, SOC, target, kWh batteria, qualità). La **v0.1** aggiungerà planner e Lovelace dedicata, sempre senza comandi.
+- `0.0.7`: stessi cinque sensori HA in sola lettura, più chiarezza nelle tre modalità energetiche; v0.0.6 introduceva la prima osservazione. La 0.0.7 espone (veicolo, SOC, target, kWh batteria, qualità). La **v0.1** aggiungerà planner e Lovelace dedicata, sempre senza comandi.
 - Le versioni di prova `0.x` vengono pubblicate come **release GitHub normali**, ma sono **software sperimentale e non stabile**. I tag puntano ai commit verificati di `sviluppo-test`, senza modificare `main`. Nessuna compatibilità con HA reale è ancora certificata.
 
 ## Installazione tramite Marketplace (release di prova)
 
-Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.6`:
+Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.7`:
 
 1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
 2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
-3. Selezionare la **release normale** `0.0.6` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
-4. Installare la release `0.0.6`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
+3. Selezionare la **release normale** `0.0.7` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
+4. Installare la release `0.0.7`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
 
 > **Attenzione:** `main` contiene soltanto `LICENSE`. La release punta all'esatto commit di `sviluppo-test`. **Il branch predefinito `main` non contiene ancora `hacs.json` né l'integrazione: il Marketplace potrebbe quindi non riuscire a riconoscere il repository durante l'aggiunta da link.** Se il repository non viene accettato, riportare l'errore e non installare il fallback di `main`.
 
-**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.6` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.7` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
 
 <!-- ha-marketplace:exclude-start -->
 Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
@@ -95,6 +95,23 @@ Licenza: MIT.
 
 Dalla **0.0.4** `integration_type` è **`hub`**, non `helper`. EasyWallbox Smart Charging coordina sorgenti dati provenienti da più dispositivi/servizi, mentre `helper` è riservato a funzioni come i contatori e i sensori derivati. `iot_class: calculated` rimane invariato poiché la nostra integrazione elabora stati forniti da altre integrazioni. Questa modifica **non** cambia le entità mappate e non introduce controlli reali.
 
+
+### Scelta modalità in Home Assistant (miglioramento UI 0.0.7)
+
+La schermata **Misure elettriche — scegli un metodo** presenta **tre alternative esclusive**:
+
+- **A · Casa misurata (es. Shelly):** un elenco di sensori dedicati ai consumi domestici che NON includono la ricarica; opzionalmente un sensore separato per la potenza auto. È il metodo più adatto quando sono disponibili contatori dedicati.
+- **B · Casa calcolata (DPM − ricarica):** il totale deve INCLUDERE il ramo auto. Si sottrae la potenza auto letta da ESPHome, Shelly o altra fonte. Il totale può arrivare dal DPM della wallbox **o da un altro contatore generale**. Il DPM non deve essere disattivato, e la sua effettiva copertura va verificata.
+- **C · Nessun sensore di potenza:** l'integrazione resta configurabile ma non presume potenza di casa uguale a zero.
+
+**A, B e C sono modalità alternative, non si sommano.** Per l'abitazione utilizzata come banco prova: A con sensori Shelly dei rami domestici e sensore Shelly del ramo auto, mantenendo il DPM attivo.
+
+### Pianificazione e carichi domestici: principio di progetto
+
+Il futuro planner deve **privilegiare il raggiungimento del SOC entro la partenza**, evitando quando c'è margine le fasce di consumo domestico elevato e le continue oscillazioni della potenza imposta dal DPM. Non deve regolare la potenza a ogni picco né replicare le protezioni elettriche del DPM.
+
+Le eventuali abitudini domestiche potranno in futuro essere **parametri generici facoltativi** (fasce prevedibilmente impegnative), non codice specifico per lavastoviglie, lavatrice o climatizzatori. Non è stata approvata alcuna nuova integrazione con i singoli elettrodomestici; prima servono prove di beneficio concreto. Il sensore filtrato e storicizzato è utile per analisi a tempi lenti, non sostituisce la sicurezza rapida del DPM.
+
 ## Misure elettriche flessibili — 0.0.5
 
 Nella configurazione si può scegliere una delle seguenti tre situazioni:
@@ -129,4 +146,4 @@ Soglie iniziali, **da verificare su HA reale**: fino a 120 secondi per collegame
 
 **0.0.6 vs 0.0.5:** la 0.0.5, già pubblicata, ha introdotto una configurazione energetica flessibile. Questa v0.0.6 conserva la configurazione, ma non usa ancora le letture DPM per stime di carico o pianificazione: la copertura del contatore DPM deve ancora essere verificata confrontandola con gli Shelly.
 
-**Prova e rollback:** aggiorna dal Marketplace alla 0.0.6 e riavvia Home Assistant, poi verifica i cinque sensori. Se ci sono errori consulta il registro HA e riporta soltanto il messaggio/traceback, senza dati personali o file `.storage`. Se necessario reinstalla la release 0.0.5 e riavvia. Non disattivare le automazioni Fiat.
+**Prova e rollback:** aggiorna dal Marketplace alla 0.0.7 e riavvia Home Assistant, poi verifica i cinque sensori. Se ci sono errori consulta il registro HA e riporta soltanto il messaggio/traceback, senza dati personali o file `.storage`. Se necessario reinstalla la release 0.0.5 e riavvia. Non disattivare le automazioni Fiat.

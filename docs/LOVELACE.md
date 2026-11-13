@@ -59,3 +59,7 @@ Il badge **SIMULAZIONE — NESSUN COMANDO INVIATO** deve essere sempre evidente 
 ## Sensori iniziali di osservazione (0.0.6)
 
 La 0.0.6 espone veicolo identificato, SOC attuale, obiettivo abituale, kWh teorici batteria e qualità dati, ma **non costituisce ancora la dashboard v0.1**. I valori sconosciuti non sono zero. Nella dashboard futura si aggiungeranno diagnostica completa, override della sessione, tempistiche, pianificazione in simulazione e fonti energetiche validate.
+
+## Vincolo di progetto 13/11/2026 — partenza e stabilità
+
+La pianificazione deve avere come vincolo primario **SOC obiettivo entro l'orario di partenza**. Quando il margine lo permette, evitare di caricare ad alta potenza durante periodi domestici normalmente impegnativi, senza inseguire picchi o azionare ripetutamente lo switch di pausa ricarica. Protezioni e variazioni rapide restano al DPM attivo. Le modalità di misura **A sensori casa**, **B totale comprensivo EV meno EV**, **C nessuna misura** sono alternative; le abitudini domestiche non devono dipendere da marche o singoli elettrodomestici. Nessun automatismo aggiuntivo approvato in questa fase.
