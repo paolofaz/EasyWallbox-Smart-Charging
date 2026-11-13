@@ -434,3 +434,26 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
   carichi simultanei e dashboard v0.1 completa.
 - CI e verifica sul vero HA sono da completare prima di dichiarare
   la funzionalità collaudata. Firmware, automazioni, DPM e main invariati.
+
+## 2026-11-13 — Semplificazione e ETA con potenza EV effettiva (0.0.13)
+
+### Problema reale
+- Kia EV3 SOC 50,5%, target 80%, 23,01 kWh mancanti. La 0.0.12 stimava ~6h perché scambiava la disponibilità 4,4 kW meno casa per potenza effettiva di ricarica; la wallbox stava invece erogando circa 3 kW.
+- La pagina sperimentale con Charge power, Power set e un solo sensore lavastoviglie era troppo tecnica e rigida. Erano esposti troppi sensori duplicati o non utilizzabili, e i nomi inglesi erano hardcoded.
+
+### Decisioni
+- La previsione di fine deriva da kWh ancora necessari nella batteria / (kW effettivamente misurati dalla wallbox × efficienza AC ipotetica 0,90). Non usare la potenza residua contrattuale come potenza EV.
+- Presentare soltanto veicolo, SOC, target, energia necessaria, prossima partenza, fine stimata. La qualità dati è diagnostica; eliminare i sensori di prova ridondanti.
+- Mettere da parte l'opzione singolo elettrodomestico anziché irrigidire un modello ancora non concordato. Il motore sperimentale rimane isolato e non è attivo in HA.
+
+### Modifiche sviluppo-test
+- Nuovo charging_eta.py con controlli su W/kW, sensore EV configurato, data freshness <=300s, potenza nulla/non valida, SOC assente; nessuna ETA inventata.
+- Sensor platform ridotta a sei sensori principali più diagnostica, nomi da traduzioni IT/EN via translation_key, attributi sulla stima chiari. Le entità di prova precedenti sono ritirate.
+- Rimozione dal registro solo degli ID di entità sperimentali di questa config entry; non toccare Shelly/ESPHome. Eventuali dashboard utente che le richiamavano vanno aggiornate.
+- Options Flow senza pagina di simulazione per un singolo carico; modalità energetiche A/B continuano a permettere la scelta della potenza EV effettiva.
+- Test isolati/stati validi, obsolescenza e test di configurazione; README, docs/LOVELACE.md e note release aggiornati.
+
+### Limiti
+- ETA è una proiezione della potenza attuale costante, NON una previsione garantita; il DPM può limitarla. Il rendimento AC 90% è provvisorio.
+- Nessun servizio HA, comando BLE, modifica al DPM, firmware, automazioni o branch main. Dashboard v0.1 ancora da realizzare.
+- Aggiornare la fonte di progetto con questa decisione dopo collaudo HA.

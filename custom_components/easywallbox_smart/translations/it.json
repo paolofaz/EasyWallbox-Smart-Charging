@@ -76,8 +76,7 @@
           "vehicles": "Veicoli",
           "finish": "Salva modifiche",
           "energy_menu": "Metodo di misura dei consumi",
-          "planning": "Pianificazione (potenza e partenza)",
-          "scenario": "Simulazione carico domestico (facoltativa)"
+          "planning": "Pianificazione (potenza e partenza)"
         }
       },
       "wallbox": {
@@ -152,22 +151,22 @@
           "no_sources": "C · Nessun sensore di potenza",
           "init": "Indietro"
         },
-        "description": "Scegli UNA delle tre modalità alternative, non vanno combinate: A misura diretta dei consumi della casa; B calcolo da potenza totale comprensiva dell'auto meno la ricarica (DPM wallbox o altro contatore); C nessun sensore."
+        "description": "Scegli UNA modalità di misura. La previsione di fine ricarica usa soltanto la potenza effettiva dell'auto, non la potenza residua dell'impianto."
       },
       "house_sources": {
         "title": "Metodo A — Misura diretta (es. Shelly)",
-        "description": "Seleziona uno o più sensori che misurano la casa SENZA la wallbox, senza sovrapposizioni. Facoltativo: un sensore separato per la potenza della ricarica.",
+        "description": "Seleziona i sensori che misurano solo i consumi domestici, senza wallbox. Per calcolare l'ora di fine ricarica seleziona anche la potenza effettivamente assorbita dall'auto (Shelly wallbox oppure ESPHome Charging Power). Non selezionare Charge power o Power set: sono limiti, non la potenza reale.",
         "data": {
           "house_power_sources": "Sensori potenza casa",
-          "ev_power_sensor": "Potenza ricarica auto (facoltativa)"
+          "ev_power_sensor": "Potenza effettiva ricarica auto (per la stima fine)"
         }
       },
       "total_sources": {
         "title": "Metodo B — Calcolo dal totale (DPM o altro)",
-        "description": "Casa = potenza totale − ricarica. Il sensore totale (DPM wallbox o altro contatore) DEVE comprendere anche la ricarica; verificarlo prima dell'uso. Potenza auto da ESPHome, Shelly o altro sensore.",
+        "description": "Casa = totale impianto − potenza effettiva auto. Il totale deve includere la ricarica; la stessa potenza effettiva permette la stima dell'ora di completamento. Non utilizzare la potenza impostata o il pilot come potenza effettiva.",
         "data": {
           "site_total_power": "Potenza totale inclusa auto",
-          "ev_power_sensor": "Potenza ricarica auto"
+          "ev_power_sensor": "Potenza effettiva ricarica auto (Shelly / Charging Power)"
         }
       },
       "planning": {
@@ -178,24 +177,12 @@
           "departure_weekday": "Partenza abituale feriali (HH:MM)",
           "departure_weekend": "Partenza abituale weekend (HH:MM)"
         }
-      },
-      "scenario": {
-        "title": "Simulazione — limite ricarica e carico domestico",
-        "description": "Sola lettura. Seleziona facoltativamente il numero Charge power (richiesta), il sensore Power set (conferma), e un sensore ON/OFF di carico. Il picco in kW è considerato aggiuntivo al consumo casa corrente: ipotesi prudente, non un limite elettrico né un comando. La durata è uno scenario, non una previsione certa.",
-        "data": {
-          "ev_requested_limit": "Potenza di ricarica richiesta (entità number, facoltativa)",
-          "ev_confirmed_limit": "Potenza di ricarica confermata (entità sensor, facoltativa)",
-          "load_active_entity": "Carico domestico attivo (binary_sensor, facoltativo)",
-          "load_peak_kw": "Picco aggiuntivo ipotizzato del carico (kW)",
-          "load_duration_minutes": "Durata prudenziale ipotizzata (minuti)"
-        }
       }
     },
     "error": {
       "invalid_vehicle": "Nome duplicato, sensore SOC già assegnato o valori non validi.",
       "vehicle_required": "Configura almeno un veicolo prima di salvare.",
-      "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti.",
-      "invalid_scenario": "Per il carico anticipabile servono sensore ON/OFF, picco stimato e durata. Nessun dato sarà usato per comandare la wallbox."
+      "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti."
     }
   },
   "entity": {
@@ -210,34 +197,16 @@
         "name": "Obiettivo SOC"
       },
       "remaining_energy": {
-        "name": "Energia residua nella batteria"
+        "name": "Energia ancora da caricare"
+      },
+      "departure_time": {
+        "name": "Prossima partenza"
+      },
+      "estimated_finish": {
+        "name": "Fine stimata alla potenza attuale"
       },
       "data_quality": {
         "name": "Qualità dati"
-      },
-      "house_power": {
-        "name": "Potenza casa (simulazione)"
-      },
-      "departure_time": {
-        "name": "Prossima partenza (simulazione)"
-      },
-      "recommended_start": {
-        "name": "Inizio consigliato (simulazione)"
-      },
-      "estimated_finish": {
-        "name": "Fine se consumo casa restasse costante (simulazione)"
-      },
-      "plan_status": {
-        "name": "Scenario con consumo casa attuale (simulazione)"
-      },
-      "required_mean_power": {
-        "name": "Potenza media necessaria alla partenza (simulazione)"
-      },
-      "demo_plan": {
-        "name": "Scenario ipotetico dal 30%"
-      },
-      "simulated_decision": {
-        "name": "Decisione carico domestico (solo simulazione)"
       }
     }
   }

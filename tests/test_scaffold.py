@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.12")
+        self.assertEqual(manifest["version"], "0.0.13")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -71,24 +71,26 @@ class TestScaffold(unittest.TestCase):
                     self.assertIn("EV" if lang == "en" else "ricarica",
                                   tr[section]["step"]["total_sources"]["description"])
 
-    def test_optional_planning_flow_is_read_only(self):
-        flow = (INTEGRATION / "config_flow.py").read_text()
-        sensor = (INTEGRATION / "sensor.py").read_text()
+    def test_simple_planning_ui_and_diagnostic_extras(self):
+        flow = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
+        source = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
         self.assertIn("async_step_planning", flow)
-        self.assertIn("continuous_kw", flow)
-        self.assertIn("departure_weekday", flow)
-        self.assertIn("departure_weekend", flow)
-        self.assertIn("SensorDeviceClass.TIMESTAMP", sensor)
-        self.assertIn('"required_mean_power"', sensor)
-        self.assertIn('"scenario_not_a_prediction"', sensor)
-        self.assertIn("required_average_exceeds_site_limit", (
-            INTEGRATION / "live_planning.py"
-        ).read_text(encoding="utf-8"))
-        for lang in ("it", "en"):
-            data = json.loads(
-                (INTEGRATION / "translations" / f"{lang}.json").read_text()
-            )
-            self.assertIn("required_mean_power", data["entity"]["sensor"])
+        self.assertNotIn("async_step_scenario", flow)
+        self.assertNotIn('"scenario", "finish"', flow)
+        self.assertIn("_attr_translation_key = kind", source)
+        self.assertIn("EntityCategory.DIAGNOSTIC", source)
+        self.assertIn("from .charging_eta import", source)
+        self.assertIn("charging_eta_status", source)
+        self.assertIn("registry.async_remove(old_entity_id)", source)
+        self.assertIn("RETIRED_KINDS", source)
+        main_fields = source.split("FIELDS = {", 1)[1].split("RETIRED_KINDS", 1)[0]
+        self.assertIn('"estimated_finish"', main_fields)
+        self.assertIn('"departure_time"', main_fields)
+        for retired in (
+            "house_power", "required_mean_power", "recommended_start",
+            "plan_status", "demo_plan", "simulated_decision"
+        ):
+            self.assertNotIn(f'"{retired}":', main_fields)
         for lang in ("it", "en"):
             tr = json.loads(
                 (INTEGRATION / "translations" / f"{lang}.json").read_text()
@@ -97,41 +99,32 @@ class TestScaffold(unittest.TestCase):
                 set(tr["options"]["step"]["planning"]["data"]),
                 {"continuous_kw", "departure_weekday", "departure_weekend"}
             )
-
-    def test_telemetry_diagnostics_without_safety_bypass(self):
-        source = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
-        self.assertIn("wallbox_telemetry_age_seconds", source)
-        self.assertIn("wallbox_telemetry_diagnostic", source)
-        self.assertIn("wallbox_telemetry_freshness_policy", source)
-        snapshot = (INTEGRATION / "snapshot.py").read_text(encoding="utf-8")
-        self.assertIn("wallbox_telemetry_unavailable", snapshot)
-        self.assertIn("def telemetry_diagnostic(", snapshot)
-        self.assertNotIn("WALLBOX_MAX_AGE", snapshot)
-
-    def test_optional_load_simulation_has_no_control_calls(self):
-        flow = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
-        adapter = (INTEGRATION / "simulation.py").read_text(encoding="utf-8")
-        sensor = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
-        self.assertIn("async_step_scenario", flow)
-        self.assertIn("ev_confirmed_limit", flow)
-        self.assertIn("load_active_entity", flow)
-        self.assertIn('"simulated_decision"', sensor)
-        self.assertIn("manual_override_respected", adapter)
-        self.assertNotIn("hass.services.async_call", adapter)
-        self.assertNotIn("hass.services.async_call", sensor)
-        self.assertNotIn("async_set_value", adapter)
-        for lang in ("it", "en"):
-            tr = json.loads(
-                (INTEGRATION / "translations" / f"{lang}.json").read_text()
-            )
+            self.assertNotIn("scenario", tr["options"]["step"])
             self.assertEqual(
-                set(tr["options"]["step"]["scenario"]["data"]),
+                set(tr["entity"]["sensor"]),
                 {
-                    "ev_requested_limit", "ev_confirmed_limit",
-                    "load_active_entity", "load_peak_kw", "load_duration_minutes",
+                    "active_vehicle", "current_soc", "target_soc",
+                    "remaining_energy", "departure_time",
+                    "estimated_finish", "data_quality"
                 },
             )
-            self.assertIn("simulated_decision", tr["entity"]["sensor"])
+
+    def test_telemetry_diagnostics_keeps_watchdog(self):
+        sensor = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
+        self.assertIn("telemetry_diagnostic(source)", sensor)
+        self.assertIn("telemetry_age_seconds", sensor)
+        snapshot = (INTEGRATION / "snapshot.py").read_text(encoding="utf-8")
+        self.assertIn("wallbox_telemetry_unavailable", snapshot)
+        self.assertNotIn("WALLBOX_MAX_AGE", snapshot)
+
+    def test_experimental_load_simulation_is_dormant(self):
+        adapter = (INTEGRATION / "simulation.py").read_text(encoding="utf-8")
+        source = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
+        self.assertIn("manual_override_respected", adapter)
+        self.assertNotIn("from .simulation import", source)
+        self.assertNotIn("evaluate_simulation(", source)
+        self.assertNotIn("hass.services.async_call", adapter)
+        self.assertNotIn("hass.services.async_call", source)
 
     def test_config_entry_migration_present(self):
         text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")

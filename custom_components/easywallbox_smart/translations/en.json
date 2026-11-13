@@ -76,8 +76,7 @@
           "vehicles": "Vehicles",
           "finish": "Save changes",
           "energy_menu": "Power measurement method",
-          "planning": "Planning (power and departure)",
-          "scenario": "Home load simulation (optional)"
+          "planning": "Planning (power and departure)"
         }
       },
       "wallbox": {
@@ -152,22 +151,22 @@
           "no_sources": "C · No power sensors",
           "init": "Back"
         },
-        "description": "Choose ONE of three alternatives, not a combination: A direct home-only measurements; B site total (including EV) minus EV charging (wallbox DPM or another meter); C no power sensors."
+        "description": "Choose ONE measurement method. The finish estimate uses measured EV charging power, not spare site capacity."
       },
       "house_sources": {
         "title": "Method A — Direct sensors (e.g. Shelly)",
-        "description": "Choose one or more non-overlapping sensors covering the house WITHOUT EV charging. An independent EV power sensor is optional.",
+        "description": "Select non-overlapping house-only power sensors (excluding the wallbox). To estimate the finish time, also select measured charging power (wallbox Shelly or ESPHome Charging Power). Do not use Charge power or Power set; they are limits, not actual draw.",
         "data": {
           "house_power_sources": "House-only power sensors",
-          "ev_power_sensor": "EV charging power (optional)"
+          "ev_power_sensor": "Actual EV charging power (for finish ETA)"
         }
       },
       "total_sources": {
         "title": "Method B — Total minus EV (DPM or meter)",
-        "description": "Home = site total − EV. The total sensor (wallbox DPM or another meter) MUST include EV charging; verify coverage before use. EV power can come from ESPHome, Shelly or another sensor.",
+        "description": "Home = site total − actual EV power. The site total must include charging. Use actual measured charging power for the finish ETA, not a requested limit or pilot.",
         "data": {
           "site_total_power": "Total power including EV",
-          "ev_power_sensor": "EV charging power"
+          "ev_power_sensor": "Actual EV charging power (Shelly / Charging Power)"
         }
       },
       "planning": {
@@ -178,30 +177,18 @@
           "departure_weekday": "Usual weekday departure (HH:MM)",
           "departure_weekend": "Usual weekend departure (HH:MM)"
         }
-      },
-      "scenario": {
-        "title": "Simulation — charging limit and home load",
-        "description": "Read-only. Optionally select Charge power (requested number), Power set (confirmed sensor) and one load ON/OFF sensor. The configured peak is conservatively added to the current home load; it is not an electrical safeguard or a device command. Duration is a scenario, not a prediction.",
-        "data": {
-          "ev_requested_limit": "Requested charging limit (number entity, optional)",
-          "ev_confirmed_limit": "Confirmed charging limit (sensor entity, optional)",
-          "load_active_entity": "Active household load (binary_sensor, optional)",
-          "load_peak_kw": "Assumed extra peak from this load (kW)",
-          "load_duration_minutes": "Assumed load duration (minutes)"
-        }
       }
     },
     "error": {
       "invalid_vehicle": "Duplicate name or SOC source, or invalid parameters.",
       "vehicle_required": "Configure at least one vehicle before saving.",
-      "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated.",
-      "invalid_scenario": "Configure all three: load ON/OFF sensor, expected peak and duration. No wallbox commands are sent."
+      "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated."
     }
   },
   "entity": {
     "sensor": {
       "active_vehicle": {
-        "name": "Active vehicle"
+        "name": "Connected vehicle"
       },
       "current_soc": {
         "name": "Current SOC"
@@ -210,34 +197,16 @@
         "name": "Target SOC"
       },
       "remaining_energy": {
-        "name": "Battery energy needed"
+        "name": "Battery energy remaining"
+      },
+      "departure_time": {
+        "name": "Next departure"
+      },
+      "estimated_finish": {
+        "name": "Estimated finish at current charging power"
       },
       "data_quality": {
         "name": "Data quality"
-      },
-      "house_power": {
-        "name": "House power (preview)"
-      },
-      "departure_time": {
-        "name": "Next departure (preview)"
-      },
-      "recommended_start": {
-        "name": "Recommended start (preview)"
-      },
-      "estimated_finish": {
-        "name": "Finish if home power stays constant (preview)"
-      },
-      "plan_status": {
-        "name": "Current home load scenario (preview)"
-      },
-      "required_mean_power": {
-        "name": "Mean power required by departure (preview)"
-      },
-      "demo_plan": {
-        "name": "Hypothetical 30% SOC scenario"
-      },
-      "simulated_decision": {
-        "name": "Home load decision (simulation only)"
       }
     }
   }
