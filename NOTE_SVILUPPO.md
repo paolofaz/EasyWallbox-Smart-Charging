@@ -348,3 +348,10 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
   Per il collaudo in HA servono stato corretto oltre 2 minuti, poi
   oltre 45 minuti con SOC aggiornato; controllare un eventuale vero
   stato Telemetry Fresh OFF/unavailable.
+
+## 2026-11-13 — EV3: confronto Pilot Advertised Power e Charging Power
+- Durante la ricarica EV3 l'utente legge 3,19 kW di Pilot Advertised Power e 3,03 kW di Charging Power: scarto 160 W; differenze analoghe osservate con Fiat 500e.
+- Verifica firmware main: Pilot Advertised Power deriva dal PWM del Control Pilot e da 230 V fissi (formula pwm_raw * 0.06 * 0.23); Charging Power deriva dalla telemetria BLE (campo AD p[11]/1000). Il primo non è una misura della potenza realmente assorbita.
+- In uno screenshot precedente erano visibili 222 V (non necessariamente contemporanei). A parità di corrente, una potenza teorica di 3,19 kW a 230 V equivale a circa 3,08 kW a 222 V: circa 110 W dello scarto possono essere spiegati solo dalla tensione. I restanti ~50 W possono dipendere da regolazione dell'auto o misure; serve acquisizione sincronizzata.
+- Non confondere differenza pilot/assorbimento con perdite energetiche o intervento DPM. Per il modello usare Charging Power/Shelly come assorbimento effettivo; pilot come limite teorico di corrente. Non introdurre correzioni fisse.
+- Nessun cambio software attuativo, release, DPM o firmware.
