@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.7")
+        self.assertEqual(manifest["version"], "0.0.8")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -70,6 +70,23 @@ class TestScaffold(unittest.TestCase):
                     self.assertIn("DPM", step["menu_options"]["total_sources"])
                     self.assertIn("EV" if lang == "en" else "ricarica",
                                   tr[section]["step"]["total_sources"]["description"])
+
+    def test_optional_planning_flow_is_read_only(self):
+        flow = (INTEGRATION / "config_flow.py").read_text()
+        sensor = (INTEGRATION / "sensor.py").read_text()
+        self.assertIn("async_step_planning", flow)
+        self.assertIn("continuous_kw", flow)
+        self.assertIn("departure_weekday", flow)
+        self.assertIn("departure_weekend", flow)
+        self.assertIn("SensorDeviceClass.TIMESTAMP", sensor)
+        for lang in ("it", "en"):
+            tr = json.loads(
+                (INTEGRATION / "translations" / f"{lang}.json").read_text()
+            )
+            self.assertEqual(
+                set(tr["options"]["step"]["planning"]["data"]),
+                {"continuous_kw", "departure_weekday", "departure_weekend"}
+            )
 
     def test_config_entry_migration_present(self):
         text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")

@@ -252,3 +252,45 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
   nessuna modifica firmware/DPM, nessuna nuova release né cambio main.**
 - Da validare: test statici CI, potenza misurata effettiva e comportamento
   nel sistema HA reale; il replay ideale non prova eventi DPM reali.
+
+## 2026-11-13 — Anteprima HA e simulazione auto scollegata (0.0.8)
+
+### Perché
+- L'utente non può attendere una nuova ricarica della Kia, che avviene
+  approssimativamente ogni due settimane. Sviluppo e verifica funzionale
+  devono procedere su scenari sintetici, non richiedere N sessioni reali.
+- La cronologia di otto sessioni e la precisazione Fiat 31/10 16→90% e
+  08/11 28→90% sono state elaborate **in conversazione** per verificare
+  ordini di grandezza, ma **non copiate nel repository** e non usate
+  per fissare rendimenti specifici della Fiat o della Kia.
+
+### Modifiche
+- Aggiunto calendario locale `schedule.py`, con partenza futura e
+  distinzione feriali/weekend.
+- `live_planning.py` legge sorgenti HA già configurate, con qualità e
+  obsolescenza, per produrre una previsione read-only con ipotesi
+  esplicite, senza inventare W per misure mancanti.
+- Aggiunta nelle Opzioni una pagina Pianificazione: unico parametro
+  di potenza elettrica **continuativa disponibile** e due ore di
+  partenza; nessun valore d'impianto preconfigurato.
+- Aggiunti sensori passivi del piano: potenza casa, partenza, inizio,
+  termine stimato, stato; un sensore di prova espone negli attributi
+  scenari **ipotetici dal 30%** per tutti i veicoli, anche scollegati.
+- Traduzioni IT/EN, test di calendario/qualità fonte e README.
+- `docs/releases/0.0.8.md` segnala le limitazioni e la procedura di
+  verifica. Manifest 0.0.8.
+
+### Sicurezza e limiti
+- Prototipo usa consumo domestico corrente come costante e potenza
+  teorica residua come massimo veicolo; **può sottostimare il tempo**
+  e non modella ancora la potenza reale limitata dalla wallbox/DPM.
+- Rendimento AC 90% e margine 45 minuti sono provvisori, non stimati
+  automaticamente dai pochi dati storici.
+- Nessun comando a ESPHome, wallbox, auto o DPM. DPM attivo (4,4 kW
+  nell'impianto del banco prova), firmware e automazioni invariati.
+- Nessun collegamento dashboard Lovelace completa: requisito v0.1.
+- Verificati test statici CI sul commit preparatorio
+  `8ad317e98f31a57dc0de086a2d6a4c7a02a4c817`. Ancora da
+  verificare: release finale, Home Assistant 2026.11 reale, formato
+  timestamp, validazione dati e presentazione della UI.
+- Nessun merge su `main`.

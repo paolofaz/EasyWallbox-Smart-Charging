@@ -63,3 +63,18 @@ La 0.0.6 espone veicolo identificato, SOC attuale, obiettivo abituale, kWh teori
 ## Vincolo di progetto 13/11/2026 — partenza e stabilità
 
 La pianificazione deve avere come vincolo primario **SOC obiettivo entro l'orario di partenza**. Quando il margine lo permette, evitare di caricare ad alta potenza durante periodi domestici normalmente impegnativi, senza inseguire picchi o azionare ripetutamente lo switch di pausa ricarica. Protezioni e variazioni rapide restano al DPM attivo. Le modalità di misura **A sensori casa**, **B totale comprensivo EV meno EV**, **C nessuna misura** sono alternative; le abitudini domestiche non devono dipendere da marche o singoli elettrodomestici. Nessun automatismo aggiuntivo approvato in questa fase.
+
+## Anteprima disponibile da 0.0.8 (non ancora dashboard)
+
+La 0.0.8 aggiunge in HA i sensori read-only del primo piano e un
+sensore dimostrativo con scenari SOC ipotetico 30% per ogni auto
+configurata, visibili anche senza ricarica in corso. Sono accessibili
+dall'elenco entità del dispositivo dell'integrazione. **Non sostituiscono**
+la dashboard dedicata richiesta per la v0.1.
+
+Le previsioni leggono il consumo domestico corrente e assumono
+90% di efficienza AC, 45 minuti di margine e potenza EV teorica
+residua. Non sono promesse di completamento né ordini alla wallbox.
+La v0.1 dovrà mostrare chiaramente qualità, ipotesi, limiti e motivi
+della decisione; permettere eccezioni di partenza e target di sessione;
+confrontare scenari e reagire lentamente a carichi significativi.
