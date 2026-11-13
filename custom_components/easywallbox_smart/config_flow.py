@@ -43,6 +43,18 @@ def _vehicle_form() -> vol.Schema:
     })
 
 
+def _planning_schema() -> vol.Schema:
+    """Site continuous capacity and next weekday/weekend departure times."""
+    hhmm = vol.Match(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    return vol.Schema({
+        vol.Required("continuous_kw"): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=100.0)
+        ),
+        vol.Required("departure_weekday"): hhmm,
+        vol.Required("departure_weekend"): hhmm,
+    })
+
+
 def _house_schema() -> vol.Schema:
     return vol.Schema({
         vol.Required("house_power_sources"): EntitySelector(
@@ -200,7 +212,7 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
         self._data()
         return self.async_show_menu(
             step_id="init",
-            menu_options=["wallbox", "vehicles", "energy_menu", "finish"],
+            menu_options=["wallbox", "vehicles", "energy_menu", "planning", "finish"],
         )
 
     async def async_step_wallbox(
@@ -372,6 +384,20 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
     ) -> FlowResult:
         self._set_energy(MODE_NONE, {})
         return await self.async_step_init()
+
+    async def async_step_planning(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Save read-only planning preferences; do not touch DPM settings."""
+        if user_input is not None:
+            self._data().update(user_input)
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="planning",
+            data_schema=self.add_suggested_values_to_schema(
+                _planning_schema(), self._data()
+            ),
+        )
 
     async def async_step_finish(
         self, user_input: dict[str, Any] | None = None

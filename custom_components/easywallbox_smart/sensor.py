@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -13,6 +13,7 @@ from homeassistant.helpers.event import (
 )
 
 from .const import DOMAIN
+from .live_planning import ASSUMED_EFFICIENCY, ASSUMED_RESERVE_MINUTES, demo_scenarios, dependency_ids, evaluate
 from .snapshot import Source, assess
 
 
@@ -22,6 +23,12 @@ FIELDS = {
     "target_soc": ("Target SOC", "%", SensorStateClass.MEASUREMENT),
     "remaining_energy": ("Battery energy needed", "kWh", SensorStateClass.MEASUREMENT),
     "data_quality": ("Data quality", None, None),
+    "house_power": ("House power preview", "kW", SensorStateClass.MEASUREMENT),
+    "departure_time": ("Next departure preview", None, None),
+    "recommended_start": ("Recommended start preview", None, None),
+    "estimated_finish": ("Estimated finish preview", None, None),
+    "plan_status": ("Plan status preview", None, None),
+    "demo_plan": ("Scenario 30% preview", None, None),
 }
 CHECK_INTERVAL = timedelta(minutes=2)
 
@@ -51,8 +58,11 @@ class Monitor:
                 value = car.get(key)
                 if isinstance(value, str) and value:
                     self.dependency_ids.add(value)
+        self.dependency_ids.update(dependency_ids(self.config))
         self.entities: list[SmartSensor] = []
         self.snapshot = None
+        self.preview = None
+        self.demo_plans = []
         self.refresh()
 
     @callback
@@ -60,6 +70,8 @@ class Monitor:
         now = datetime.now(timezone.utc)
         states = {name: _source(self.hass, name, now) for name in self.dependency_ids}
         self.snapshot = assess(self.config, states)
+        self.preview = evaluate(self.hass, self.config, self.snapshot, now)
+        self.demo_plans = demo_scenarios(self.hass, self.config, now)
         for entity in self.entities:
             if entity.hass is not None:
                 entity.async_write_ha_state()
@@ -77,6 +89,8 @@ class SmartSensor(SensorEntity):
         name, unit, state_class = FIELDS[kind]
         self._attr_name = name
         self._attr_unique_id = f"{entry.entry_id}_{kind}"
+        if kind in ("departure_time", "recommended_start", "estimated_finish"):
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_native_unit_of_measurement = unit
         self._attr_state_class = state_class
         self._attr_device_info = DeviceInfo(
@@ -87,8 +101,28 @@ class SmartSensor(SensorEntity):
         )
 
     @property
-    def native_value(self) -> str | float | int | None:
+    def native_value(self):
         result = self._monitor.snapshot
+        preview = self._monitor.preview
+        if self._kind == "demo_plan":
+            if not self._monitor.demo_plans:
+                return "unconfigured"
+            if all(s["status"] == "unconfigured" for s in self._monitor.demo_plans):
+                return "unconfigured"
+            return "available" if any(s["status"] == "feasible_estimate"
+                for s in self._monitor.demo_plans) else "review"
+        if self._kind == "house_power":
+            return preview.house_kw if preview else None
+        if self._kind == "departure_time":
+            return preview.departure if preview else None
+        if self._kind == "plan_status":
+            return preview.status if preview else "unavailable"
+        if self._kind in ("recommended_start", "estimated_finish"):
+            p = preview.result if preview else None
+            if p is None:
+                return None
+            return (p.recommended_start if self._kind == "recommended_start"
+                    else p.estimated_finish)
         if result is None:
             return None
         return {
@@ -100,12 +134,35 @@ class SmartSensor(SensorEntity):
         }[self._kind]
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
+    def extra_state_attributes(self) -> dict:
         result = self._monitor.snapshot
-        return {
+        preview = self._monitor.preview
+        attrs = {
             "operating_mode": "simulation_only",
             "data_quality": result.quality if result else "initializing",
+            "no_device_commands": True,
         }
+        if self._kind == "demo_plan":
+            attrs["scenario_description"] = "30_to_usual_target_without_car"
+            attrs["vehicle_scenarios"] = self._monitor.demo_plans
+        if preview and self._kind in (
+            "plan_status", "house_power", "recommended_start", "estimated_finish"
+        ):
+            attrs.update({
+                "reason": preview.reason,
+                "power_quality": preview.power_quality,
+                "forecast_basis": "current_house_power_held_constant",
+                "assumed_ac_efficiency": ASSUMED_EFFICIENCY,
+                "assumed_reserve_minutes": ASSUMED_RESERVE_MINUTES,
+            })
+            if preview.result is not None:
+                attrs["estimated_ev_kw"] = preview.result.estimated_ev_kw
+                attrs["required_charge_hours"] = preview.result.required_hours
+                attrs["latest_safe_start"] = (
+                    preview.result.latest_start.isoformat()
+                    if preview.result.latest_start else None
+                )
+        return attrs
 
 
 async def async_setup_entry(

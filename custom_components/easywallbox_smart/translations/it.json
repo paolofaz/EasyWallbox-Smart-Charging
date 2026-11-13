@@ -75,7 +75,8 @@
           "wallbox": "Sensori wallbox",
           "vehicles": "Veicoli",
           "finish": "Salva modifiche",
-          "energy_menu": "Metodo di misura dei consumi"
+          "energy_menu": "Metodo di misura dei consumi",
+          "planning": "Pianificazione (potenza e partenza)"
         }
       },
       "wallbox": {
@@ -167,6 +168,15 @@
           "site_total_power": "Potenza totale inclusa auto",
           "ev_power_sensor": "Potenza ricarica auto"
         }
+      },
+      "planning": {
+        "title": "Pianificazione — sola simulazione",
+        "description": "Imposta la potenza massima continuativa disponibile per CASA + AUTO (nel tuo impianto 4,4 kW); non inserire i picchi temporanei. Indica gli orari abituali di partenza, modificabili in seguito. Non viene inviato alcun comando alla wallbox.",
+        "data": {
+          "continuous_kw": "Potenza disponibile continuativa dell'impianto (kW)",
+          "departure_weekday": "Partenza abituale feriali (HH:MM)",
+          "departure_weekend": "Partenza abituale weekend (HH:MM)"
+        }
       }
     },
     "error": {
@@ -191,6 +201,21 @@
       },
       "data_quality": {
         "name": "Qualità dati"
+      },
+      "house_power": {
+        "name": "Potenza casa (simulazione)"
+      },
+      "departure_time": {
+        "name": "Prossima partenza (simulazione)"
+      },
+      "recommended_start": {
+        "name": "Inizio consigliato (simulazione)"
+      },
+      "estimated_finish": {
+        "name": "Fine stimata (simulazione)"
+      },
+      "plan_status": {
+        "name": "Stato piano (simulazione)"
       }
     }
   }

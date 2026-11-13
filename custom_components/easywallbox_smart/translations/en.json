@@ -75,7 +75,8 @@
           "wallbox": "Wallbox sensors",
           "vehicles": "Vehicles",
           "finish": "Save changes",
-          "energy_menu": "Power measurement method"
+          "energy_menu": "Power measurement method",
+          "planning": "Planning (power and departure)"
         }
       },
       "wallbox": {
@@ -167,6 +168,15 @@
           "site_total_power": "Total power including EV",
           "ev_power_sensor": "EV charging power"
         }
+      },
+      "planning": {
+        "title": "Planning — simulation only",
+        "description": "Set the site's continuous available power for HOUSE + EV. Do not include temporary overloads. Specify usual weekday and weekend departure times, editable later. No wallbox commands are sent.",
+        "data": {
+          "continuous_kw": "Continuous site available power (kW)",
+          "departure_weekday": "Usual weekday departure (HH:MM)",
+          "departure_weekend": "Usual weekend departure (HH:MM)"
+        }
       }
     },
     "error": {
@@ -191,6 +201,21 @@
       },
       "data_quality": {
         "name": "Data quality"
+      },
+      "house_power": {
+        "name": "House power (preview)"
+      },
+      "departure_time": {
+        "name": "Next departure (preview)"
+      },
+      "recommended_start": {
+        "name": "Recommended start (preview)"
+      },
+      "estimated_finish": {
+        "name": "Estimated finish (preview)"
+      },
+      "plan_status": {
+        "name": "Plan status (preview)"
       }
     }
   }
