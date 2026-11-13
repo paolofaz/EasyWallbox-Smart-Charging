@@ -16,7 +16,7 @@ Custom integration Python per **Home Assistant** per pianificare la ricarica di 
 
 - `main`: stabile, **non modificare senza autorizzazione esplicita**.
 - `sviluppo-test`: unico branch per lo sviluppo iniziale.
-- `0.0.7`: stessi cinque sensori HA in sola lettura, più chiarezza nelle tre modalità energetiche; v0.0.6 introduceva la prima osservazione. La 0.0.7 espone (veicolo, SOC, target, kWh batteria, qualità). La **v0.1** aggiungerà planner e Lovelace dedicata, sempre senza comandi.
+- `0.0.7`: mantiene i cinque sensori read-only introdotti nella `0.0.6` e chiarisce le tre modalità alternative di misura elettrica. La **v0.1** aggiungerà planner e Lovelace dedicata, sempre senza comandi.
 - Le versioni di prova `0.x` vengono pubblicate come **release GitHub normali**, ma sono **software sperimentale e non stabile**. I tag puntano ai commit verificati di `sviluppo-test`, senza modificare `main`. Nessuna compatibilità con HA reale è ancora certificata.
 
 ## Installazione tramite Marketplace (release di prova)

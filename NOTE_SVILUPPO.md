@@ -200,5 +200,5 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Manifest 0.0.7; release normale generata da sviluppo-test, main invariato.
 
 ### Verifiche
-- Test statici e pubblicazione da registrare dopo esecuzione CI.
+- **Verificato**: test statici GitHub Actions superati (run `43403413847`); release normale GitHub `0.0.7` pubblicata con successo (run `43403413504`) sul commit `3926f327440f309029826ec92dd6eb2dcb901b20`. Resta da verificare su HA reale.
 - Verifica delle nuove etichette su Home Assistant reale; con la v0.1 sarà necessario il collaudo della pianificazione in sola simulazione.
