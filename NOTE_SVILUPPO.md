@@ -457,3 +457,46 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - ETA è una proiezione della potenza attuale costante, NON una previsione garantita; il DPM può limitarla. Il rendimento AC 90% è provvisorio.
 - Nessun servizio HA, comando BLE, modifica al DPM, firmware, automazioni o branch main. Dashboard v0.1 ancora da realizzare.
 - Aggiornare la fonte di progetto con questa decisione dopo collaudo HA.
+
+## 2026-11-13 — Dimostrazione reale di processo, simulazione completa offline
+
+### Motivo
+- L'utente ritiene giustamente insufficiente una successione di release
+  con sensori numerici. Prossima carica Kia forse tra circa dieci giorni:
+  lo sviluppo non deve dipendere da un'auto collegata.
+- Decisione: **non pubblicare una nuova versione dell'integrazione HA
+  finché non è dimostrato un comportamento completo**, spiegabile e
+  superiore (quando possibile) alla semplice gestione DPM.
+
+### Risultato verificabile
+- Aggiunto `session_replay.py` puramente Python, senza dipendenze HA,
+  che simula dal SOC al target tre politiche di limite EV: lascia DPM,
+  riduci per un ciclo domestico e ripristina, riduci e dimentica.
+- Aggiunti `tests/test_session_replay.py` e
+  `docs/PROVA_NOTTE_2026-11-13.md`, con dati osservati distinti
+  da assunzioni e risultati riproducibili.
+- Creato un simulatore HTML offline interattivo allegato nella
+  conversazione di progetto: Kia 21:13, Kia 30%, Fiat con carica breve;
+  grafico di avanzamento, timeline completa, tre strategie, controlli
+  per ricalcolare ipotesi. Il prototipo HTML non è collegato a HA,
+  né al server, né alla wallbox; non attua nulla.
+- Esempio con 27,69 kWh batteria Kia, 4,4kW DPM, baseline casa 0,2kW,
+  potenza EV scenario alta 3,85kW e ridotta 3,00kW,
+  efficienza ASSUNTA 85%, lavastoviglie 102min con 23min di picchi:
+  DPM-only ~05:51; manuale con restore ~06:09;
+  ridotta senza restore ~08:11. **Non sono misure della notte**.
+- Conclusione non ovvia: sotto un DPM già efficiente ridurre manualmente
+  la potenza per **l'intero ciclo** della lavastoviglie può peggiorare
+  il raggiungimento del target. L'integrazione non deve comandare
+  per forza: deve sapere suggerire di **non intervenire**.
+- Il replay non modella allarmi da 3700W dei singoli rami domestici,
+  ritardi DPM, congiunture di carichi non osservati o watt effettivi
+  sincronizzati durante la notte. Non prova la sicurezza di un setpoint.
+
+### Passi ancora aperti
+- Eseguire/controllare CI offline sulla commit; non spacciare il modello
+  ideale per una calibrazione delle efficienze della Kia.
+- La prossima milestone v0.1 deve integrare questa logica di sessione
+  con una UI semplice e senza comandi, mantenendo diagnostica chiara
+  e dati incompleti non validi.
+- Firmware ESPHome, soglia DPM, automazioni, main invariati.

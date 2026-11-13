@@ -109,3 +109,21 @@ automazioni domestiche preesistenti, fino a una migrazione collaudata.
 repository. In caso di errore non installare `main` come fallback:
 usare esplicitamente la release di prova da GitHub e verificarla.
 Non committare credenziali, PIN BLE o la cartella `.storage` di HA.
+
+## Dimostrazione offline: una notte di ricarica senza auto
+
+Prima di aggiungere altri sensori o rilasci HA, è disponibile un motore
+di **replay deterministico di una sessione completa**, con tre scelte:
+lascia il DPM, riduci per tutta la lavastoviglie e ripristina, oppure
+riduci e dimentica. Il test su Kia 21:13 e partenza 08:00 evidenzia
+che una riduzione prolungata può essere peggiore del DPM già attivo.
+
+Non è un controllore e non invia comandi. Leggi
+[la prova dettagliata](docs/PROVA_NOTTE_2026-11-13.md) e ripeti
+i test puramente Python con
+`python -m unittest discover -s tests -p 'test_session_replay.py' -v`.
+La pagina HTML interattiva della stessa prova è stata allegata alla
+conversazione ChatGPT del progetto: si apre in browser senza HA
+o auto collegata. Nessuna release dell'integrazione è stata creata
+per il solo prototipo di replay.
+
