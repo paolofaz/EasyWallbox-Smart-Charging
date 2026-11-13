@@ -230,3 +230,25 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - I sensori in stato OFF disattivano soltanto la propria condizione; gli stati unknown/unavailable non devono diventare OFF impliciti. ON non equivale sempre ad assorbimento elevato. Le fasce condizionali non prevedono accensioni future.
 - Il planner è subordinato al target SOC entro la partenza. Nessun Start/Stop o variazione immediata a ogni cambio sensore. DPM sempre attivo e unico responsabile dei picchi.
 - Nessuna nuova release; il prototipo non è collegato ad HA e non comanda nulla. Aggiornare la fonte di progetto quando saranno stabiliti i dettagli delle fasce.
+
+## 2026-11-13 — Banco prova replay carichi (solo simulazione offline)
+
+### Motivazione
+- Validare su un tracciato reale il compromesso fra potenza EV costante,
+  riduzione preventiva e limitazioni DPM, evitando di approvare automatismi
+  basati soltanto sul sensore ON della lavastoviglie.
+- Con limite impianto reale 4,4 kW, uno Shelly di un ramo casa e 0,3 kW
+  **ipotetici** di altri consumi, il replay mostra che 3,8→3,0 kW
+  abbasserebbe i kWh EV ma non la durata teorica delle limitazioni
+  durante le fasi a circa 2,1 kW. Il risultato dipende dalle ipotesi.
+
+### Modifiche
+- Nuovo `replay.py` puro: dati di potenza timestamped, esplicito carico
+  di altri rami come scenario, calcolo teorico di limitazione istantanea,
+  conteggio periodi e kWh, segmenti `unknown`/obsoleti esclusi.
+- Test offline su picco, assenze, staleness e parametri anomali.
+- `docs/REPLAY.md` spiega ipotesi, limiti ed esperimenti futuri.
+- **Nessun file CSV privato committato. Nessun controllo HA aggiunto,
+  nessuna modifica firmware/DPM, nessuna nuova release né cambio main.**
+- Da validare: test statici CI, potenza misurata effettiva e comportamento
+  nel sistema HA reale; il replay ideale non prova eventi DPM reali.
