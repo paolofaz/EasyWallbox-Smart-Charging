@@ -391,3 +391,46 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
   codificato e nessuna modifica alla potenza EV, wallbox, DPM,
   automazioni o firmware. Non usare il dato di potenza media richiesta
   per dichiarare garantita la partenza.
+
+## 2026-11-13 — Primo simulatore di decisione su carico ON/OFF (v0.0.12)
+
+### Decisioni e motivazioni
+- Problema reale: Kia EV3 in carica mentre si cucina e si usa la
+  lavastoviglie. L'utente deve abbassare manualmente il limite della
+  wallbox e ricordarsi di ripristinarlo. Una semplice fascia oraria
+  non può capire quando questa riduzione compromette il SOC alle 08:00.
+- **Requisito confermato**: nessun comando nella v0.1 simulata; DPM
+  4,4 kW attivo e gestione dei picchi interamente hardware.
+- Per la prima prova soltanto **un carico anticipabile opzionale**.
+  Non vincolare il codice a nome, orario o marca dell'elettrodomestico.
+  I successivi N carichi vanno valutati dopo il test del primo.
+
+### Implementato su sviluppo-test
+- Nuovo `load_scenario.py`, funzione pura per confrontare una
+  limitazione ipotetica a passi di 0,2 kW con il margine energetico
+  residuo prima della partenza, usando la domanda grid-side.
+- Nuovo `simulation.py`, lettura delle entità HA in sola lettura:
+  potenza richiesta (`number`), confermata (`sensor`) e potenza
+  effettiva già configurata in misura, attività ON/OFF facoltativa.
+  Divergenze richiesta/conferma e dati obsoleti non sono ignorati.
+- Aggiunta nelle Opzioni la scheda `scenario`, con picco aggiuntivo
+  e durata ipotetica, e una sola entità diagnostica della decisione
+  simulata, con attributi completi.
+- Ripristino **solo ipotetico** dopo OFF; un cambio manuale della
+  potenza annulla la proposta e viene rispettato. Stato RAM non
+  persistente. Nessun servizio HA, BLE o comando alla wallbox.
+- Test isolati di Kia con partenza urgente, veicolo con ampio margine,
+  carico ON/OFF/unknown, divergenza limite richiesto/confermato,
+  potenza reale obsoleta, intervento manuale e ripristino virtuale.
+- Test statici, traduzioni IT/EN, README e note della 0.0.12.
+
+### Limiti
+- La potenza di picco configurata è considerata **aggiuntiva** al
+  consumo domestico attuale; può contare due volte un picco già in
+  corso. Questo è volutamente prudenziale e NON costituisce un
+  calcolo certificato di capacità elettrica.
+- Mancano ancora previsione consumi nel resto della notte,
+  controllo anti-oscillazione di eventuali comandi futuri, più
+  carichi simultanei e dashboard v0.1 completa.
+- CI e verifica sul vero HA sono da completare prima di dichiarare
+  la funzionalità collaudata. Firmware, automazioni, DPM e main invariati.

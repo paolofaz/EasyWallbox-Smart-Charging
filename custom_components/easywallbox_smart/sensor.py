@@ -15,6 +15,7 @@ from homeassistant.helpers.event import (
 from .const import DOMAIN
 from .live_planning import ASSUMED_EFFICIENCY, ASSUMED_RESERVE_MINUTES, demo_scenarios, dependency_ids, evaluate
 from .snapshot import Source, assess, telemetry_diagnostic
+from .simulation import SimulationSession, evaluate as evaluate_simulation, load_event_inputs
 
 
 FIELDS = {
@@ -32,6 +33,7 @@ FIELDS = {
     "estimated_finish": ("Finish if home load stays constant", None, None),
     "plan_status": ("Current home load scenario", None, None),
     "demo_plan": ("Scenario 30% preview", None, None),
+    "simulated_decision": ("Load decision simulation", None, None),
 }
 CHECK_INTERVAL = timedelta(minutes=2)
 
@@ -62,11 +64,14 @@ class Monitor:
                 if isinstance(value, str) and value:
                     self.dependency_ids.add(value)
         self.dependency_ids.update(dependency_ids(self.config))
+        self.dependency_ids.update(load_event_inputs(self.config))
         self.entities: list[SmartSensor] = []
         self.snapshot = None
         self.telemetry_source = None
         self.preview = None
         self.demo_plans = []
+        self._simulation_session = SimulationSession()
+        self.decision = None
         self.refresh()
 
     @callback
@@ -78,6 +83,13 @@ class Monitor:
         self.telemetry_source = states.get(telemetry_id) if telemetry_id else None
         self.preview = evaluate(self.hass, self.config, self.snapshot, now)
         self.demo_plans = demo_scenarios(self.hass, self.config, now)
+        raw_decision = evaluate_simulation(self.hass, self.config, self.preview, now)
+        # Clear in-memory suggestions on loss of the vehicle session.
+        if self.snapshot.quality != "ok":
+            self._simulation_session.reset()
+        # After an HA restart, simulated decisions never imply actual
+        # controller actions; no persistent commands or restoration.
+        self.decision = self._simulation_session.update(raw_decision)
         for entity in self.entities:
             if entity.hass is not None:
                 entity.async_write_ha_state()
@@ -110,6 +122,11 @@ class SmartSensor(SensorEntity):
     def native_value(self):
         result = self._monitor.snapshot
         preview = self._monitor.preview
+        if self._kind == "simulated_decision":
+            return (
+                self._monitor.decision.code
+                if self._monitor.decision else "unavailable"
+            )
         if self._kind == "demo_plan":
             if not self._monitor.demo_plans:
                 return "unconfigured"
@@ -170,6 +187,23 @@ class SmartSensor(SensorEntity):
             attrs["wallbox_telemetry_diagnostic"] = (
                 telemetry_diagnostic(source) if sensor_id else "not_configured"
             )
+        if self._kind == "simulated_decision":
+            decision = self._monitor.decision
+            if decision:
+                attrs.update({
+                    "requested_limit_kw": decision.requested_kw,
+                    "confirmed_limit_kw": decision.confirmed_kw,
+                    "actual_charging_kw": decision.actual_kw,
+                    "suggested_limit_kw": decision.suggested_kw,
+                    "load_state": decision.load_state,
+                    "expected_additional_peak_kw": decision.expected_extra_peak_kw,
+                    "expected_load_duration_min": decision.expected_minutes,
+                    "theoretical_energy_delayed_kwh": decision.lost_grid_kwh,
+                    "theoretical_energy_margin_kwh": decision.energy_margin_kwh,
+                    "confirmed_limit_quality": decision.confirmed_state,
+                    "all_recommendations_are_hypothetical": True,
+                    "never_sent_any_command": True,
+                })
         if self._kind == "demo_plan":
             attrs["scenario_description"] = "30_to_usual_target_without_car"
             attrs["vehicle_scenarios"] = self._monitor.demo_plans

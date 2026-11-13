@@ -2,7 +2,7 @@
 
 Custom integration Python per **Home Assistant** per pianificare la ricarica di **veicoli configurabili da 1 a N** (inclusi Fiat 500e e Kia EV3), utilizzando stati ESPHome, SOC e sorgenti di potenza configurabili (Shelly, ESPHome o altri sensori Home Assistant).
 
-> **Stato: anteprima di pianificazione read-only v0.0.11, ancora precedente alla v0.1 completa.** Espone stime di partenza/termine, potenza domestica e scenari dimostrativi per le auto scollegate. **Non invia comandi alla wallbox o alle auto** e non dispone ancora della dashboard completa.
+> **Stato: anteprima di pianificazione read-only v0.0.12, ancora precedente alla v0.1 completa.** Espone stime di partenza/termine, potenza domestica e scenari dimostrativi per le auto scollegate. **Non invia comandi alla wallbox o alle auto** e non dispone ancora della dashboard completa.
 
 ## Sicurezza e separazione delle responsabilità
 
@@ -21,16 +21,16 @@ Custom integration Python per **Home Assistant** per pianificare la ricarica di 
 
 ## Installazione tramite Marketplace (release di prova)
 
-Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.11`:
+Dopo che la GitHub Action di pubblicazione ha confermato la release `0.0.12`:
 
 1. In Home Assistant 2026.11+ aprire **Impostazioni → Marketplace → Aggiungi da link**.
 2. Inserire `https://github.com/paolofaz/EasyWallbox-Smart-Charging`. La registrazione di repository personalizzati richiede l'autorizzazione GitHub in sola lettura.
 3. Selezionare la **release normale** `0.0.11` quando viene proposta. Non occorre abilitare lo switch **Pre-release**.
-4. Installare la release `0.0.11`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
+4. Installare la release `0.0.12`, **non il commit di `main`**. Da **Dispositivi e servizi**, aggiungere EasyWallbox Smart Charging e verificare le tre schermate di configurazione.
 
 > **Attenzione:** `main` contiene soltanto `LICENSE`. La release punta all'esatto commit di `sviluppo-test`. **Il branch predefinito `main` non contiene ancora `hacs.json` né l'integrazione: il Marketplace potrebbe quindi non riuscire a riconoscere il repository durante l'aggiunta da link.** Se il repository non viene accettato, riportare l'errore e non installare il fallback di `main`.
 
-**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.11` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
+**Installazione manuale alternativa, solo in caso di problemi con Marketplace:** scaricare l'archivio della release `0.0.12` da GitHub e copiare `custom_components/easywallbox_smart/` nella directory di configurazione HA. Per questa prima milestone non cambia alcuna automazione.
 
 <!-- ha-marketplace:exclude-start -->
 Link alle [release GitHub](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases).
@@ -233,3 +233,33 @@ effettivamente impostato sulla wallbox, né stimato il carico futuro.
 Per la spiegazione tecnica e il rollback vedi
 [docs/releases/0.0.11.md](docs/releases/0.0.11.md). Nessuna modifica
 ai comandi, alle automazioni o al firmware.
+
+## 0.0.12 — Prima decisione simulata in risposta a un carico ON/OFF
+
+Nelle **Opzioni → Simulazione carico domestico** puoi collegare
+facoltativamente il `number` di potenza richiesta (es. Charge power),
+il `sensor` di potenza confermata (es. Power set) e **un**
+`binary_sensor` di attività di un carico (es. lavastoviglie),
+inserendo picco aggiuntivo teorico e durata prudenziale. Sono entità
+HA scelte dalla GUI: nessun ID o carico della casa incorporato nel
+codice e nessuna modifica ai comandi.
+
+Il nuovo sensore **Decisione carico domestico (solo simulazione)**
+mostra quando una riduzione sarebbe teoricamente compatibile
+(`temporary_reduction_possible`) oppure deve prevalere la partenza
+(`priority_departure_keep_limit`). Gli attributi distinguono
+potenza richiesta, confermata, effettiva, proposta ipotetica,
+margine energetico e dato di attività ON/OFF.
+
+Se il carico torna OFF può mostrare un **ripristino ipotetico**,
+soltanto se in precedenza era stata simulata una riduzione e l'utente
+non ha cambiato manualmente il limite. Il numero **non viene mai
+modificato**. L'eventuale segnalazione di override è diagnostica.
+
+**È un banco prova**, non ancora la funzione automatica definitiva:
+la potenza di picco è sommata per cautela al consumo attuale della
+casa e può essere sovrastimata; non usa il comportamento reale delle
+singole fasi né il consumo previsto di tutta la notte. La simulazione
+di una riduzione NON garantisce protezione elettrica, affidata sempre
+al DPM. Test di base sintetici e motivazioni in
+[docs/releases/0.0.12.md](docs/releases/0.0.12.md).

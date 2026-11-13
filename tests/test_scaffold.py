@@ -31,7 +31,7 @@ class TestScaffold(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(manifest["domain"], INTEGRATION.name)
-        self.assertEqual(manifest["version"], "0.0.11")
+        self.assertEqual(manifest["version"], "0.0.12")
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertTrue(manifest["config_flow"])
@@ -107,6 +107,31 @@ class TestScaffold(unittest.TestCase):
         self.assertIn("wallbox_telemetry_unavailable", snapshot)
         self.assertIn("def telemetry_diagnostic(", snapshot)
         self.assertNotIn("WALLBOX_MAX_AGE", snapshot)
+
+    def test_optional_load_simulation_has_no_control_calls(self):
+        flow = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
+        adapter = (INTEGRATION / "simulation.py").read_text(encoding="utf-8")
+        sensor = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
+        self.assertIn("async_step_scenario", flow)
+        self.assertIn("ev_confirmed_limit", flow)
+        self.assertIn("load_active_entity", flow)
+        self.assertIn('"simulated_decision"', sensor)
+        self.assertIn("manual_override_respected", adapter)
+        self.assertNotIn("hass.services.async_call", adapter)
+        self.assertNotIn("hass.services.async_call", sensor)
+        self.assertNotIn("async_set_value", adapter)
+        for lang in ("it", "en"):
+            tr = json.loads(
+                (INTEGRATION / "translations" / f"{lang}.json").read_text()
+            )
+            self.assertEqual(
+                set(tr["options"]["step"]["scenario"]["data"]),
+                {
+                    "ev_requested_limit", "ev_confirmed_limit",
+                    "load_active_entity", "load_peak_kw", "load_duration_minutes",
+                },
+            )
+            self.assertIn("simulated_decision", tr["entity"]["sensor"])
 
     def test_config_entry_migration_present(self):
         text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")

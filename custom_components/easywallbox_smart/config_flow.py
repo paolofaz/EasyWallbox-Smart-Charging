@@ -55,6 +55,35 @@ def _planning_schema() -> vol.Schema:
     })
 
 
+def _scenario_schema() -> vol.Schema:
+    """Optional read-only cap sensors and one generic home-load scenario."""
+    return vol.Schema({
+        vol.Optional("ev_requested_limit"): EntitySelector(
+            EntitySelectorConfig(domain=["number"])
+        ),
+        vol.Optional("ev_confirmed_limit"): EntitySelector(
+            EntitySelectorConfig(domain=["sensor"])
+        ),
+        vol.Optional("load_active_entity"): EntitySelector(
+            EntitySelectorConfig(domain=["binary_sensor"])
+        ),
+        vol.Optional("load_peak_kw"): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=20.0)
+        ),
+        vol.Optional("load_duration_minutes"): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1440)
+        ),
+    })
+
+
+def _validate_scenario(data: dict) -> None:
+    """Disallow incomplete or phantom appliance configuration."""
+    fields = ("load_active_entity", "load_peak_kw", "load_duration_minutes")
+    presence = [bool(data.get(f)) for f in fields]
+    if any(presence) and not all(presence):
+        raise ValueError("incomplete_load_scenario")
+
+
 def _house_schema() -> vol.Schema:
     return vol.Schema({
         vol.Required("house_power_sources"): EntitySelector(
@@ -212,7 +241,7 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
         self._data()
         return self.async_show_menu(
             step_id="init",
-            menu_options=["wallbox", "vehicles", "energy_menu", "planning", "finish"],
+            menu_options=["wallbox", "vehicles", "energy_menu", "planning", "scenario", "finish"],
         )
 
     async def async_step_wallbox(
@@ -397,6 +426,35 @@ class EasyWallboxSmartOptionsFlow(config_entries.OptionsFlowWithReload):
             data_schema=self.add_suggested_values_to_schema(
                 _planning_schema(), self._data()
             ),
+        )
+
+    async def async_step_scenario(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure simulation sources, not actuation targets."""
+        errors = {}
+        if user_input is not None:
+            try:
+                _validate_scenario(user_input)
+            except ValueError:
+                errors["base"] = "invalid_scenario"
+            else:
+                for key in (
+                    "ev_requested_limit", "ev_confirmed_limit",
+                    "load_active_entity", "load_peak_kw",
+                    "load_duration_minutes",
+                ):
+                    if key in user_input:
+                        self._data()[key] = user_input[key]
+                    else:
+                        self._data().pop(key, None)
+                return await self.async_step_init()
+        return self.async_show_form(
+            step_id="scenario",
+            data_schema=self.add_suggested_values_to_schema(
+                _scenario_schema(), self._data()
+            ),
+            errors=errors,
         )
 
     async def async_step_finish(

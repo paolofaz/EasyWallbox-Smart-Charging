@@ -76,7 +76,8 @@
           "vehicles": "Vehicles",
           "finish": "Save changes",
           "energy_menu": "Power measurement method",
-          "planning": "Planning (power and departure)"
+          "planning": "Planning (power and departure)",
+          "scenario": "Home load simulation (optional)"
         }
       },
       "wallbox": {
@@ -177,12 +178,24 @@
           "departure_weekday": "Usual weekday departure (HH:MM)",
           "departure_weekend": "Usual weekend departure (HH:MM)"
         }
+      },
+      "scenario": {
+        "title": "Simulation — charging limit and home load",
+        "description": "Read-only. Optionally select Charge power (requested number), Power set (confirmed sensor) and one load ON/OFF sensor. The configured peak is conservatively added to the current home load; it is not an electrical safeguard or a device command. Duration is a scenario, not a prediction.",
+        "data": {
+          "ev_requested_limit": "Requested charging limit (number entity, optional)",
+          "ev_confirmed_limit": "Confirmed charging limit (sensor entity, optional)",
+          "load_active_entity": "Active household load (binary_sensor, optional)",
+          "load_peak_kw": "Assumed extra peak from this load (kW)",
+          "load_duration_minutes": "Assumed load duration (minutes)"
+        }
       }
     },
     "error": {
       "invalid_vehicle": "Duplicate name or SOC source, or invalid parameters.",
       "vehicle_required": "Configure at least one vehicle before saving.",
-      "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated."
+      "invalid_energy": "Check that the required sensors are present, distinct and non-duplicated.",
+      "invalid_scenario": "Configure all three: load ON/OFF sensor, expected peak and duration. No wallbox commands are sent."
     }
   },
   "entity": {
@@ -222,6 +235,9 @@
       },
       "demo_plan": {
         "name": "Hypothetical 30% SOC scenario"
+      },
+      "simulated_decision": {
+        "name": "Home load decision (simulation only)"
       }
     }
   }

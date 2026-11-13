@@ -76,7 +76,8 @@
           "vehicles": "Veicoli",
           "finish": "Salva modifiche",
           "energy_menu": "Metodo di misura dei consumi",
-          "planning": "Pianificazione (potenza e partenza)"
+          "planning": "Pianificazione (potenza e partenza)",
+          "scenario": "Simulazione carico domestico (facoltativa)"
         }
       },
       "wallbox": {
@@ -177,12 +178,24 @@
           "departure_weekday": "Partenza abituale feriali (HH:MM)",
           "departure_weekend": "Partenza abituale weekend (HH:MM)"
         }
+      },
+      "scenario": {
+        "title": "Simulazione — limite ricarica e carico domestico",
+        "description": "Sola lettura. Seleziona facoltativamente il numero Charge power (richiesta), il sensore Power set (conferma), e un sensore ON/OFF di carico. Il picco in kW è considerato aggiuntivo al consumo casa corrente: ipotesi prudente, non un limite elettrico né un comando. La durata è uno scenario, non una previsione certa.",
+        "data": {
+          "ev_requested_limit": "Potenza di ricarica richiesta (entità number, facoltativa)",
+          "ev_confirmed_limit": "Potenza di ricarica confermata (entità sensor, facoltativa)",
+          "load_active_entity": "Carico domestico attivo (binary_sensor, facoltativo)",
+          "load_peak_kw": "Picco aggiuntivo ipotizzato del carico (kW)",
+          "load_duration_minutes": "Durata prudenziale ipotizzata (minuti)"
+        }
       }
     },
     "error": {
       "invalid_vehicle": "Nome duplicato, sensore SOC già assegnato o valori non validi.",
       "vehicle_required": "Configura almeno un veicolo prima di salvare.",
-      "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti."
+      "invalid_energy": "Controlla che i sensori richiesti siano presenti, distinti e non ripetuti.",
+      "invalid_scenario": "Per il carico anticipabile servono sensore ON/OFF, picco stimato e durata. Nessun dato sarà usato per comandare la wallbox."
     }
   },
   "entity": {
@@ -222,6 +235,9 @@
       },
       "demo_plan": {
         "name": "Scenario ipotetico dal 30%"
+      },
+      "simulated_decision": {
+        "name": "Decisione carico domestico (solo simulazione)"
       }
     }
   }
