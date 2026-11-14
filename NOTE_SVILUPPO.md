@@ -599,3 +599,27 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 2. Collegare un planner puro per calcolo reale dello slack (SOC, efficienza esplicita, potenza sostenibile), senza fasce preferenziali.
 3. Realizzare successivamente l'adapter eventi Shelly in M2, con timestamp coerenti e nessuna scrittura per campione, sostituendo il monitor storico e testando l'inattività su HA.
 4. Riportare questa decisione nella fonte viva di progetto oltre al diario.
+
+## 2026-11-14 — M1 replay completo con cap adattivo e veto planner (solo simulazione)
+
+### Nuovo codice e documenti
+- Aggiunto `custom_components/easywallbox_smart/adaptive_replay.py` per confronto deterministico **dpm_only / fixed_low / adaptive**, con carichi sintetici, DPM idealizzato o con ritardo **esplicitamente ipotetico**, SOC/energia residua in batteria, rendimento ipotetico, scadenza di partenza, riserva e potenza continuativa di pianificazione dichiarata. Nessun comando, nessun accesso ad HA e nessun file I/O.
+- Estesa `adaptive_policy.py`: quando un primo allarme ha ridotto il cap, i nuovi assorbimenti elevati della **sola casa** rinnovano una memoria temporanea anche se il totale rimane sotto la soglia. La risalita attende un intervallo di tranquillità ipotizzato **35 minuti**, poi verifica tutta la finestra Shelly da 5 minuti e procede in passi massimi di 0,4 kW ogni 5 minuti. Il dato deve essere fresco; una nuova lettura sconosciuta/obsoleta non autorizza aumento.
+- Aggiunto `ChargingWindow.has_fresh_reading()` per negare modifiche facoltative su campioni indisponibili/vecchi, anche in presenza di un timer di cooldown.
+- Aggiunto `tests/test_adaptive_replay.py` con 8 verifiche offline: strategia comparativa, DPM ideale, sensibilità 20/40s, maggiore urgenza del planner, 0 energia, invalid inputs, DST Europe/Rome e assenza operazioni I/O. Aggiornati test `test_adaptive_policy.py` per verificare memoria delle fasi domestiche senza nuovo allarme.
+- Nuova relazione `docs/REPLAY_ADATTIVO_M1_2026-11-14.md` e link nel README.
+
+### Prova numerica — solo scenario sintetico, da non spacciare per misura
+- Scenario: 13/11 ore 21:13→14/11 ore 08:00, casa 0,35 kW e 5 fasi domestiche intermittenti da 2,5 kW, DPM 4,4 kW, allarme 5 kW, limite EV normale 4,0 e fisso basso 2,0 kW, 24 kWh mancanti **alla batteria**, efficienza 90%, potenza attesa planner 3,2 kW, riserva 30 minuti.
+- DPM con ritardo ipotetico 20s: DPM-only **5** episodi modellati >/=5 kW e target 04:11; cap fisso 2 kW **0** episodi ma 4,642 kWh ancora mancanti alle 08:00; nuova variante adattiva **1** episodio, 7 cambi di cap `solo virtuali`, target 05:53.
+- La prima variante che risaliva troppo presto aveva ancora **5** episodi e 25 cambi, target 05:09. Il miglioramento attuale richiede il costo di 1h42' di ricarica in più rispetto al solo DPM.
+- Se ritardo ipotetico = **0 secondi**, DPM-only e adattivo producono entrambi 0 superamenti e stesso completamento, perché la politica non riceve un picco. Quindi **non dimostrata alcuna superiorità reale** senza misurare il DPM; il suo ritardo non è stato identificato.
+- Con 27 kWh richiesti, il planner reagisce al margine minore, il replay adattivo mostra 3 episodi anziché 1 e raggiunge comunque target: esempio del compromesso non universale, non della protezione elettrica.
+
+### Verifiche e limiti
+- **Verificati localmente** 8 test del nuovo replay puro; workflow CI del branch e intera suite del repository **ancora senza risultato verificato**. I test locali non sostituiscono un test reale HA e non certificano il firmware.
+- Le statistiche precedenti su carichi intermittenti derivano da CSV storici privati `time_throttle` a un minuto. Non sono dati puntuali dei picchi e **non vengono committati**.
+- Non è stato implementato il collegamento al vero planner/sessione/automazioni, la conciliazione tra dati Shelly asincroni o il tempo di conferma del comando ESPHome. `sensor.py` 0.0.13 continua ancora a fare refresh periodici; non distribuire rifondazione come release pronta.
+- Tutto su `rifondazione-evcc`: nessun comando BLE, nessuna scrittura nel Recorder, nessuna release/tag, nessuna modifica a `main`, `sviluppo-test`, firmware, DPM o automazioni HA.
+- **Prossima iterazione:** confronto sensibilità intervalli di risalita e quiet-time, mock di dati mancanti/stale, test completo; poi integrazione HA puramente passiva e dashboard della v0.1. Aggiornare la fonte viva di progetto all'atto della formalizzazione dei parametri.
+
