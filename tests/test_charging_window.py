@@ -128,11 +128,11 @@ class TestVolatileWindow(unittest.TestCase):
         )
         self.assertEqual(a.proposed_limit_kw, 2.4)
         b = w.assess_rise(
-            at(300), current_limit_kw=3.8, original_limit_kw=4,
+            at(300), current_limit_kw=4.0, original_limit_kw=4,
             available_kw=4.4
         )
-        self.assertEqual(b.status, "hold")  # 4.4 - 0.2 - 0.2 = 4.0
-        self.assertEqual(b.reason, "insufficient_headroom") if False else None
+        self.assertEqual(b.status, "hold")  # original authorized cap reached
+        self.assertEqual(b.reason, "insufficient_headroom")
 
     def test_dont_infer_a_stop_below_hardware_minimum(self):
         self.assertIsNone(peak_cap(
