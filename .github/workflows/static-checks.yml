@@ -2,7 +2,7 @@ name: Static checks
 
 on:
   push:
-    branches: [sviluppo-test]
+    branches: [sviluppo-test, rifondazione-evcc]
   workflow_dispatch:
 
 jobs:
