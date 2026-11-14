@@ -96,6 +96,24 @@ Per target 100%: calcolare solo l'arrivo indicativo al 100% senza comandare stop
 - In caso di modifica manuale del limite ESPHome, priorità all'utente: il futuro controller rinuncia al proprio ripristino automatico; in v0.1 ogni output è solo previsione. Non cambiare `Charge power` con step 0,1 in firmware senza un beneficio dimostrato; lo step attuale 0,2 è sufficiente per i test preliminari.
 - **Da misurare**: distribuzione temporale dei picchi reali, allineamento timestamp Shelly, reazione DPM e potenza EV, numero di comandi simulati, kWh persi/recuperati e target raggiungibile. Questi valori sono candidati per fixture, non configurazione operativa approvata.
 
+## M1 — Zero scritture da campioni e comportamento inattivo (vincolo 14/11)
+
+**Requisito approvato:** quando non è in corso una ricarica elettrica, EasyWallbox Smart Charging non deve raccogliere i campioni puntuali Shelly, aggiornare continuamente sensori diagnostici, scrivere file, né generare nuovi eventi di storico ad alta frequenza. Le entità Shelly/ESPHome esistenti continuano a operare normalmente e il Recorder di HA rimane governato dalla configurazione dell'utente; la nostra integrazione non può disattivare le registrazioni generate da altri componenti.
+
+- `SCOLLEGATA` / fuori sessione: il regolatore è inattivo, niente ascoltatori Shelly ad alta frequenza, buffer svuotato e nessun timer periodico del regolatore. Rimane **soltanto** un ascoltatore minimale dei cambi di stato wallbox/collegamento per riconoscere l'inizio della sessione, senza polling BLE aggiuntivo.
+- `COLLEGATA/ATTESA` ma carica non partita: il **planner** può valutare occasionalmente SOC, orario di partenza e fotografia dei carichi correnti per proporre l'avvio (non deve perdere questa capacità), ma il **regolatore di potenza** è fermo e non campiona/storicizza continuamente. La distinzione tra collegamento e carica elettrica sarà verificata in M2 prima del wiring.
+- `IN_CARICA` confermata: abilitare ricezione delle sole entità Shelly configurate (puntuali, escluse dal Recorder dall'utente), costruire combinazioni coerenti con timestamp e conservarle **solo in un deque limitato in RAM**, massimo 20 minuti e 1200 punti. Finestra prudente di 5 minuti, attesa massima tra campioni 60 s, freschezza 60 s: numeri interni candidati, da tarare con eventi Shelly veri; nessun salvataggio su file o su DB. Un sensore che non cambia ma ripubblica uno stato deve essere osservato correttamente; la futura sottoscrizione a `state_reported` sarà filtrata per entità e usata solo se necessario.
+- Ricarica terminata/stop/sessione chiusa, o disconnessione: togliere listener ad alta frequenza, cancellare buffer e non pubblicare in loop stati di riepilogo. Un eventuale aggiornamento **una tantum** per rappresentare la chiusura della sessione è distinto da un monitor periodico; discuterne il Recorder nella v0.1.
+- **Debito tecnico individuato:** nella 0.0.13 storica `sensor.py`, `Monitor.refresh` chiama `async_write_ha_state` su sette entità ogni 2 minuti, anche da inattivo. Questa logica è **da sostituire in M2**: il solo nuovo modulo puro M1 non modifica né risolve da sé tale comportamento. Non distribuire il nuovo branch come versione certificata prima del test di inattività.
+- Nessun `async_write_ha_state`, `hass.bus.async_fire`, logging per singolo campione, `open()`, database, sessioni statistiche o chiamate ai dispositivi nel core M1. I test devono coprire inattività, assenza di raccolta, svuotamento, finestre incompletamente coperte, dato obsoleto, picchi nella finestra, sorgenti incoerenti e memoria limitata.
+
+### Profilo storico facoltativo futuro, senza AI nella v0.1
+
+- Leggere in futuro, *solo se utile ai test e senza nuova raccolta*, la storia o le statistiche dei **sensori filtrati già presenti nel Recorder**: stimare per fascia e giorno feriale/weekend potenze tipiche e frequenza di carichi elevati. Valutare affidabilità ed entità già registrate prima di attivarlo; dati filtrati non restituiscono i picchi mancanti.
+- Un modello AI non è necessario per statistiche di base; l'obiettivo di partenza e i dati reali conservano priorità. Nessun logger quotidiano autonomo, nessuna raccolta quando non si carica, nessun profilo domestico persistito dalla nostra integrazione nella v0.1.
+- In assenza di storico esistente: niente previsioni inventate; il planner rimane prudente e reattivo.
+
+
 ## Output minimo e UI
 
 Una `ProposedDecision` include almeno: sessione, modalità/fase, azione **solo simulata** (attendi / avvia consigliato / continua / nessun intervento / dati insufficienti), motivo principale, potenza e durata usate con provenienza, timestamp delle sorgenti, confidenza e prossima rivalutazione.
