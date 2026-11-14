@@ -573,3 +573,29 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Il modulo puro non effettua I/O, non registra eventi HA, non usa BLE, non attua limiti DPM e non aggiunge una fonte di scritture Recorder.
 - Restano da implementare: adapter eventi Shelly filtrati per entità e sincronizzazione, distinzione tra sessione e carica reale, regole di precedenza planner, simulatore completo con replay DPM e confronto quantitativo, sostituzione del sensore storico a pubblicazione periodica, dashboard e prove runtime su HA reale.
 - Soglie 4,4/5,0/0,2/0,4 kW, finestra 5 minuti, conservazione 20 minuti e freschezza 60 s sono valori **candidati per simulazione**, non taratura validata della parete elettrica.
+
+
+## 2026-11-14 — M1: prima politica adattiva puramente simulata, senza fasce preferite
+
+### Decisione architetturale
+- **Eliminate dalle specifiche della rifondazione le fasce preferenziali di ricarica**: non chiedere finestre relative a cena, lavastoviglie, phon o lavatrice. Restano obiettivi e orari di **partenza** per feriali/weekend ed eccezioni di sessione; il `preferred_start` del precedente prototipo non è un requisito da trasferire.
+- Il DPM rimane sempre attivo come controllo elettrico rapido. Il nuovo supervisore non lo copia: agisce solo se si verifica un evento totale sopra soglia attendibile, usando la lettura della **casa senza wallbox** per proporre un limite facoltativo, e restituisce gradualmente la potenza.
+- Con un trigger da 5,0 kW, **il primo picco è già avvenuto e non può essere prevenuto** dal supervisore; solo i successivi possono essere mitigati. Il pre-trigger basato su consumi domestici alti è un'ipotesi distinta da valutare in replay, non un automatismo introdotto.
+
+### Piccolo incremento M1
+- Aggiunto `custom_components/easywallbox_smart/adaptive_policy.py`, **core Python puro**: modalità inattiva se non in carica, rilevamento dell'attraversamento della soglia (non ogni report alto), cap simulato con 4,4 − casa − 0,2 e passi da 200 W, veto al cap con margine di partenza insufficiente, finestra RAM da 5 minuti per la risalita a 400 W, 5 minuti tra risalite, anti-oscillazione da 5/10/15 minuti secondo episodi osservati negli ultimi 60 minuti. I valori sono ipotesi da ottimizzare. La politica riceve uno slack già calcolato, **non** implementa ancora il planner di sessione completo.
+- Aggiunti otto test `tests/test_adaptive_policy.py` per inattività, un picco, hold, finestra con ultimo dato ingannevole, nuova ricorrenza, fine carica, dati obsoleti e configurazione invalida.
+- Aggiornati `docs/ARCHITETTURA.md` e README per distinguere il vecchio software 0.0.13 già installabile dalla nuova rifondazione offline.
+
+### Verifiche e confini
+- **Verificato in laboratorio locale:** otto test del modulo puro superati con un duplicato funzionale semplificato del buffer `ChargingWindow`. I test esatti sono stati poi aggiunti al repository. **Esecuzione completa GitHub Actions e runtime HA non ancora verificati**; non presentare l'esito locale come prova CI del commit.
+- Non esiste nel nuovo modulo alcun adapter per leggere eventi Shelly, nessun servizio HA, comando BLE, scrittura di file, registro di campioni, release o modifica DPM. Il `cap_kw` si aggiorna esclusivamente **nella simulazione**, non rappresenta un comando richiesto/confermato né una misura reale.
+- `sensor.py` storico 0.0.13 continua a pubblicare aggiornamenti periodici: sostituzione necessaria prima di dichiarare soddisfatto il vincolo zero registrazioni in idle. Non installare `rifondazione-evcc` come release approvata.
+- CSV privati di consumi domestici **non committati**. Il filtro `time_throttle` a un minuto non consente di certificare la durata dei picchi o il numero reale di superamenti; in seguito test comparativi DPM-only/limite fisso/adattivo con scenari sintetici e dati validati.
+- `main`, `sviluppo-test`, firmware EasyWallbox e automazioni HA legacy devono restare invariati; nessuna release né PR.
+
+### Prossimi passi
+1. Verificare CI del nuovo ramo, correggere eventuali problemi e provare replay integrato con casi sintetici (episodi separati di 25–37 minuti, potenza assente, secondo picco e margine alla partenza).
+2. Collegare un planner puro per calcolo reale dello slack (SOC, efficienza esplicita, potenza sostenibile), senza fasce preferenziali.
+3. Realizzare successivamente l'adapter eventi Shelly in M2, con timestamp coerenti e nessuna scrittura per campione, sostituendo il monitor storico e testando l'inattività su HA.
+4. Riportare questa decisione nella fonte viva di progetto oltre al diario.
