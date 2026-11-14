@@ -500,3 +500,30 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
   con una UI semplice e senza comandi, mantenendo diagnostica chiara
   e dati incompleti non validi.
 - Firmware ESPHome, soglia DPM, automazioni, main invariati.
+
+
+## 2026-11-14 — Rifondazione ispirata a evcc, nuovo branch e specifica M0
+
+### Stato GitHub verificato e autorizzazione
+- L'utente ha chiesto esplicitamente un **branch nuovo**, separato da `sviluppo-test`.
+- Creato `rifondazione-evcc` dal commit esatto `ab6b2b279e724ee0629aa80eaf7dfed64d3953d0`. Il branch `main` e `sviluppo-test` restano invariati; il firmware ESPHome non si tocca.
+- La linea 0.0.x rimane **storica**: codice ancora presente nel nuovo branch solo per conservazione e futura rimozione deliberata, non baseline funzionale della riscrittura.
+
+### Decisioni architetturali di principio approvate (M0 parziale)
+- Prendere da evcc l'architettura logica di sessioni, veicoli, SOC e obiettivi temporali, **non** copiarne integralmente Go, driver o attuatore.
+- Pianificatore deterministico a scala di minuti: affronta genericamente carichi domestici variabili, tempi di collegamento imprevisti e scadenze; **nessun orario domestico hardcoded e nessuna integrazione obbligatoria per singoli elettrodomestici**.
+- Wallbox/ESPHome sono proprietari del BLE e il DPM è sempre attivo, unico responsabile della gestione rapida dei picchi; il planner osserva risultati misurati senza inseguire oscillazioni con ripetuti Start/Stop.
+- Separare modalità utente, fase di sessione, ETA misurata, piano di partenza e comandi futuri; nessuna riattivazione automatica di pausa esplicita o sessione interrotta.
+- **v0.1 simulazione senza comandi**; Lovelace e replay offline obbligatori. Automazioni legacy invariate.
+- Profilazione storica dei carichi **non prevista nella v0.1**: eventuale miglioramento futuro solo se i test mostrano benefici. In GitHub usare esclusivamente fixture sintetiche, non pubblicare abitudini e dati domestici reali.
+
+### File modificati e verifiche
+- Creato `docs/ARCHITETTURA.md`: contratto dati con provenienza e freschezza, macchine a stati, ETA distinta dal piano, sicurezza, UX e piano di test. Il documento identifica esplicitamente i parametri **non ancora approvati**.
+- Aggiornato questo diario senza rimuovere lo storico precedente.
+- Nessun file di programma modificato, nessun test applicativo o hardware eseguito, nessuna release/tag, nessuna azione sulla wallbox o su Home Assistant.
+
+### Ancora aperto prima del core M1
+- Riserva temporale, selezione della potenza prudente, rendimento/efficienza e soglie di freschezza/persistenza dei carichi.
+- Precedenze esatte tra Manuale, Pausa esplicita, Carica subito, stop auto, cambio target e restart HA; piano di migrazione/rollback da 0.0.13.
+- Verificare le entità reali e le unità prima dell'integrazione HA (M2).
+- Allineare la fonte viva del Progetto alla nuova decisione del branch e ai criteri generali M0. Non dichiarare M0 completamente chiusa né M1 implementata.
