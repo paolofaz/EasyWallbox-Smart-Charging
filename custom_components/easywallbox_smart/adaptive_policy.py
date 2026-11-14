@@ -140,6 +140,8 @@ class SimulatedCapPolicy:
             return Proposal("insufficient_data", None, "unknown_departure_slack", peaks)
         if self.cap_kw >= self.config.nominal_cap_kw:
             return Proposal("hold", self.cap_kw, "no_optional_cap_active", peaks)
+        if not self.window.has_fresh_reading(now):
+            return Proposal("insufficient_data", None, "stale_or_incoherent_source", peaks)
         if slack_minutes < MIN_SLACK_MINUTES:
             # Planned escape from our OWN cap only. Hardware DPM is not touched.
             self.cap_kw = self.config.nominal_cap_kw
