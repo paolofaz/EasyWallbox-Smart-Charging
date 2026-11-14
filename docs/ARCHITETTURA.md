@@ -3,6 +3,18 @@
 **Data:** 2026-11-14  
 **Stato:** M0, impostazione architetturale approvata; parametri e semantiche ancora da chiudere. **Nessuna implementazione nuova o test eseguito da questo documento.**
 
+## Decisione successiva del 14/11 — il trigger 5 kW è superato
+
+**Requisito aggiornato e prevalente sulle ipotesi M0/M1 precedenti:** la nuova logica di *riduzione adattiva* **NON** si attiva al superamento di una soglia totale di 5,0 kW. Guarda il **solo carico domestico senza EV** (`Shelly piano terra + Shelly piano primo`) per individuare episodi impegnativi che possono far modulare ripetutamente il DPM. La potenza wallbox misurata può essere diagnostica, ma non fa parte del segnale di trigger. Non aggiungere fascia «cena», né censire elettrodomestici.
+
+- **DPM reale riferito dall'utente:** risposta circa 1–2 secondi in salita/discesa; regola intorno a 4,2–4,3 kW totali. DPM sempre attivo, non modificato. La nostra logica lenta non tenta di prevenire transitori di 1–2 secondi o di replicare la protezione elettrica.
+- **Trigger domestico M1 candidato da replay, NON calibrato:** assorbimento casa >=1,5 kW per due minuti *ricostruiti*. L'input storico è filtrato `time_throttle`, quindi non conferma tempi istantanei. Cap ipotetico `floor_step(4,3 - casa - 0,2)`, limitato al minimo firmware 1,4 kW, solo se il planner permette una penalizzazione aggiuntiva. In caso di carichi oltre il margine, il DPM continua a governare il carico.
+- **Recupero candidato e modificabile soltanto nel core, non nell'UI:** dopo un primo episodio attendere almeno 5 min di calma valida; secondo 12 min; successivi 20 min, con finestra Shelly completa e passi massimi 0,4 kW ogni 3–5 min. Riconoscimento episodio resettato dopo 60 min senza carico significativo. Non approvare questi numeri soltanto dai CSV filtrati.
+- **Budget cumulativo del planner:** confronto dell'energia EV effettivamente consentita dal DPM ideale (controfattuale) con quella consentita dal proprio cap. Soltanto una frazione del margine verso la partenza può essere spesa, e se il margine è esiguo **non si attiva proprio il cap facoltativo**. Nel replay soltanto: budget 25% dello slack ipotizzato a 3,6 kW sostenibili; quattro ore -> 3,6 kWh, 90 min -> 1,35 kWh, 30 min -> **nessun intervento**. Nessun modello reale del SOC/deadline è stato ancora collegato.
+- **Risultato replay 7 sere dal 7 al 13 novembre, 18–24, cap originale 4 kW, DPM ideale a 4,3 kW, carichi da Shelly filtrati:** con 4 h di margine ipotetico, forte modulazione DPM *simulata* (riduzione >=0,6 kW rispetto al cap richiesto) 63 -> 40 episodi, energia AC teorica 129,63 -> 110,99 kWh su intervalli validi (−18,64 kWh), 97 cap virtuali. Con margine ipotetico 30 min: **zero** cap e **zero** kWh persi; 90 min: ~9,36 kWh aggregati (sette sere). Non sono interventi veri, dati puntuali né prova che si evitino distacchi del contatore; finestra dei dati coperta solo per ~76–95% per sera.
+- **Limite emerso:** 97 variazioni virtuali in sette sere sono troppe da accettare senza ottimizzare la quiete, i comandi BLE e la ownership. La vecchia `adaptive_policy.py` è ancora un **prototipo obsoleto** con trigger `alarm_kw=5`; **non è stata collegata ad HA né adattata a questa decisione**. Non far passare questi nuovi risultati come test del modulo attualmente nel repository. Sostituirlo dopo test sintetici e valutazione.
+
+
 ## Origine e perimetro
 
 Questa integrazione Home Assistant nativa Python si ispira ai concetti di evcc (sessione, veicolo, piano di partenza, stima SOC), **senza porting integrale o attuatore evcc**. Studio di riferimento: evcc commit `6b1f9584286fd4ab9a702b1e77e5aede8e967300` e documento `EASYWALLBOX_EVCC_STUDIO_ARCHITETTURA_2026-11-14.md` della fonte di Progetto.
