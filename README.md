@@ -1,5 +1,16 @@
 # EasyWallbox Smart Charging
 
+> **Sviluppo separato (14/11/2026):** branch `rifondazione-evcc`, milestone M1.
+> Nuovo simulatore puro `adaptive_policy.py`: rileva il singolo superamento
+> di una soglia complessiva e calcola il cap dalla potenza della casa senza EV;
+> tenta il recupero graduale con finestra mobile e considera un margine di
+> partenza fornito dall'esterno. **NON è collegato ad HA, non invia comandi,
+> non crea entità e non registra campioni.**
+> La 0.0.13 descritta sotto è la precedente versione sperimentale; il
+> monitor periodico di quella versione resta da sostituire in M2.
+> Nella nuova architettura **nessuna fascia preferenziale di ricarica**:
+> rimangono solo orari di partenza e override di sessione.
+>
 Integrazione Python nativa per Home Assistant che legge gli stati di
 ESPHome e dei veicoli per pianificare le ricariche. Supporta più veicoli
 configurati (es. Fiat 500e e Kia EV3).
