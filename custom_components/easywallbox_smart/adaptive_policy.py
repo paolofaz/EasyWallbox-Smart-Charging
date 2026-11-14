@@ -19,6 +19,7 @@ RISE_INTERVAL = timedelta(minutes=5)
 PEAK_MEMORY = timedelta(minutes=60)
 PEAK_VALID_FOR = timedelta(seconds=60)
 MIN_SLACK_MINUTES = 20.0  # Candidate M1 value, not production calibration.
+DOMESTIC_CYCLE_QUIET = timedelta(minutes=35)  # Candidate from filtered 25-37m gaps.
 
 
 def _good(value, allow_zero=False):
@@ -69,6 +70,8 @@ class SimulatedCapPolicy:
         self._recent_peaks: deque[datetime] = deque()
         self._pending_peak: Point | None = None
         self._over_alarm = False
+        self._peak_house_kw: float | None = None
+        self._last_domestic_busy: datetime | None = None
 
     def set_charging(self, charging: bool):
         self.window.set_charging(charging)
@@ -79,6 +82,8 @@ class SimulatedCapPolicy:
             self._recent_peaks.clear()
             self._pending_peak = None
             self._over_alarm = False
+            self._peak_house_kw = None
+            self._last_domestic_busy = None
 
     def observe(self, at: datetime, house_kw: float | None,
                 total_kw: float | None, coherent: bool = True) -> bool:
@@ -94,6 +99,10 @@ class SimulatedCapPolicy:
             _good(total_kw, allow_zero=True)
         ) else Point(at, None, None)
         if point.total_kw is not None and point.house_kw is not None:
+            if (self.cap_kw < self.config.nominal_cap_kw
+                    and self._peak_house_kw is not None
+                    and point.house_kw >= max(1.0, self._peak_house_kw * .70)):
+                self._last_domestic_busy = at
             above = point.total_kw >= self.config.alarm_kw
             if above and not self._over_alarm:
                 self._pending_peak = point
@@ -121,6 +130,8 @@ class SimulatedCapPolicy:
                 if (self.config.minimum_cap_kw <= proposed < self.cap_kw and
                         (self._last_change is None or now - self._last_change >= timedelta(minutes=2))):
                     self.cap_kw = proposed  # Simulation ONLY.
+                    self._peak_house_kw = pending.house_kw
+                    self._last_domestic_busy = now
                     self._last_change = now
                     return Proposal("reduce", proposed, "single_verified_alarm", peaks)
                 return Proposal("hold", self.cap_kw, "no_useful_extra_cap", peaks)
@@ -132,11 +143,14 @@ class SimulatedCapPolicy:
         if slack_minutes < MIN_SLACK_MINUTES:
             # Planned escape from our OWN cap only. Hardware DPM is not touched.
             self.cap_kw = self.config.nominal_cap_kw
+            self._peak_house_kw = None
+            self._last_domestic_busy = None
             self._last_change = now
             return Proposal("restore", self.cap_kw, "deadline_requires_normal_cap", peaks)
-        hold = timedelta(minutes=5 if peaks <= 1 else 10 if peaks == 2 else 15)
-        if ((self._last_peak and now - self._last_peak < hold) or
-                (self._last_change and now - self._last_change < RISE_INTERVAL)):
+        if (self._last_domestic_busy and
+                now - self._last_domestic_busy < DOMESTIC_CYCLE_QUIET):
+            return Proposal("hold", self.cap_kw, "domestic_cycle_quiet_window", peaks)
+        if (self._last_change and now - self._last_change < RISE_INTERVAL):
             return Proposal("hold", self.cap_kw, "cooldown", peaks)
         result = self.window.assess_rise(
             now, current_limit_kw=self.cap_kw,
