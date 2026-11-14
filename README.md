@@ -6,6 +6,11 @@
 > tenta il recupero graduale con finestra mobile e considera un margine di
 > partenza fornito dall'esterno. **NON è collegato ad HA, non invia comandi,
 > non crea entità e non registra campioni.**
+> **Replay M1 verificato localmente:** il nuovo `adaptive_replay.py`
+> confronta DPM ideale/ritardato **ipotetico**, limite fisso e cap adattivo,
+> con 8 test di notte sintetica e obiettivo di partenza. Nessun CSV privato
+> caricato nel repository. Guida: [Replay adattivo M1](docs/REPLAY_ADATTIVO_M1_2026-11-14.md).
+>
 > La 0.0.13 descritta sotto è la precedente versione sperimentale; il
 > monitor periodico di quella versione resta da sostituire in M2.
 > Nella nuova architettura **nessuna fascia preferenziale di ricarica**:
