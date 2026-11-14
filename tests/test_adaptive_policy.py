@@ -73,7 +73,7 @@ class TestPolicy(unittest.TestCase):
         sample_range(p, 6, 10, 0.2)
         self.assertEqual(p.evaluate(t(9, 40), 120).action, "hold")
         # That high reading has left the five-minute window by minute ten.
-        self.assertEqual(p.evaluate(t(10), 120).action, "raise")
+        self.assertEqual(p.evaluate(t(10), 120).reason, "domestic_cycle_quiet_window")
 
     def test_new_peak_slows_rise_without_a_burst_of_changes(self):
         p = make()
@@ -82,7 +82,7 @@ class TestPolicy(unittest.TestCase):
         p.evaluate(t(), 120)
         sample_range(p, 1, 8, 0.4)
         first = p.evaluate(t(7, 40), 120)
-        self.assertEqual(first.action, "raise")
+        self.assertEqual(first.action, "hold")
         # Crossing back from below the alarm arms a second episode.
         p.observe(t(8), .4, 2.8)
         p.observe(t(8, 20), 2.1, 5.1)
@@ -90,7 +90,20 @@ class TestPolicy(unittest.TestCase):
         self.assertEqual(second.count_recent_peaks, 2)
         self.assertEqual(second.action, "hold")  # No simulated burst within 2 min.
         sample_range(p, 9, 17, 0.4)
-        self.assertEqual(p.evaluate(t(16, 40), 120).reason, "cooldown")
+        self.assertEqual(p.evaluate(t(16, 40), 120).reason, "domestic_cycle_quiet_window")
+
+    def test_domestic_heating_without_alarm_refreshes_cooldown(self):
+        p = make()
+        p.set_charging(True)
+        p.observe(t(), 2.1, 5.1)
+        self.assertEqual(p.evaluate(t(), 120).action, "reduce")
+        # DPM/cap kept the TOTAL below alarm, but house still has a heater.
+        for minute in range(1, 30):
+            p.observe(t(minute), 2.1 if minute == 28 else 0.3,
+                      4.0 if minute == 28 else 2.3)
+        self.assertEqual(p.evaluate(t(29), 120).reason,
+                         "domestic_cycle_quiet_window")
+        self.assertEqual(p.cap_kw, 2.0)
 
     def test_charging_end_clears_volatile_memory(self):
         p = make()
