@@ -126,6 +126,15 @@ class ChargingWindow:
             self._points.popleft()
         return True
 
+    def has_fresh_reading(self, now: datetime) -> bool:
+        """Never authorize an optional power change on missing/old data."""
+        if not self._charging or not self._points or not _aware(now):
+            return False
+        last = self._points[-1]
+        age = now - last.at
+        return (timedelta(0) <= age <= FRESHNESS and
+                last.house_kw is not None and last.total_kw is not None)
+
     def latest_trigger(self, now: datetime, alarm_kw: float) -> Point | None:
         """Return a fresh validated point at/over the *notification* threshold.
 
