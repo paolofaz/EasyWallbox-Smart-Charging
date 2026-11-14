@@ -527,3 +527,19 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Precedenze esatte tra Manuale, Pausa esplicita, Carica subito, stop auto, cambio target e restart HA; piano di migrazione/rollback da 0.0.13.
 - Verificare le entità reali e le unità prima dell'integrazione HA (M2).
 - Allineare la fonte viva del Progetto alla nuova decisione del branch e ai criteri generali M0. Non dichiarare M0 completamente chiusa né M1 implementata.
+
+## 2026-11-14 — M0: proposta per limitazione adattiva, picco singolo e scadenza
+
+### Feedback e requisito corretto
+- Durante la ricarica, la presenza di elettrodomestici intermittenti genera picchi che nel caso osservato hanno attivato ripetutamente l'automazione di allarme consumi, anche con DPM operativo. Il limite portato manualmente a 2 kW è poi rimasto basso fino al ripristino manuale. L'obiettivo include **anche il ripristino automatico** dei momenti di maggior headroom, non solo la scelta dell'ora di partenza.
+- L'utente propone che **un solo picco verificato** possa far scendere il cap; indicativamente rivalutazione dopo 10 minuti, modificabile in base allo slack di pianificazione. Soglie e tempi **non ancora approvati come numeri definitivi**.
+
+### Modifiche documentali
+- Aggiornato `docs/ARCHITETTURA.md` con il supervisore adattivo simulato, formula candidata del cap, segnali indipendenti casa/EV, risalita a passi, limite di comandi e veto planner sulle riduzioni facoltative quando la partenza è a rischio.
+- Distinzione da evcc: planner per SOC/partenza e gestione dei carichi sono separati; evcc sconsiglia il proprio load management in sovrapposizione a controllori integrati. Noi lasciamo DPM attivo e proponiamo **solo una supervisione lenta**, non copiamo il suo attuatore.
+- La protezione elettrica prevale sempre sull'urgenza. Se il DPM non contiene un sovraccarico reale, il planner non può garantire sicurezza né raggiungimento del SOC. Serve diagnostica delle letture e dell'eventuale ritardo.
+
+### Test e limiti
+- **Eseguiti:** lettura/verifica file GitHub sul nuovo branch e confronto mirato con documentazione e codice evcc al commit di studio. Nessuna esecuzione di planner/replay Python, nessuna prova su HA/wallbox, nessun comando BLE o modifica firmware, nessuna release.
+- **Da fare:** fixture su singolo picco valido e spurio, consumi casa intermittenti, risalita anticipata/ritardata, margine grande/nullo, soglia inferiore al minimo slider, dati Shelly non allineati, carica già limitata dal DPM, intervento manuale concorrente, target raggiunto. Confronto quantitativo DPM-only vs cap fisso vs cap adattivo.
+- Il grafico HA disponibile usa un recorder filtrato; non prova tempo di risposta DPM né fornisce tutti i picchi. Non dichiarare l'ottimizzazione testata o accettata prima di replay e misure.
