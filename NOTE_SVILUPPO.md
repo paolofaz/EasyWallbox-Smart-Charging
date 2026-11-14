@@ -623,3 +623,29 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Tutto su `rifondazione-evcc`: nessun comando BLE, nessuna scrittura nel Recorder, nessuna release/tag, nessuna modifica a `main`, `sviluppo-test`, firmware, DPM o automazioni HA.
 - **Prossima iterazione:** confronto sensibilità intervalli di risalita e quiet-time, mock di dati mancanti/stale, test completo; poi integrazione HA puramente passiva e dashboard della v0.1. Aggiornare la fonte viva di progetto all'atto della formalizzazione dei parametri.
 
+
+## 2026-11-14 — Studio serale su 7 giorni di consumi domestici filtrati (M1, offline)
+
+**Richiesta:** simulare un'auto continuamente in carica al limite massimo richiesto di 4,0 kW fra le 18:00 e le 24:00 nelle sette sere 07–13/11. DPM ipotizzato 4,4 kW, soglia supervisore 5,0 kW. Sensori reali privati sotto/sopra, esclusa wallbox; nessuna ricostruzione degli eventi reali DPM, nessuna assunzione che il veicolo fosse davvero presente. Dati provenienti da storico HA `time_throttle` a un minuto, non letture puntuali.
+
+**Metodo:** analisi locale temporanea, griglia ricostruita 20 secondi, somma di letture più recenti con TTL max 150 s e buchi `unknown/unavailable` esclusi (copertura effettiva per confronto energetico ~73,5–93,2% delle ore serali). Per **sensibilità soltanto**, DPM perfetto per l'energia ma ritardo elettrico **inventato** di 20 s, zero in una prova di controllo. Il calcolo eventi e kWh è una **replica offline delle regole M1 con quiet-time parametrico**, non un test HA o una misura delle prestazioni elettriche della wallbox. Planner con ampio margine, senza veto (partenze/SOC dei sette giorni non disponibili).
+
+**Esiti aggregati esclusivamente ipotetici (7 sere, stessi intervalli validi):**
+
+| Politica | Episodi virtuali totale >= 5 kW | Energia AC simulata | Cambi cap simulati |
+| --- | ---: | ---: | ---: |
+| DPM-only, ritardo ipotetico 20 s | 53 | 125,82 kWh | 0 |
+| Adattivo +5 minuti | 31 | 112,24 kWh | 97 |
+| Adattivo +15 minuti | 28 | 108,42 kWh | 82 |
+| Adattivo +25 minuti | 26 | 106,30 kWh | 71 |
+| Adattivo +35 minuti (candidato attuale nel codice) | 26 | 103,06 kWh | 65 |
+| Adattivo +45 minuti | 25 | 99,58 kWh | 59 |
+| Fisso 2 kW | 7 | 67,50 kWh | 0 |
+
+**Osservazione:** quiet-time 35 min non offre alcun episodio in meno rispetto a 25 min in questa ricostruzione, ma costa altri 3,24 kWh aggregati. Quindici minuti ne comportano solo due in più rispetto a 25, con ~2,12 kWh recuperati. Non scegliere i numeri solo per il numero di superamenti modellati: penalità energetica è già rilevante e non sono stati applicati vincoli di partenza.
+
+**Controllo fondamentale:** con DPM modellato istantaneo (0 s) le sette sere registrano **0** superamenti virtuali per tutte le politiche e il regolatore non deve cambiare alcun cap. L'apparente beneficio deriva dall'ipotesi di ritardo del DPM. Il modello 20s considera i campioni filtrati come mantenuti fino al successivo aggiornamento entro 150s, non riproduce ritardi fisici DPM/BLE/HA; un allarme reale non è dimostrabile dalla controfattuale.
+
+**Decisione di sviluppo:** **non modificato** ancora il quiet-time 35 min della `adaptive_policy.py` in base a CSV parziali. Da valutare un candidato iniziale 15–25 min e una politica dipendente da carichi ricorrenti e slack; evitare sia 35 min rigidi sia un secondo DPM. Confrontare nuovamente su prove puntuali, conferma DPM, replay della stessa implementazione e test di regressione.
+
+**Privacy e I/O:** nessun CSV dei consumi individuali né grafico timestamp dei singoli eventi committato. Report locale con dettagli consegnato in chat; nel repo soltanto risultati **aggregati** e limiti metodologici. Nessun comando BLE, scrittura Recorder o modifica firmware/HA/`main`/`sviluppo-test`.
