@@ -543,3 +543,14 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - **Eseguiti:** lettura/verifica file GitHub sul nuovo branch e confronto mirato con documentazione e codice evcc al commit di studio. Nessuna esecuzione di planner/replay Python, nessuna prova su HA/wallbox, nessun comando BLE o modifica firmware, nessuna release.
 - **Da fare:** fixture su singolo picco valido e spurio, consumi casa intermittenti, risalita anticipata/ritardata, margine grande/nullo, soglia inferiore al minimo slider, dati Shelly non allineati, carica già limitata dal DPM, intervento manuale concorrente, target raggiunto. Confronto quantitativo DPM-only vs cap fisso vs cap adattivo.
 - Il grafico HA disponibile usa un recorder filtrato; non prova tempo di risposta DPM né fornisce tutti i picchi. Non dichiarare l'ottimizzazione testata o accettata prima di replay e misure.
+
+
+## 2026-11-14 — M0: dettaglio operativo per soglie e risalita (ancora PROPOSTA)
+
+- L'utente propone di configurare separatamente potenza disponibile impianto (es. 4,4 kW) e soglia di intervento Smart Charging (es. 5,0 kW). **Il DPM resta attivo e immutato**.
+- Al primo picco validato leggere la potenza domestica **escludendo la wallbox** e proporre un cap massimo: 4,4 − 2,1 − 0,2 = 2,1 kW, arrotondato a 2,0 kW con step firmware 0,2. La soglia d'allarme non è un vincolo elettrico autorizzativo.
+- Per risalire, non aspettare rigidamente «casa sotto 1 kW»: recuperare margine anche quando si passa da casa 2,1 a 1,2 kW. Prima ipotesi testabile: rivalutazione ogni 1 minuto, attesa iniziale 10 minuti con margine ampio, incremento massimo 0,4 kW ogni 3–5 minuti, rollback su nuovo picco.
+- Il planner valuta l'energia sacrificata **nel periodo temporaneo di cap**, non simula erroneamente l'intera notte al limite ridotto; riduzioni aggiuntive sono vietate se consumano margine di partenza insufficiente.
+- Verificata lettura `wallbox.yaml` del firmware `main` al commit `094bd04cc9649ff87380013936799ae2788f0d43`: slider `Charge power` minimo 1,4 kW e step 0,2 kW, con conferma separata da richiesta. **Nessuna modifica firmware**; step 0,1 non giustificato senza misure.
+- Ho ampliato `docs/ARCHITETTURA.md` riportando tutto come **parametri candidati da simulare**, non come soglie definitive approvate, e senza includere grafici domestici privati.
+- **Non eseguiti:** test planner/replay, installazione HA, attuazione o letture domestiche live. Restano da definire freschezza/sincronizzazione Shelly, soglia di margine per veto, intervalli anti-oscillazione, riconciliazione con modifiche manuali e automazioni legacy.
