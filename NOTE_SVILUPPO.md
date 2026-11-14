@@ -554,3 +554,22 @@ DPM attivo e responsabile dei picchi. Firmware ESPHome non modificato. Automazio
 - Verificata lettura `wallbox.yaml` del firmware `main` al commit `094bd04cc9649ff87380013936799ae2788f0d43`: slider `Charge power` minimo 1,4 kW e step 0,2 kW, con conferma separata da richiesta. **Nessuna modifica firmware**; step 0,1 non giustificato senza misure.
 - Ho ampliato `docs/ARCHITETTURA.md` riportando tutto come **parametri candidati da simulare**, non come soglie definitive approvate, e senza includere grafici domestici privati.
 - **Non eseguiti:** test planner/replay, installazione HA, attuazione o letture domestiche live. Restano da definire freschezza/sincronizzazione Shelly, soglia di margine per veto, intervalli anti-oscillazione, riconciliazione con modifiche manuali e automazioni legacy.
+
+## 2026-11-14 — M1 primo incremento: finestra Shelly volatile e vincolo di inattività
+
+### Decisione dell'utente e architettura
+- La nuova integrazione deve rimanere inattiva quando la wallbox non sta caricando: niente raccolta puntuale, nessuna scrittura regolare in file/Recorder e nessuna elaborazione inutilmente continua. Durante `COLLEGATA/ATTESA` deve restare soltanto la possibilità di fare una valutazione sporadica del piano; non registrare un flusso domestico fuori carica.
+- Storicizzazione dei consumi domestici quando non si ricarica: **non approvata**. Possibile futura lettura in sola consultazione dei sensori già filtrati e registrati da HA. Per un profilo feriale/weekend semplice non serve un modello AI. Il firmware e i 3 Shelly esistenti non sono modificati.
+
+### Codice introdotto sul solo branch rifondazione-evcc
+- Nuovo modulo **puro e non collegato ad HA**, `custom_components/easywallbox_smart/charging_window.py` con deque RAM limitata a 20 minuti/1200 campioni, attivazione soltanto con `set_charging(True)`, svuotamento all'arresto, dati incoerenti o non freschi mai trasformati in zero, finestra mobile 5 minuti per proposta di rialzo fino a 400 W, cap facoltativo calcolabile dal consumo casa al picco validato.
+- Nuovi test offline `tests/test_charging_window.py` con nove casi di inattività, memoria, primo picco, ultimo campione ingannevole, dati incompleti, cap, stale e no-stop implicito.
+- Aggiornato il workflow statico per eseguire anche sul branch isolato; workflow release resta limitato al vecchio `sviluppo-test` e non è stato toccato.
+- Specifica `docs/ARCHITETTURA.md` aggiornata su comportamento spento, ciclo di vita RAM, futuro adapter HA e possibilità di leggere statistiche già disponibili senza un nuovo storico.
+
+### Verifiche e limitazioni dichiarate
+- Verificati via GitHub i file del vecchio branch **prima** delle modifiche. Identificato `sensor.py` storico: `Monitor.refresh` usa `async_write_ha_state` ogni 2 minuti anche quando inattivo. **Non ancora sostituito**, perciò non va installato/considerato conforme il nuovo branch come integrazione v0.1.
+- I test sono stati aggiunti ma **il loro esito non è ancora confermato**: l'ambiente Python locale non può scaricare il repository GitHub e la lista degli status Actions non ha restituito un risultato verificabile in questa sessione. Non dichiarare test OK senza evidenza.
+- Il modulo puro non effettua I/O, non registra eventi HA, non usa BLE, non attua limiti DPM e non aggiunge una fonte di scritture Recorder.
+- Restano da implementare: adapter eventi Shelly filtrati per entità e sincronizzazione, distinzione tra sessione e carica reale, regole di precedenza planner, simulatore completo con replay DPM e confronto quantitativo, sostituzione del sensore storico a pubblicazione periodica, dashboard e prove runtime su HA reale.
+- Soglie 4,4/5,0/0,2/0,4 kW, finestra 5 minuti, conservazione 20 minuti e freschezza 60 s sono valori **candidati per simulazione**, non taratura validata della parete elettrica.
