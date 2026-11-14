@@ -114,6 +114,18 @@ Per target 100%: calcolare solo l'arrivo indicativo al 100% senza comandare stop
 - In assenza di storico esistente: niente previsioni inventate; il planner rimane prudente e reattivo.
 
 
+## Decisione 14/11 — niente fasce preferenziali, evento domestico e deadline
+
+**Scelta approvata per la rifondazione:** non chiedere all'utente fasce «tranquille» per cucina, lavastoviglie, phon, lavatrice o periodi preferiti di ricarica. Restano le scadenze di partenza (incluse le ricorrenze feriali/weekend) e le eccezioni di sessione. Le preferenze `preferred_start` del vecchio prototipo non fanno parte del nuovo core da adottare automaticamente.
+
+- **Regolazione preventiva rispetto ai successivi picchi:** il primo attraversamento affidabile della soglia d'intervento totale configurata (esempio 5,0 kW) innesca la simulazione di un cap discrezionale. **Non può evitare il primo picco già verificatosi.** La potenza richiesta si deriva dalla casa **esclusa wallbox**: esempio impianto 4,4; casa 2,1; margine 0,2; passo 0,2 -> cap 2,0 kW. Il DPM resta responsabile della regolazione rapida.
+- **Possibile anticipazione prima dei 5 kW:** riconoscere un periodo domestico di carico alto senza ancora aver superato la soglia è un'ipotesi per replay, **non attivata nel primo prototipo**: una reazione per ogni singolo assorbimento sarebbe soltanto un secondo DPM più lento. Aggiungerla esclusivamente se dimostra un miglioramento concreto e non modifica spesso il limite.
+- **Risalita:** non prendere l'ultimo campione come prova di tranquillità; finestra mobile di cinque minuti di dati validi (soglie ancora sperimentali) e incrementi al massimo 400 W con anti-oscillazione. Un nuovo episodio entro 60 minuti allunga il cooldown da 5 a 10 e poi a 15 minuti: **ipotesi da confrontare** con episodi osservati anche a 25–37 minuti di distanza nei CSV filtrati, quindi 60 minuti di memoria di soli timestamp, non di campioni completi.
+- **Planner:** solo il margine stimato verso la partenza può autorizzare un cap discrezionale; margine troppo basso -> nessuna riduzione aggiuntiva. Il primo prototipo riceve uno `slack_minutes` già stimato esternamente (20 minuti come guardia candidata) e **non** è ancora connesso al modello completo di SOC, kWh o potenza sostenibile.
+- **Ambito M1:** `adaptive_policy.py` è un simulatore puro in RAM che aggiorna un **cap ipotetico**, non un comando richiesto, confermato o reale. Nessuna sottoscrizione Shelly o entità HA aggiunta; `sensor.py` 0.0.13 resta da sostituire nella rifondazione per eliminare aggiornamenti periodici a vuoto. Quando la carica si ferma, tutto il buffer e i timestamp vengono svuotati. Il modulo non registra nulla.
+- **Test locali preliminari:** otto scenari isolati sul prototipo e un duplicato semplificato del suo input RAM hanno avuto esito positivo nel laboratorio locale, **ma l'esecuzione CI sul repository e il comportamento su HA non sono ancora verificati**. Il replay sui CSV privati e l'allineamento temporale delle tre sorgenti rimangono attività successive. I CSV non vengono committati.
+
+
 ## Output minimo e UI
 
 Una `ProposedDecision` include almeno: sessione, modalità/fase, azione **solo simulata** (attendi / avvia consigliato / continua / nessun intervento / dati insufficienti), motivo principale, potenza e durata usate con provenienza, timestamp delle sorgenti, confidenza e prossima rivalutazione.
