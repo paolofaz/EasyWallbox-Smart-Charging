@@ -1,0 +1,28 @@
+name: M1 offline tests
+on:
+  push:
+    branches:
+      - stabilizzatore-m1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pure-core:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run offline deterministic tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify core syntax
+        run: python -m compileall -q custom_components/easywallbox_smart/core.py
