@@ -1,5 +1,6 @@
 """Home Assistant read-only simulated planner; never sends device commands."""
-from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryError
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -11,7 +12,7 @@ from .const import (
 from .coordinator import SimulationCoordinator
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Set up one simulated integration from its UI configuration."""
     required = (
         CONF_VEHICLES, CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
@@ -20,7 +21,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     if any(key not in entry.data for key in required) or not entry.data.get(CONF_VEHICLES):
         # No destructive migration of the legacy 0.0.13 config entry.
-        raise ConfigEntryNotReady(
+        raise ConfigEntryError(
             "Existing configuration requires a guided migration; no data was changed"
         )
     coordinator = SimulationCoordinator(hass, entry)
@@ -32,7 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator.close()
         hass.data[DOMAIN].pop(entry.entry_id, None)
         raise
-    return True
+    return None
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
