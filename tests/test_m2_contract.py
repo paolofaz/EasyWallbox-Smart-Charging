@@ -38,6 +38,12 @@ class TestM2Contract(unittest.TestCase):
             self.assertIn("vehicle", document["options"]["step"])
             self.assertIn("plan", document["entity"]["sensor"])
 
+    def test_manifest_keys_are_hassfest_ordered(self):
+        manifest = json.loads((INTEGRATION / "manifest.json").read_text())
+        keys = list(manifest)
+        self.assertEqual(keys[:2], ["domain", "name"])
+        self.assertEqual(keys[2:], sorted(keys[2:]))
+
     def test_brand_icon_is_real_square_png(self):
         data = (INTEGRATION / "brand/icon.png").read_bytes()
         self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
