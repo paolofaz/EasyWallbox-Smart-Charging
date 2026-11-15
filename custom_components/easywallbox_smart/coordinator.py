@@ -192,6 +192,28 @@ class SimulationCoordinator:
                     )
                 )
 
+        # A single freshness-deadline timer invalidates a stale SOC/EV value
+        # even when no further HA state_changed event arrives. Never sample
+        # disconnected sensors just to refresh a clock.
+        if self.session and self.session.vehicle_id:
+            soc_at = self.session.soc_at
+            if soc_at is not None:
+                soc_expires = soc_at + timedelta(
+                    minutes=self.policy.soc_max_age_minutes, seconds=1
+                )
+                if soc_expires > now:
+                    choices.append(soc_expires)
+            if self._charging:
+                ev_source = self._raw(self.config[CONF_EV_POWER])
+                if ev_source is not None:
+                    ev_at = (
+                        getattr(ev_source, "last_reported", None)
+                        or ev_source.last_updated
+                    )
+                    ev_expires = ev_at + EV_REPORT_AGE + timedelta(seconds=1)
+                    if ev_expires > now:
+                        choices.append(ev_expires)
+
         if choices:
             due = max(now + timedelta(seconds=10), min(choices))
             self._timer_unsub = async_track_point_in_utc_time(
