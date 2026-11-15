@@ -87,6 +87,59 @@ class TestValidation(unittest.TestCase):
         opts["house_power_sources"].append("sensor.aux1")
         self.assertIn("duplicated_source_entity", validation.validate(cfg, opts).issues)
 
+    def test_entity_target_is_only_active_source_in_new_config(self):
+        data = example()
+        car = data["vehicles"][0]
+        car["target_mode"] = "entity"
+        car["target_entity"] = "number.fiat_target"
+        car.pop("target_default")
+        self.assertTrue(validation.validate(data).ready)
+        car["target_default"] = 90
+        self.assertIn("multiple_target_sources", validation.validate(data).issues)
+
+    def test_fixed_target_has_no_entity_field_in_new_config(self):
+        data = example()
+        car = data["vehicles"][0]
+        car["target_mode"] = "fixed"
+        self.assertTrue(validation.validate(data).ready)
+        car["target_entity"] = "sensor.kia_limit"
+        self.assertIn("multiple_target_sources", validation.validate(data).issues)
+
+    def test_entity_mode_cannot_be_configured_without_entity(self):
+        data = example()
+        car = data["vehicles"][0]
+        car["target_mode"] = "entity"
+        car.pop("target_default")
+        self.assertIn("invalid_target_source", validation.validate(data).issues)
+
+    def test_explicit_invalid_mode_is_rejected(self):
+        data = example()
+        data["vehicles"][0]["target_mode"] = None
+        self.assertIn("invalid_target_mode", validation.validate(data).issues)
+
+    def test_0_1_0_with_both_fields_still_accepted(self):
+        data = example()
+        data["vehicles"][0]["target_entity"] = "sensor.old_target"
+        self.assertTrue(validation.validate(data).ready)
+
+    def test_options_can_switch_from_old_fixed_target_to_entity(self):
+        data = example()
+        options = {"vehicle_overrides": {
+            "binary_sensor.fiat_cable": {
+                "target_mode": "entity",
+                "target_entity": "number.target",
+                "departure_weekday": "07:00",
+            }
+        }}
+        self.assertTrue(validation.validate(data, options).ready)
+
+    def test_options_entity_mode_requires_valid_entity_even_with_old_fixed(self):
+        data = example()
+        options = {"vehicle_overrides": {
+            "binary_sensor.fiat_cable": {"target_mode": "entity"}
+        }}
+        self.assertIn("invalid_override_target", validation.validate(data, options).issues)
+
     def test_cars_must_have_unique_identity_sensors(self):
         data = example()
         data["vehicles"][1]["cable"] = data["vehicles"][0]["cable"]
