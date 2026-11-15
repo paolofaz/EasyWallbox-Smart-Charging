@@ -19,6 +19,7 @@ from .const import (
     CONF_VEHICLE_OVERRIDES,
 )
 from .departure_policy import DepartureAdvice, advise_departure
+from .session_policy import SessionControl, observe, user_select_mode
 from .core import (
     Config, CoreState, HouseSnapshot, LimitSnapshot, Proposal,
     SessionSnapshot, evaluate, plan,
@@ -43,6 +44,7 @@ class SimulationCoordinator:
         self.planning = None
         self.advice: DepartureAdvice | None = None
         self.session: SessionSnapshot | None = None
+        self.control: SessionControl | None = None
         self._vehicle_id = None
         self._active_departure = None  # Lock goal for session, even after deadline
         self._session_seq = 0
@@ -77,10 +79,26 @@ class SimulationCoordinator:
         return power_kw(source.state, source.attributes.get("unit_of_measurement"))
 
     def _make_session(self, now: datetime) -> SessionSnapshot:
-        present = [v for v in self.config[CONF_VEHICLES] if self._on(v[CONF_CABLE]) is True]
+        cable_states = [
+            (v, self._on(v[CONF_CABLE])) for v in self.config[CONF_VEHICLES]
+        ]
+        present = [v for v, connected in cable_states if connected is True]
+        cable_unknown = any(connected is None for _, connected in cable_states)
         wallbox_connected = self._on(self.config[CONF_WALLBOX_CONNECTED])
-        ambiguous = len(present) > 1 or wallbox_connected is None
-        selected = present[0] if len(present) == 1 and wallbox_connected is True else None
+        definite_disconnect = (
+            wallbox_connected is False and not present and not cable_unknown
+        )
+        unique_connection = (
+            wallbox_connected is True and len(present) == 1
+            and not cable_unknown
+        )
+        connection = (
+            False if definite_disconnect
+            else True if unique_connection
+            else None
+        )
+        ambiguous = not unique_connection and not definite_disconnect
+        selected = present[0] if unique_connection else None
         identity = selected[CONF_CABLE] if selected else None
         if selected is not None:
             # Options Flow edits the planner, never the underlying HA entities.
@@ -90,11 +108,19 @@ class SimulationCoordinator:
                 **selected,
                 **per_car.get(identity, {}),
             }
-        if identity != self._vehicle_id:
+        if definite_disconnect:
+            if self._vehicle_id is not None:
+                self._session_seq += 1
+            self._vehicle_id = None
+            self._active_departure = None
+            self.state = None
+        elif identity is not None and identity != self._vehicle_id:
             self._session_seq += 1
             self._vehicle_id = identity
             self._active_departure = None
             self.state = None
+        # UNKNOWN is NOT a confirmed unplug: preserve manual/paused intent.
+
         if selected:
             source = self._raw(selected[CONF_SOC])
             soc = finite_number(source.state) if source else None
@@ -118,8 +144,27 @@ class SimulationCoordinator:
                     and self._on(self.config[CONF_TELEMETRY_FRESH]) is True
                     and ev_kw is not None and ev_kw >= 0.10)
         self._charging = bool(charging)
+        target_known_reached = (
+            soc is not None and target is not None and soc >= target
+            and soc_at is not None
+            and timedelta(0) <= now - soc_at <= timedelta(
+                minutes=self.policy.soc_max_age_minutes
+            )
+        )
+        self.control = observe(
+            self.control,
+            session_id=(
+                f"{self.entry.entry_id}:{self._session_seq}"
+                if identity is not None else None
+            ),
+            connection=connection,
+            charging=bool(charging),
+            ambiguous=ambiguous,
+            target_reached=target_known_reached,
+        )
         return SessionSnapshot(
-            session_id=f"{self.entry.entry_id}:{self._session_seq}", mode="AUTO",
+            session_id=f"{self.entry.entry_id}:{self._session_seq}",
+            mode=self.control.mode if connection is True else "RECONCILE",
             vehicle_id=identity, vehicle_ambiguous=ambiguous, charging=bool(charging),
             soc=soc, soc_at=soc_at, target_soc=target, departure_at=departure,
             usable_capacity_kwh=(float(selected[CONF_CAPACITY]) if selected else None),
@@ -232,6 +277,9 @@ class SimulationCoordinator:
             d.state, d.action, d.reason, d.proposed_cap_kw,
             self.advice.action if self.advice else None,
             self.advice.reason if self.advice else None,
+            self.control.mode if self.control else None,
+            self.control.phase if self.control else None,
+            self.control.reason if self.control else None,
             self.quality,
         )
 
@@ -261,7 +309,11 @@ class SimulationCoordinator:
             self.state, self.policy,
         )
         self.quality = (
-            self.planning.reason
+            "session_requires_confirmation"
+            if self.control and self.control.requires_confirmation
+            else "connection_unavailable_or_ambiguous"
+            if self.control and self.control.phase == "UNKNOWN"
+            else self.planning.reason
             if self.planning.reason != "flexible"
             else "house_data_not_trusted" if house.kw is None
             else "ready"
@@ -273,6 +325,18 @@ class SimulationCoordinator:
             self._fingerprint = signature
             for listener in tuple(self._listeners):
                 listener()
+
+    @callback
+    def choose_mode(self, mode: str) -> None:
+        """Change ONLY the internal simulation mode of this EV session.
+
+        This method never dispatches a Home Assistant service to another
+        entity and never contacts ESPHome/BLE/the wallbox.
+        """
+        if self.control is None:
+            raise ValueError("no active session")
+        self.control = user_select_mode(self.control, mode)
+        self.refresh()
 
     def add_listener(self, listener):
         self._listeners.add(listener)
