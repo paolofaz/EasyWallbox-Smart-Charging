@@ -151,6 +151,10 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_init(self, user_input: dict | None = None):
         """Pick the car whose target and departure plan should be revised."""
+        # Never open a v0.1 Options Flow on a legacy 0.0.13 entry.
+        # This is a read-only abort, not a migration.
+        if not inspect(self.config_entry.data, self.config_entry.options).ready:
+            return self.async_abort(reason="legacy_or_invalid_entry")
         vehicles = self.config_entry.data.get(CONF_VEHICLES, [])
         choices = {v[CONF_CABLE]: v[CONF_NAME] for v in vehicles}
         if not choices:
@@ -165,6 +169,8 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_vehicle(self, user_input: dict | None = None):
         """Save one vehicle override without rewriting the initial mapping."""
+        if not inspect(self.config_entry.data, self.config_entry.options).ready:
+            return self.async_abort(reason="legacy_or_invalid_entry")
         choices = self.config_entry.data.get(CONF_VEHICLES, [])
         vehicle = next(
             (v for v in choices if v[CONF_CABLE] == self._chosen_cable), None
