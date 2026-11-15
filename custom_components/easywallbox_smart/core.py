@@ -125,7 +125,9 @@ def plan(now: datetime, s: SessionSnapshot, cfg: Config = Config()) -> Plan:
         # rate (e.g. the car is unplugged and the Shelly reads zero).
         return Plan("target_reached", 0.0, 0.0, 0.0)
     if not _valid(s.sustainable_kw, positive=True):
-        return Plan("insufficient_planner_data")
+        # Required energy can still be estimated from SOC and usable capacity
+        # without pretending a charging speed has been observed.
+        return Plan("power_estimate_unavailable", remaining)
     required = remaining / s.sustainable_kw * 60.0
     slack = ((s.departure_at - now).total_seconds() / 60.0
              - s.reserve_minutes - required)
