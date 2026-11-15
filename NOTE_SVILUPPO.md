@@ -61,3 +61,21 @@
 ### Correzione M2 del blocco scadenza (15/11)
 - La prima versione dell'adapter ricalcolava la prossima partenza a ogni evento, rischiando di spostare l'obiettivo al giorno seguente dopo una deadline mancata. Corretto: `_active_departure` resta fissata all'interno della sessione fino a disconnessione/cambio auto.
 - Aggiunto test statico regressione; 24 test attesi in CI (15 M1 + 9 M2). L'esito va verificato sul nuovo commit prima di dichiararli superati.
+
+
+## 2026-11-15 — M2 seconda iterazione, planner partenza/attesa (sola simulazione)
+
+### Modifiche effettive
+- Nuovo `departure_policy.py`: contratto `DepartureAdvice` (action, reason, latest_safe_start, next_check_at); raccomanda `wait` solo con casa impegnata e slack valido, `start_now` quando è tranquilla o la partenza richiede priorità, `insufficient_data` su fonti inadatte; niente comandi.
+- Collegato il planner al `coordinator.py`. Caricamento della casa **solo come snapshot** in attesa; ascolto eventi Shelly casa soltanto in ricarica effettiva. Un timer puntuale rivaluta l'attesa, senza oltrepassare `latest_safe_start`; scadenze puntuali di SOC e potenza EV rendono inattuali gli input anche senza eventi futuri.
+- `sensor.py` espone la proposta avvio/attesa e diagnostica `latest_safe_start` / ragione del consiglio nei soli tre sensori già previsti. Nessuna entità di potenza duplicata.
+- `OptionsFlowWithReload` secondo API HA 2026.11: scelta del veicolo e modifica di partenza feriale/weekend, target predefinito, potenza sostenibile ed efficienza, senza alterare entity_id originali. Il target letto dall'auto rimane distinto e prevale sul default.
+- Aggiunto `strings.json` autorevole in inglese, aggiornate traduzioni IT/EN per il flow.
+- Creati `tests/test_departure_policy.py` e `tests/test_m2_contract.py`, includendo casi di arrivo limite, pausa/manuale core, dati mancanti e asset brand.
+
+### Test e verifica
+- GitHub Actions **40 test offline passati** su Python 3.12 e 3.13 al 15 novembre; nessun `hassfest` o test runtime HA ancora eseguito. I test contrattuali della GUI sono statici, **non** sostituiscono il click su Home Assistant.
+- La politica di attesa contiene un controllo ogni massimo 5 min **solo con auto identificata collegata e attesa giustificata**, non un campionamento in idle. I tempi sono candidati interni, non profilo approvato di produzione.
+- Restano non implementati come funzioni operative: modalità sessione Manuale/Pausa, Carica subito, obiettivo temporaneo e riconciliazione del riavvio. `session.mode` resta AUTO nell'adapter, quindi non presentare il suggerimento di avvio come garanzia di rispettare una pausa manuale.
+- La precedente config entry 0.0.13 resta intoccata; migrazione e rollback non collaudati. Non rilasciare, non sostituire l'integrazione della casa, non fare merge su main.
+- Soglie modello 1,5/1,0 kW, quiete 10 min e budget 25% dello slack **non sono parametri di produzione approvati**.
