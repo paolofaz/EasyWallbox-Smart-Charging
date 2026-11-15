@@ -24,7 +24,7 @@
 
 ## Se per errore si installa il nuovo codice sopra 0.0.13
 
-- Il guard `preflight.inspect()` riconosce la vecchia entry v3 e `async_setup_entry` restituisce un errore esplicativo **senza modificare entry.data, entry.options o versione**. `config_flow` blocca la creazione di una seconda entry sullo stesso dominio.
+- Il guard `preflight.inspect()` riconosce la vecchia entry v3 e `async_setup_entry` restituisce un errore esplicativo **senza modificare entry.data, entry.options o versione**. `config_flow` blocca la creazione di una seconda entry sullo stesso dominio; il pannello **Opzioni** su entry legacy viene chiuso senza modifiche, con messaggio di migrazione guidata.
 - **Non correggere il problema cancellando l'entry legacy!** Non eseguire migrazioni a mano su `.storage`. Il mancato setup è intenzionale e reversibile.
 - Ripristinare la **directory del codice 0.0.13 copiata realmente dalla propria HA**, riavviare Home Assistant e verificare che entità/automazioni precedenti siano presenti; evitare di usare il branch GitHub come sostituto di una copia della versione realmente installata.
 - Se qualche entry o file è stato nel frattempo rimosso/sovrascritto, ripristinare il backup HA con la relativa chiave seguendo la procedura ufficiale; la possibilità di rollback è da **verificare effettivamente**, non assumere.
