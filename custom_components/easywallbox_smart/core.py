@@ -41,13 +41,18 @@ class HouseSnapshot:
     quality: str  # ok, unavailable, stale, incoherent
     # The source adapter must attest quality and synchronization; a constant
     # value is valid only while source health is independently trusted.
+    # "sources_kw" replaces the old fixed downstairs/upstairs layout.
+    # Positional fields are retained for compatibility with pure-core tests.
+    sources_kw: tuple[float | None, ...] | None = None
 
     @property
     def kw(self) -> float | None:
-        if (self.quality != "ok" or not _valid(self.downstairs_kw)
-                or not _valid(self.upstairs_kw)):
+        if self.quality != "ok":
             return None
-        return self.downstairs_kw + self.upstairs_kw
+        values = (self.downstairs_kw, self.upstairs_kw) if self.sources_kw is None else self.sources_kw
+        if not values or not all(_valid(v) for v in values):
+            return None
+        return sum(values)
 
 
 @dataclass(frozen=True)
