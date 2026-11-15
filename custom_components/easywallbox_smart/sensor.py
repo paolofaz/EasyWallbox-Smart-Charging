@@ -56,7 +56,9 @@ class SimulationSensor(SensorEntity):
                 return "veicolo_ambiguo" if s.vehicle_ambiguous else "scollegata"
             return "in_carica" if s.charging else "collegata_non_in_carica"
         if self.kind == "plan":
-            return p.reason
+            # Show the actual start/wait advice, never the generic slack class.
+            advice = self.coordinator.advice
+            return advice.action if advice else p.reason
         return d.state.lower()
 
     @property
@@ -76,7 +78,19 @@ class SimulationSensor(SensorEntity):
                 data_quality=self.coordinator.quality,
             )
         elif self.kind == "plan":
+            advice = self.coordinator.advice
             attrs.update(
+                planner_reason=p.reason,
+                recommendation_reason=advice.reason if advice else None,
+                latest_safe_start=(
+                    advice.latest_safe_start.isoformat()
+                    if advice and advice.latest_safe_start else None
+                ),
+                next_check=(
+                    advice.next_check_at.isoformat()
+                    if advice and advice.next_check_at else None
+                ),
+                recommendation_only=True,
                 remaining_grid_kwh=round(p.remaining_grid_kwh, 2) if p.remaining_grid_kwh is not None else None,
                 required_minutes=round(p.required_minutes) if p.required_minutes is not None else None,
                 slack_minutes=round(p.slack_minutes) if p.slack_minutes is not None else None,
