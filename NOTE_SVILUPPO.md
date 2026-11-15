@@ -111,3 +111,22 @@
 - Aggiunta verifica offline regressione `test_manifest_keys_are_hassfest_ordered` in `tests/test_m2_contract.py`. Rieseguire la CI sull'ultimo commit e riportarne l'esito esatto (la precedente suite contava 74 test).
 - HACS/Marketplace action da rimandare finché il default branch contiene solo LICENSE: il validatore HACS consulta il ramo predefinito, quindi una verifica sul ramo di sviluppo darebbe un risultato fuorviante. Non cambiare default/main e non pubblicare release senza consenso.
 - **Non equivale a test runtime HA**: sono ancora da verificare su una istanza HA reale Config Flow, Options Flow, select, Recorder e migrazione della vecchia 0.0.13. DPM, ESPHome, automazioni legacy, `main` e altri branch non modificati.
+
+## 2026-11-15 — M3 preflight legacy 0.0.13 e rollback documentato
+
+### Verifica di partenza
+- Letti direttamente da GitHub i file attuali su `stabilizzatore-m1` (base HEAD `f57988fd3f077abcc414b09406433bbd544666b6`) e gli schemi storici di `sviluppo-test`/`rifondazione-evcc` manifest `0.0.13`.
+- Il Config Flow legacy aveva `VERSION=3` e profili `connected`/`default_target_soc`; il nuovo aveva `VERSION=1` e `cable`/`target_default`: conversione automatica non giustificata e rischiosa.
+- Verificati i pattern API HA 2026.11: `async_setup_entry` e `async_unload_entry` possono restituire `None` o generare `ConfigEntryError`; `async_unload_platforms_or_raise` è supportato dalla documentazione ufficiale.
+
+### Sviluppo effettivo
+- Nuovo `preflight.py`: pure funzioni `inspect`/`is_legacy` e codici di esito senza dati privati. Blocca valori non validi, sorgenti Shelly duplicate, ruoli errati, automobili ambigue/duplicate e parametri incoerenti; **non** consulta `.storage`, non esegue servizi, non migra.
+- `config_flow.py`: `VERSION=3` come legacy, ma riconoscimento **per struttura**; entry esistente (anche priva di `unique_id`) blocca una seconda integrazione; UI rifiuta Shelly duplicati e dati non coerenti senza creare un'entry parziale.
+- `__init__.py`: prima di creare listener/timer verifica l'entry; le legacy e quelle incomplete sollevano `ConfigEntryError` con motivi privi di entity_id/nomi privati. Nessun aggiornamento di data/options/versione. Se il setup non completa, i listener allocati sono liberati; unload ora usa `async_unload_platforms_or_raise`.
+- Traduzioni IT/EN e `strings.json` aggiornate, `docs/INSTALLAZIONE_PROVA_E_ROLLBACK.md` specifica backup, istanza HA isolata senza dispositivi reali, test e ripristino della directory effettivamente installata. Non installare due versioni nello stesso dominio sulla HA di casa.
+- Nuovi test `test_preflight.py` (13) e `test_entry_guard.py` (5) per classificazione old/new, invarianza della vecchia entry e cleanup errori.
+
+### Verifiche concluse e stato
+- CI offline (Python 3.12/3.13) con **93 test superati** al commit `d9acca54511de807e97b3a5fe888d443e48334a8` (run [43730371513](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730371513)); hassfest [43730371551](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730371551) **superato**. Verificare nuovamente HEAD successivo per documentazione.
+- Tutte le prove sui file HA di produzione **non effettuate**: Config Flow reale, test con storici Shelly reali, Backup/Restore, dashboard, Recorder e comportamento su hardware. Nessuna release, main, ESPHome, DPM o automazione Fiat toccati.
+- M3 non supporta ancora una conversione guidata `0.0.13 -> 0.1`. Da progettare/approvare esplicitamente solo dopo prove su HA isolata; niente migrazioni cieche. Le impostazioni di M1 del simulatore rimangono candidate, non valori collaudati di produzione.
