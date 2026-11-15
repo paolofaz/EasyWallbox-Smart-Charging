@@ -87,6 +87,16 @@ class TestDepartureAdvice(unittest.TestCase):
             "insufficient_data",
         )
 
+    def test_no_measured_rate_does_not_justify_wait(self):
+        s = car(sustainable_kw=None)
+        a = advice(T, s, house(2.7))
+        self.assertEqual(a.action, "start_now")
+        self.assertEqual(a.reason, "no_observed_rate_do_not_wait")
+
+    def test_stale_soc_and_no_rate_remain_insufficient(self):
+        s = car(sustainable_kw=None, soc_at=T - timedelta(minutes=40))
+        self.assertEqual(advice(T, s, house(0.4)).action, "insufficient_data")
+
     def test_stale_soc_gives_no_start(self):
         s = car(soc_at=T - timedelta(hours=1))
         self.assertEqual(advice(T, s, house(0.2)).action, "insufficient_data")
