@@ -200,3 +200,11 @@ Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni fu
 - Test incrementali aggiunti per power estimation (avvio, 30 min, contatori che si azzerano, dispositivi assenti, cambio sessione), configurazione 1..N sensori casa, Opzioni su config entry 0.1.0, coordinator HA mock e priorità alla sicurezza. CI va verificata sull'ultima HEAD e su Python 3.12/3.13.
 - **Non ancora provato su HA reale**: comportamento Session Energy/Duration durante primo avvio, pause e reboot; effettiva validità timestamp, UI grafica multi-selector e Recorder; coefficienti 65/35 da calibrare. La media sessione NON è garanzia che DPM e auto manterranno la stessa potenza.
 - Nessun dato di sessione viene scritto in file o `.storage`, nessuna entità di potenza duplicata, nessun servizio wallbox, nessun comando Start/Stop e DPM sempre attivo.
+
+
+### Verifica CI M4 dopo implementazione e documentazione
+
+- Commit verificato `874dcbb0cb5f58eb1aeeb4a5d730dbf2f58a3849`: [126 test offline con HA simulato su Python 3.12/3.13 — SUCCESS](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43758723542), [hassfest — SUCCESS](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43758723611), [HACS Marketplace validation — SUCCESS](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43758723561).
+- Test aggiuntivi su target raggiunto senza velocità osservata, energia residua calcolabile senza stima del tempo, e discordanza tra wallbox `Charging` e potenza Shelly.
+- **Nessun test su HA reale eseguito**: la validazione formale non certifica il comportamento dei sensori di sessione in presenza di stop, pausa, DPM o BLE offline.
+- Prossima eventuale pubblicazione richiede **autorizzazione esplicita**: `main`, release e tag `0.1.0` sono rimasti invariati; la M4 è soltanto sul branch di sviluppo.
