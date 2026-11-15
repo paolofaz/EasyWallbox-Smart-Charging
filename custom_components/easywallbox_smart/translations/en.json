@@ -20,18 +20,25 @@
       },
       "vehicle": {
         "title": "Vehicle profile",
-        "description": "Add one EV at a time. Use a unique cable sensor for each. Departure hours depend on the day of departure.",
+        "description": "Configure the car and select how to read the SOC target. Choose the actual target on the next screen; the car is never controlled.",
         "data": {
           "name": "Vehicle name",
           "cable": "Vehicle cable connected",
           "soc": "Vehicle SOC (%)",
-          "target_entity": "Vehicle/HA target SOC entity (optional; otherwise use default target)",
-          "target_default": "Default target SOC (%) — used when no target entity is configured",
           "capacity_kwh": "Usable battery capacity (kWh)",
           "efficiency": "Assumed AC charging efficiency (0–1)",
           "departure_weekday": "Departure Mon–Fri (HH:MM)",
           "departure_weekend": "Departure Sat–Sun (HH:MM)",
-          "add_another": "Add another vehicle"
+          "add_another": "Add another vehicle",
+          "target_mode": "SOC target source"
+        }
+      },
+      "target": {
+        "title": "SOC target for this vehicle",
+        "description": "Exactly ONE target source is active. An unavailable HA target never falls back to an old fixed target.",
+        "data": {
+          "target_entity": "Home Assistant target SOC entity (%)",
+          "target_default": "Fixed target SOC (%)"
         }
       }
     },
@@ -82,12 +89,12 @@
       },
       "vehicle": {
         "title": "Edit vehicle planning",
-        "description": "The SOC target from the car, if configured, still takes precedence over this default. Departure times use the day of departure.",
+        "description": "Edit departure times and choose the SOC target source. This does not modify the car.",
         "data": {
-          "target_default": "Default target SOC (%)",
           "departure_weekday": "Departure Mon–Fri (HH:MM)",
           "departure_weekend": "Departure Sat–Sun (HH:MM)",
-          "efficiency": "Estimated AC charging efficiency"
+          "efficiency": "Estimated AC charging efficiency",
+          "target_mode": "SOC target source"
         }
       },
       "choose_vehicle": {
@@ -103,6 +110,14 @@
           "house_power_sources": "House consumption — select one or more sensors to sum",
           "session_energy": "Wallbox Session Energy (kWh, optional)",
           "session_duration": "Wallbox Session Duration (min, optional)"
+        }
+      },
+      "target": {
+        "title": "Choose active SOC target",
+        "description": "Only the selected source is active; if an HA entity is selected and becomes unavailable, no fixed fallback is used.",
+        "data": {
+          "target_entity": "HA target SOC entity (%)",
+          "target_default": "Fixed target SOC (%)"
         }
       }
     },
