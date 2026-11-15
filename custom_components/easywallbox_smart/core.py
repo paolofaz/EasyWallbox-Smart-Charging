@@ -116,12 +116,16 @@ def plan(now: datetime, s: SessionSnapshot, cfg: Config = Config()) -> Plan:
             or now - s.soc_at > timedelta(minutes=cfg.soc_max_age_minutes)
             or not _valid(s.usable_capacity_kwh, positive=True)
             or not _valid(s.ac_efficiency, positive=True)
-            or s.ac_efficiency > 1 or not _valid(s.sustainable_kw, positive=True)
+            or s.ac_efficiency > 1
             or not _valid(s.reserve_minutes)):
         return Plan("insufficient_planner_data")
     remaining = max(0.0, s.target_soc - s.soc) * s.usable_capacity_kwh / (100.0 * s.ac_efficiency)
     if remaining <= 1e-9:
+        # Reaching the target can be recognized without a measured charging
+        # rate (e.g. the car is unplugged and the Shelly reads zero).
         return Plan("target_reached", 0.0, 0.0, 0.0)
+    if not _valid(s.sustainable_kw, positive=True):
+        return Plan("insufficient_planner_data")
     required = remaining / s.sustainable_kw * 60.0
     slack = ((s.departure_at - now).total_seconds() / 60.0
              - s.reserve_minutes - required)
