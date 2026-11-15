@@ -35,13 +35,16 @@ La nuova configurazione M2 **non è compatibile automaticamente** con la config 
 
 ## Test e sicurezza
 
-- `python -m unittest discover -s tests -v` — **74 test offline e con adapter HA simulato** passati su GitHub Actions con Python 3.12 e 3.13 il 15/11/2026 (M1/M2, stati di sessione, interfaccia select con HA mock, privacy e vincoli non attuativi).
+- `python -m unittest discover -s tests -v` — **75 test offline e con adapter HA simulato** passati su GitHub Actions con Python 3.12 e 3.13 il 15/11/2026 (M1/M2, stati di sessione, interfaccia select con HA mock, privacy e vincoli non attuativi).
 - `python -m compileall -q custom_components/easywallbox_smart` per verificare la sintassi di tutti i moduli.
+- `home-assistant/actions/hassfest@master`: **superato** su `stabilizzatore-m1` il 15/11/2026, inclusa correzione ordinamento del manifest; [esecuzione](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43728645220).
 - I test automatici NON sostituiscono hassfest, verifiche GUI Config Flow, prove idle/Recorder, test su HA reale, replay delle sette sere e simulazioni di reboot/assenza dati.
 - Non pubblicare cronologie puntuali private, account auto, PIN BLE, token, dati `.storage` di Home Assistant o credenziali.
 
 ## Sviluppo e roadmap
 
 Questo branch deriva dal commit iniziale `main` che conteneva soltanto `LICENSE`. I branch storici restano separati e non sono stati fusi. README e diario distinguono ciò che è codificato, testato offline e ancora da collaudare.
+
+La verifica HACS del repository andrà eseguita soltanto dopo la preparazione autorizzata del branch predefinito (che adesso contiene ancora solo LICENSE). Non confondere hassfest con installazione HA o rilascio Marketplace.
 
 La v0.1 **sola simulazione** richiede ancora il completamento delle eccezioni temporanee, una migrazione guidata, test runtime sull'Home Assistant dell'utente (compreso il Config/Options Flow e il select) e la verifica della dashboard prima della pubblicazione. Il controllo reale sarà progettato **solo dopo autorizzazione**, con DPM sempre attivo e un unico proprietario software dei comandi. Vedi `NOTE_SVILUPPO.md` e `docs/ARCHITETTURA_M1.md`.
