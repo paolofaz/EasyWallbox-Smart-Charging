@@ -56,5 +56,33 @@
         "name": "Stabilizzatore ricarica"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Seleziona un veicolo",
+        "description": "Modifica il piano di ricarica in simulazione. Nessun comando viene inviato.",
+        "data": {
+          "vehicle": "Automobile da modificare"
+        }
+      },
+      "vehicle": {
+        "title": "Modifica pianificazione automobile",
+        "description": "L'obiettivo SOC letto dall'auto, se configurato, prevale sul valore predefinito. Gli orari si riferiscono al giorno della partenza.",
+        "data": {
+          "target_default": "SOC obiettivo predefinito (%)",
+          "departure_weekday": "Partenza lun–ven (HH:MM)",
+          "departure_weekend": "Partenza sab–dom (HH:MM)",
+          "sustainable_kw": "Potenza sostenibile prudente (kW)",
+          "efficiency": "Rendimento AC stimato"
+        }
+      }
+    },
+    "error": {
+      "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore"
+    },
+    "abort": {
+      "no_vehicles": "Nessun profilo automobile configurato"
+    }
   }
 }
