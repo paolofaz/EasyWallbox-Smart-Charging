@@ -129,5 +129,13 @@
       "no_vehicles": "No vehicle profiles configured",
       "invalid_configuration": "Invalid configuration: check the integration's entities and settings."
     }
+  },
+  "selector": {
+    "target_mode": {
+      "options": {
+        "entity": "Read target from Home Assistant entity",
+        "fixed": "Use a fixed percentage"
+      }
+    }
   }
 }
