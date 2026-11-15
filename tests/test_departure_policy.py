@@ -98,6 +98,13 @@ class TestDepartureAdvice(unittest.TestCase):
         self.assertEqual(a.action, "insufficient_data")
         self.assertEqual(a.reason, "charging_report_without_ev_power")
 
+    def test_remaining_energy_visible_without_measured_rate(self):
+        s = car(sustainable_kw=None)
+        p = core.plan(T, s)
+        self.assertEqual(p.reason, "power_estimate_unavailable")
+        self.assertGreater(p.remaining_grid_kwh, 0)
+        self.assertIsNone(p.required_minutes)
+
     def test_no_measured_rate_does_not_justify_wait(self):
         s = car(sustainable_kw=None)
         a = advice(T, s, house(2.7))
