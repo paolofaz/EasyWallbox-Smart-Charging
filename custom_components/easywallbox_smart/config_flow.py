@@ -15,7 +15,8 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    DOMAIN, CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
+    DOMAIN, CONF_HOUSE_SOURCES, CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
+    CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
     CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_TELEMETRY_FRESH,
     CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL,
     CONF_VEHICLES, CONF_NAME, CONF_CABLE, CONF_SOC, CONF_TARGET_ENTITY,
@@ -26,8 +27,8 @@ from .const import (
 from .validation import validate
 
 
-def entity(domain: str | list[str]) -> EntitySelector:
-    return EntitySelector(EntitySelectorConfig(domain=domain))
+def entity(domain: str | list[str], *, multiple: bool = False) -> EntitySelector:
+    return EntitySelector(EntitySelectorConfig(domain=domain, multiple=multiple))
 
 
 def number(minimum: float, maximum: float, step: float = 0.1) -> NumberSelector:
@@ -36,9 +37,10 @@ def number(minimum: float, maximum: float, step: float = 0.1) -> NumberSelector:
 
 
 WALLBOX_SCHEMA = vol.Schema({
-    vol.Required(CONF_DOWNSTAIRS): entity("sensor"),
-    vol.Required(CONF_UPSTAIRS): entity("sensor"),
+    vol.Required(CONF_HOUSE_SOURCES): entity("sensor", multiple=True),
     vol.Required(CONF_EV_POWER): entity("sensor"),
+    vol.Optional(CONF_SESSION_ENERGY): entity("sensor"),
+    vol.Optional(CONF_SESSION_DURATION): entity("sensor"),
     vol.Required(CONF_WALLBOX_CONNECTED): entity("binary_sensor"),
     vol.Required(CONF_WALLBOX_CHARGING): entity("binary_sensor"),
     vol.Required(CONF_TELEMETRY_FRESH): entity("binary_sensor"),
@@ -54,7 +56,6 @@ VEHICLE_SCHEMA = vol.Schema({
     vol.Optional(CONF_TARGET_ENTITY): entity(["sensor", "number", "input_number"]),
     vol.Required(CONF_TARGET_DEFAULT, default=80): number(1, 100, 1),
     vol.Required(CONF_CAPACITY): number(10, 200),
-    vol.Required(CONF_SUSTAINABLE, default=3.2): number(1.4, 22.0),
     vol.Required(CONF_EFFICIENCY, default=0.90): number(0.5, 1.0, 0.01),
     vol.Required(CONF_DEPARTURE_WEEKDAY, default="07:00"): TextSelector(),
     vol.Required(CONF_DEPARTURE_WEEKEND, default="08:00"): TextSelector(),
@@ -91,14 +92,14 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_configured")
         errors = {}
         if user_input is not None:
-            # A Shelly for EV power cannot also be the upstairs meter.
-            source_ids = [
-                user_input[CONF_DOWNSTAIRS],
-                user_input[CONF_UPSTAIRS],
-                user_input[CONF_EV_POWER],
-            ]
-            if len(set(source_ids)) != len(source_ids):
+            source_ids = user_input[CONF_HOUSE_SOURCES]
+            if (not isinstance(source_ids, list) or not source_ids):
+                errors["base"] = "invalid_mapping"
+            elif (len(set(source_ids)) != len(source_ids)
+                  or user_input[CONF_EV_POWER] in source_ids):
                 errors["base"] = "duplicate_sources"
+            elif (CONF_SESSION_ENERGY in user_input) != (CONF_SESSION_DURATION in user_input):
+                errors["base"] = "incomplete_counters"
             else:
                 await self.async_set_unique_id("one_local_wallbox")
                 self._abort_if_unique_id_configured()
@@ -149,9 +150,14 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         self._chosen_cable: str | None = None
 
     async def async_step_init(self, user_input: dict | None = None):
-        """Pick the car whose target and departure plan should be revised."""
+        """Choose meter sources or per-vehicle planning settings."""
         if not validate(self.config_entry.data, self.config_entry.options).ready:
             return self.async_abort(reason="invalid_configuration")
+        return self.async_show_menu(
+            step_id="init", menu_options=["sources", "choose_vehicle"],
+        )
+
+    async def async_step_choose_vehicle(self, user_input: dict | None = None):
         vehicles = self.config_entry.data.get(CONF_VEHICLES, [])
         choices = {v[CONF_CABLE]: v[CONF_NAME] for v in vehicles}
         if not choices:
@@ -160,8 +166,49 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             self._chosen_cable = user_input["vehicle"]
             return await self.async_step_vehicle()
         return self.async_show_form(
-            step_id="init",
+            step_id="choose_vehicle",
             data_schema=vol.Schema({vol.Required("vehicle"): vol.In(choices)}),
+        )
+
+    async def async_step_sources(self, user_input: dict | None = None):
+        """Reconfigure home Shelly sources and optional wallbox counters."""
+        data, options = self.config_entry.data, self.config_entry.options
+        existing = options.get(
+            CONF_HOUSE_SOURCES,
+            data.get(CONF_HOUSE_SOURCES, [
+                data.get(CONF_DOWNSTAIRS), data.get(CONF_UPSTAIRS),
+            ]),
+        )
+        initial = {
+            CONF_HOUSE_SOURCES: [v for v in existing if v],
+            CONF_SESSION_ENERGY: options.get(
+                CONF_SESSION_ENERGY, data.get(CONF_SESSION_ENERGY)
+            ),
+            CONF_SESSION_DURATION: options.get(
+                CONF_SESSION_DURATION, data.get(CONF_SESSION_DURATION)
+            ),
+        }
+        errors = {}
+        if user_input is not None:
+            updated = dict(options)
+            updated[CONF_HOUSE_SOURCES] = list(user_input[CONF_HOUSE_SOURCES])
+            # Both counters can be removed, without inheriting stale data.
+            updated[CONF_SESSION_ENERGY] = user_input.get(CONF_SESSION_ENERGY)
+            updated[CONF_SESSION_DURATION] = user_input.get(CONF_SESSION_DURATION)
+            check = validate(data, updated)
+            if check.ready:
+                return self.async_create_entry(data=updated)
+            errors["base"] = "invalid_mapping"
+        return self.async_show_form(
+            step_id="sources",
+            data_schema=vol.Schema({
+                vol.Required(CONF_HOUSE_SOURCES, default=initial[CONF_HOUSE_SOURCES]):
+                    entity("sensor", multiple=True),
+                vol.Optional(CONF_SESSION_ENERGY, default=initial[CONF_SESSION_ENERGY]):
+                    entity("sensor"),
+                vol.Optional(CONF_SESSION_DURATION, default=initial[CONF_SESSION_DURATION]):
+                    entity("sensor"),
+            }), errors=errors,
         )
 
     async def async_step_vehicle(self, user_input: dict | None = None):
@@ -186,7 +233,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
                     key: value for key, value in user_input.items()
                     if key in (
                         CONF_TARGET_DEFAULT, CONF_DEPARTURE_WEEKDAY,
-                        CONF_DEPARTURE_WEEKEND, CONF_SUSTAINABLE, CONF_EFFICIENCY,
+                        CONF_DEPARTURE_WEEKEND, CONF_EFFICIENCY,
                     )
                 }
                 all_overrides = {
@@ -209,9 +256,6 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             vol.Required(
                 CONF_DEPARTURE_WEEKEND, default=current[CONF_DEPARTURE_WEEKEND]
             ): TextSelector(),
-            vol.Required(
-                CONF_SUSTAINABLE, default=current[CONF_SUSTAINABLE]
-            ): number(1.4, 22.0),
             vol.Required(
                 CONF_EFFICIENCY, default=current[CONF_EFFICIENCY]
             ): number(0.5, 1.0, 0.01),
