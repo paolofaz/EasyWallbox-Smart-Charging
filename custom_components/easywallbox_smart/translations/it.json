@@ -129,5 +129,13 @@
       "no_vehicles": "Nessun profilo automobile configurato",
       "invalid_configuration": "Configurazione non valida: verifica le entità e i parametri dell'integrazione."
     }
+  },
+  "selector": {
+    "target_mode": {
+      "options": {
+        "entity": "Leggi da un'entità Home Assistant",
+        "fixed": "Usa una percentuale fissa"
+      }
+    }
   }
 }
