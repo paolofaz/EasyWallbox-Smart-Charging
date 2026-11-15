@@ -259,3 +259,17 @@ Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni fu
 - Valutare tre fasce di margine (*ampio, intermedio, scarso/nullo*); mantenere il DPM sempre attivo. Evitare soglie più basse per default senza dati sul reale comportamento della wallbox durante l'episodio.
 - Il replay osserva solo potenza domestica: non misura carico del DPM, potenza EV reale né numero di comandi/writes DPM. L'eventuale vantaggio del cap virtuale è quindi un'**ipotesi** da confermare alla prima carica ordinaria.
 - Non fare merge, non pubblicare release, non alterare il firmware o le automazioni precedenti.
+
+
+## 2026-11-15 — M4: prova locale di soglia dinamica per la pressione DPM
+
+**Mandato:** provare in laboratorio la soglia di ingresso dinamica, con tre fasce di margine SOC e costo energetico, senza modificare la versione simulata in esercizio e senza introdurre comandi BLE.
+
+- **Riferimento elettrico modello: DPM confermato 4,4 kW, non 5,2 kW** di tolleranza temporanea del contatore. Pressione modellata: `max(0, casa + limite EV confermato - DPM confermato)`.
+- Un nuovo innesco non deriva dal semplice `DPM - EV + 0,2 kW`: serve una **riduzione teorica DPM significativa**, almeno 0,6 kW in fascia ampia / 0,8 kW in fascia intermedia, sostenuta da letture distinte e attendibili per circa 2 / 3 minuti. La fascia urgente o con dati insufficienti vieta nuovi cap opzionali.
+- Sperimentate localmente varianti con cap da ultimo campione o massimo degli ultimi 3 minuti, margine prudenziale, quiete diversa, costo energetico massimo per sessione e limite alla frequenza delle proposte. Verificati anche setpoint auto diversi (4,0 e 2,0 kW): una soglia dinamica evita di limitare l'auto quando il DPM dispone già di sufficiente margine.
+- Il replay ha evidenziato il **tradeoff non monotono**: ridurre l'energia sacrificata può aumentare i minuti teorici nei quali il DPM deve modulare; ridurre questi ultimi può aumentare le coppie di cambi virtuali. Non dichiarare validata una taratura basata su un solo episodio.
+- **15 test sintetici locali passati** della nuova policy candidata: fasce, dati stantii, pressione, setpoint, target urgente, quiete, min-cap, budget, riconciliazione e divieto di nuove azioni in modalità manuale/pausa. Gli script di laboratorio e le tracce private **non sono stati committati**; questi 15 test **non fanno parte della CI GitHub**.
+- Aggiunto `docs/STUDIO_SOGLIA_DPM_DINAMICA.md` con formule, ipotesi, criteri e condizioni necessarie per adottare una nuova policy, senza dati grezzi di consumi domestici o informazioni di presenza in casa.
+- **Non modificati:** `core.py`, `coordinator.py`, ESPHome, DPM, automazioni Fiat, `main`, release Marketplace `0.1.0`. Il ramo rimane `stabilizzatore-m1` e la versione in sviluppo `0.2.0b1`.
+- **Aperto:** servono replay su tracce domestiche ulteriori, confronto su più valori SOC e potenze EV, lettura del limite DPM reale confermato e collaudo di una ricarica ordinaria prima di decidere le soglie. Lo studio delle sette sere è un precedente **storico**, non un test ripetuto della nuova policy senza i relativi CSV grezzi.
