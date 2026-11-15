@@ -87,6 +87,12 @@ class TestDepartureAdvice(unittest.TestCase):
             "insufficient_data",
         )
 
+    def test_wallbox_reports_charge_but_no_verified_power_is_uncertain(self):
+        s = car(sustainable_kw=None, wallbox_reports_charging=True, charging=False)
+        a = advice(T, s, house(2.7))
+        self.assertEqual(a.action, "insufficient_data")
+        self.assertEqual(a.reason, "charging_report_without_ev_power")
+
     def test_no_measured_rate_does_not_justify_wait(self):
         s = car(sustainable_kw=None)
         a = advice(T, s, house(2.7))
