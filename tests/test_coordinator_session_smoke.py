@@ -346,6 +346,42 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.addCleanup(c.close)
         self.assertEqual(c.session.target_soc, 95)
 
+    def test_options_entity_is_in_base_state_subscription(self):
+        h, entry = fixture(connected=True, charging=False)
+        entry.options = {"vehicle_overrides":{
+            "binary_sensor.kia_cable": {
+                "target_mode":"entity",
+                "target_entity":"number.new_kia_target",
+            },
+        }}
+        h.states["number.new_kia_target"] = FakeState("85","%")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.session.target_soc, 85)
+        self.assertTrue(any(
+            "number.new_kia_target" in tag["entities"]
+            for tag in h.listeners if tag["active"]
+        ))
+        self.setstate(h, "number.new_kia_target", "90", "%")
+        c.refresh()
+        self.assertEqual(c.session.target_soc, 90)
+
+    def test_options_fixed_mode_does_not_listen_old_ha_entity(self):
+        h, entry = fixture(connected=True, charging=False)
+        entry.data["vehicles"][0]["target_entity"] = "number.old_target"
+        entry.options={"vehicle_overrides":{
+            "binary_sensor.kia_cable": {"target_mode":"fixed","target_default":75},
+        }}
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.session.target_soc, 75)
+        self.assertFalse(any(
+            "number.old_target" in tag["entities"]
+            for tag in h.listeners if tag["active"]
+        ))
+
     def test_target_with_wrong_unit_is_not_soc_percent(self):
         h, entry = fixture(connected=True, charging=False)
         kia=entry.data["vehicles"][0]
