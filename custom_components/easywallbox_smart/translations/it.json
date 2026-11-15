@@ -3,18 +3,19 @@
   "config": {
     "step": {
       "user": {
-        "title": "Wallbox e contatori — sola lettura",
-        "description": "SOLO SIMULAZIONE: nessun comando sarà inviato alla wallbox o alle auto. Seleziona entità già presenti in Home Assistant.",
+        "title": "Consumi domestici e telemetria wallbox",
+        "description": "SIMULAZIONE: nessun comando alla wallbox. I sensori domestici sono sommati; lo Shelly wallbox è separato. Per stimare una media dopo 30 minuti, seleziona entrambi i contatori di sessione.",
         "data": {
-          "house_downstairs": "Potenza domestica — piano terra",
-          "house_upstairs": "Potenza domestica — piano primo",
           "ev_power": "Potenza reale wallbox — Shelly dedicato",
           "wallbox_connected": "Cavo collegato alla wallbox",
           "wallbox_charging": "Wallbox realmente in carica",
           "telemetry_fresh": "Telemetria BLE ESPHome aggiornata",
           "requested_limit": "Charge power richiesto (number, kW)",
           "confirmed_limit": "Power set confermato (sensor, kW)",
-          "dpm_model_kw": "Totale DPM modello (kW) — ipotesi di simulazione"
+          "dpm_model_kw": "Totale DPM modello (kW) — ipotesi di simulazione",
+          "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
+          "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
+          "session_duration": "Durata sessione wallbox (min, facoltativo)"
         }
       },
       "vehicle": {
@@ -24,10 +25,9 @@
           "name": "Nome automobile",
           "cable": "Cavo collegato all'auto",
           "soc": "SOC batteria (%)",
-          "target_entity": "Entità obiettivo SOC (facoltativa)",
-          "target_default": "SOC obiettivo predefinito (%)",
+          "target_entity": "Entità target SOC dell'auto/HA (facoltativa; se assente usa target predefinito)",
+          "target_default": "Target SOC predefinito (%) — usato se manca l'entità obiettivo",
           "capacity_kwh": "Capacità utilizzabile batteria (kWh)",
-          "sustainable_kw": "Potenza sostenibile prudente (kW)",
           "efficiency": "Rendimento AC ipotizzato (0–1)",
           "departure_weekday": "Partenza lun–ven (HH:MM)",
           "departure_weekend": "Partenza sab–dom (HH:MM)",
@@ -40,7 +40,8 @@
       "duplicate_vehicle": "Nome automobile già utilizzato",
       "duplicate_cable": "Sensore cavo già utilizzato",
       "duplicate_sources": "Seleziona sensori distinti per piano terra, piano primo e wallbox.",
-      "invalid_mapping": "Configurazione incompleta o incoerente: verificare le entità e i parametri delle auto."
+      "invalid_mapping": "Configurazione incompleta o incoerente: verificare le entità e i parametri delle auto.",
+      "incomplete_counters": "Seleziona sia Energia sessione sia Durata sessione, oppure nessuno dei due."
     },
     "abort": {
       "already_configured": "Questa wallbox è già configurata"
@@ -73,10 +74,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Seleziona un veicolo",
-        "description": "Modifica il piano di ricarica in simulazione. Nessun comando viene inviato.",
-        "data": {
-          "vehicle": "Automobile da modificare"
+        "title": "Che cosa vuoi modificare?",
+        "menu_options": {
+          "sources": "Sensori consumi e contatori sessione",
+          "choose_vehicle": "Parametri veicolo e orari"
         }
       },
       "vehicle": {
@@ -86,13 +87,28 @@
           "target_default": "SOC obiettivo predefinito (%)",
           "departure_weekday": "Partenza lun–ven (HH:MM)",
           "departure_weekend": "Partenza sab–dom (HH:MM)",
-          "sustainable_kw": "Potenza sostenibile prudente (kW)",
           "efficiency": "Rendimento AC stimato"
+        }
+      },
+      "choose_vehicle": {
+        "title": "Seleziona veicolo",
+        "data": {
+          "vehicle": "Veicolo"
+        }
+      },
+      "sources": {
+        "title": "Consumi domestici e sessione wallbox",
+        "description": "Seleziona uno o più sensori di consumo domestico: saranno sommati. Lo Shelly wallbox resta separato. Entrambi i contatori sono facoltativi ma vanno selezionati insieme.",
+        "data": {
+          "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
+          "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
+          "session_duration": "Durata sessione wallbox (min, facoltativo)"
         }
       }
     },
     "error": {
-      "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore"
+      "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore",
+      "invalid_mapping": "Sorgenti ripetute, assenti o incoerenti. Controlla la selezione."
     },
     "abort": {
       "no_vehicles": "Nessun profilo automobile configurato",
