@@ -62,6 +62,18 @@ def advise_departure(
         return DepartureAdvice("charging", "vehicle_may_be_balancing")
     if planned.reason == "target_reached":
         return DepartureAdvice("complete", "target_reached")
+    # A car that has not charged yet has no observed sustainable rate.
+    # Never pretend that the configured power limit is a measured average,
+    # nor use such an optimistic assumption to justify waiting.
+    if (not session.charging and session.sustainable_kw is None
+            and session.vehicle_id and session.soc is not None
+            and session.target_soc is not None and session.soc < session.target_soc
+            and session.soc_at is not None
+            and session.soc_at.tzinfo is not None
+            and timedelta(0) <= now - session.soc_at <= timedelta(minutes=30)
+            and session.departure_at is not None
+            and session.departure_at.tzinfo is not None):
+        return DepartureAdvice("start_now", "no_observed_rate_do_not_wait")
     if (planned.reason in ("unidentified_vehicle", "insufficient_planner_data")
             or planned.required_minutes is None or planned.slack_minutes is None
             or session.departure_at is None or session.departure_at.tzinfo is None
