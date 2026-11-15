@@ -52,9 +52,18 @@ class SimulationSensor(SensorEntity):
         if not s or not p or not d:
             return "inizializzazione"
         if self.kind == "session":
+            control = self.coordinator.control
+            if control and control.phase == "UNKNOWN":
+                return "collegamento_non_verificato"
+            if s.charging:
+                return "in_carica"  # physical observation, not simulated pause
+            if control and control.requires_confirmation:
+                return "modalita_da_confermare"
             if not s.vehicle_id:
                 return "veicolo_ambiguo" if s.vehicle_ambiguous else "scollegata"
-            return "in_carica" if s.charging else "collegata_non_in_carica"
+            if control and control.phase == "TARGET_REACHED":
+                return "target_raggiunto_stimato"
+            return "collegata_non_in_carica"
         if self.kind == "plan":
             # Show the actual start/wait advice, never the generic slack class.
             advice = self.coordinator.advice
@@ -70,7 +79,15 @@ class SimulationSensor(SensorEntity):
         if not s or not p or not d:
             return attrs
         if self.kind == "session":
+            control = self.coordinator.control
             attrs.update(
+                user_mode=control.mode if control else None,
+                observed_phase=control.phase if control else None,
+                user_intent_reason=control.reason if control else None,
+                requires_confirmation=(
+                    control.requires_confirmation if control else False
+                ),
+                mode_is_simulation_only=True,
                 vehicle=s.vehicle_id,
                 vehicle_ambiguous=s.vehicle_ambiguous,
                 soc=s.soc, target_soc=s.target_soc,
