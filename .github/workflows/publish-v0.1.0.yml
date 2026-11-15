@@ -1,0 +1,70 @@
+name: Publish Marketplace release 0.1.0
+
+on:
+  push:
+    branches:
+      - main
+
+# This is a one-off, explicitly authorized first release. Subsequent pushes
+# to main never publish automatically: a new workflow/version needs approval.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event.head_commit.message == 'release: publish v0.1.0 to Marketplace'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch exact release commit
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Offline simulation and integration tests
+        run: |
+          python -m unittest discover -s tests -v
+          python -m compileall -q custom_components/easywallbox_smart
+      - name: Official Home Assistant hassfest
+        uses: home-assistant/actions/hassfest@master
+      - name: HACS Marketplace validation
+        uses: hacs/action@main
+        with:
+          category: integration
+          comment: "false"
+      - name: Verify exact release version and safety boundaries
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("custom_components/easywallbox_smart/manifest.json").read_text())
+          hacs = json.loads(Path("hacs.json").read_text())
+          assert manifest["domain"] == "easywallbox_smart"
+          assert manifest["version"] == "0.1.0"
+          assert hacs["homeassistant"] == "2026.11.0"
+          root = Path("custom_components/easywallbox_smart")
+          for path in root.glob("*.py"):
+              text = path.read_text()
+              for forbidden in ("services.async_call(", "services.call(",
+                                "async_track_time_interval"):
+                  assert forbidden not in text, (str(path), forbidden)
+          assert (root / "brand/icon.png").is_file()
+          PY
+      - name: Create the published GitHub Release (not only a tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view 0.1.0 >/dev/null 2>&1; then
+            echo "The 0.1.0 release already exists; refusing to replace it."
+            exit 1
+          fi
+          gh release create 0.1.0 \
+            --target "$GITHUB_SHA" \
+            --title "EasyWallbox Smart Charging 0.1.0 — SOLO SIMULAZIONE" \
+            --notes-file docs/RELEASE_NOTES_0.1.0.md \
+            --latest
