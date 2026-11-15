@@ -95,7 +95,8 @@
       "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore"
     },
     "abort": {
-      "no_vehicles": "Nessun profilo automobile configurato"
+      "no_vehicles": "Nessun profilo automobile configurato",
+      "legacy_or_invalid_entry": "Configurazione storica o incompleta: opzioni disabilitate. Nessun dato è stato modificato; seguire la procedura di migrazione guidata."
     }
   }
 }
