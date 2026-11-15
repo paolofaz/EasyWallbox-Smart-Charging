@@ -32,7 +32,7 @@ La nuova configurazione M2 **non è compatibile automaticamente** con la config 
 
 ## Test e sicurezza
 
-- `python -m unittest discover -s tests -v` — **23 test** (15 M1 + 8 M2), passati su GitHub Actions con Python 3.12 e 3.13 alla verifica del 15/11/2026.
+- `python -m unittest discover -s tests -v` — **24 test** (15 M1 + 9 M2), passati su GitHub Actions con Python 3.12 e 3.13 alla verifica del 15/11/2026 (ultimo workflow da verificare dopo il nuovo test).
 - `python -m compileall -q custom_components/easywallbox_smart` per verificare la sintassi di tutti i moduli.
 - I test automatici NON sostituiscono hassfest, verifiche GUI Config Flow, prove idle/Recorder, test su HA reale, replay delle sette sere e simulazioni di reboot/assenza dati.
 - Non pubblicare cronologie puntuali private, account auto, PIN BLE, token, dati `.storage` di Home Assistant o credenziali.
