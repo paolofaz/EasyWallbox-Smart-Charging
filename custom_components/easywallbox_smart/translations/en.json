@@ -3,18 +3,19 @@
   "config": {
     "step": {
       "user": {
-        "title": "Wallbox and meter sources (read-only)",
-        "description": "SIMULATION ONLY: No commands will be sent to the wallbox or cars. Select existing Home Assistant entities.",
+        "title": "Household meters and wallbox telemetry",
+        "description": "SIMULATION ONLY: no wallbox commands. Household power sensors are summed; EV Shelly is separate. Select both session counters to allow a 30-minute charging average.",
         "data": {
-          "house_downstairs": "House meter — downstairs",
-          "house_upstairs": "House meter — upstairs",
           "ev_power": "Wallbox dedicated meter (real EV power)",
           "wallbox_connected": "Wallbox cable connected",
           "wallbox_charging": "Wallbox actually charging",
           "telemetry_fresh": "ESPHome BLE telemetry fresh",
           "requested_limit": "Charge power requested (number, kW)",
           "confirmed_limit": "Power set confirmed (sensor, kW)",
-          "dpm_model_kw": "DPM model total power (kW) — simulation assumption"
+          "dpm_model_kw": "DPM model total power (kW) — simulation assumption",
+          "house_power_sources": "House consumption — select one or more sensors to sum",
+          "session_energy": "Wallbox Session Energy (kWh, optional)",
+          "session_duration": "Wallbox Session Duration (min, optional)"
         }
       },
       "vehicle": {
@@ -24,10 +25,9 @@
           "name": "Vehicle name",
           "cable": "Vehicle cable connected",
           "soc": "Vehicle SOC (%)",
-          "target_entity": "Target SOC entity (optional)",
-          "target_default": "Default SOC target (%)",
+          "target_entity": "Vehicle/HA target SOC entity (optional; otherwise use default target)",
+          "target_default": "Default target SOC (%) — used when no target entity is configured",
           "capacity_kwh": "Usable battery capacity (kWh)",
-          "sustainable_kw": "Conservative sustained charge rate (kW)",
           "efficiency": "Assumed AC charging efficiency (0–1)",
           "departure_weekday": "Departure Mon–Fri (HH:MM)",
           "departure_weekend": "Departure Sat–Sun (HH:MM)",
@@ -40,7 +40,8 @@
       "duplicate_vehicle": "Vehicle name already used",
       "duplicate_cable": "Cable sensor already used",
       "duplicate_sources": "Choose distinct sensors for downstairs, upstairs and EV power.",
-      "invalid_mapping": "Incomplete or inconsistent configuration: review entities and vehicle parameters."
+      "invalid_mapping": "Incomplete or inconsistent configuration: review entities and vehicle parameters.",
+      "incomplete_counters": "Choose both Session Energy and Session Duration, or neither."
     },
     "abort": {
       "already_configured": "This wallbox is already configured"
@@ -73,10 +74,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Choose a vehicle",
-        "description": "Edit read-only charging plan settings. This never sends commands.",
-        "data": {
-          "vehicle": "Vehicle to edit"
+        "title": "What would you like to edit?",
+        "menu_options": {
+          "sources": "Power meters and session counters",
+          "choose_vehicle": "Vehicle target and departure times"
         }
       },
       "vehicle": {
@@ -86,13 +87,28 @@
           "target_default": "Default target SOC (%)",
           "departure_weekday": "Departure Mon–Fri (HH:MM)",
           "departure_weekend": "Departure Sat–Sun (HH:MM)",
-          "sustainable_kw": "Conservative sustained power (kW)",
           "efficiency": "Estimated AC charging efficiency"
+        }
+      },
+      "choose_vehicle": {
+        "title": "Choose a vehicle",
+        "data": {
+          "vehicle": "Vehicle"
+        }
+      },
+      "sources": {
+        "title": "Household power and wallbox session",
+        "description": "Choose one or more household power sensors to sum. The EV Shelly remains separate. Session counters are optional but must be paired.",
+        "data": {
+          "house_power_sources": "House consumption — select one or more sensors to sum",
+          "session_energy": "Wallbox Session Energy (kWh, optional)",
+          "session_duration": "Wallbox Session Duration (min, optional)"
         }
       }
     },
     "error": {
-      "invalid_clock": "Use 24-hour HH:MM format"
+      "invalid_clock": "Use 24-hour HH:MM format",
+      "invalid_mapping": "Missing, repeated or inconsistent sources. Check your selection."
     },
     "abort": {
       "no_vehicles": "No vehicle profiles configured",
