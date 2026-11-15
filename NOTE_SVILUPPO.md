@@ -134,3 +134,27 @@
 ### Correzione conclusiva della protezione legacy
 - Aggiunto controllo preventivo anche a `OptionsFlow` (`async_step_init` e `async_step_vehicle`): una entry storica 0.0.13 o incompleta causa `async_abort(legacy_or_invalid_entry)` prima dell'accesso a campi mancanti. Nessuna modifica di opzioni o configurazione.
 - Aggiunte traduzioni IT/EN e controllo regressione statico. Suite salita a **94 test**, superati su Python 3.12/3.13 ([workflow 43730875739](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730875739)); hassfest ufficiale riuscito sullo stesso commit ([43730875735](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730875735)). Il test runtime HA resta da eseguire.
+
+
+## 2026-11-15 — Decisione successiva: reinstallazione pulita confermata
+
+**Nuovo fatto operativo comunicato dall'utente:** la vecchia versione 0.0.13 è stata **completamente rimossa** dalla sua Home Assistant. Non serve migrare alcuna config entry; la nuova versione si installa dall'inizio con Config Flow. Questa decisione sostituisce le raccomandazioni precedenti sul mantenimento della vecchia entry e sul relativo preflight. Non implica che le automazioni Fiat legacy vadano rimosse: rimangono in produzione e non sono state toccate.
+
+### Codice aggiornato (branch `stabilizzatore-m1` soltanto)
+- `config_flow.py`: nuova entry schema **VERSION=1**; un solo setup della wallbox e configurazione multi-auto completamente grafica. Controlli per contatori duplicati, auto con sensori ripetuti, orari invalidi e input incompleti.
+- `__init__.py`: setup/unload lineare delle piattaforme simulate con gestione errori e rilascio di listener/timer.
+- `validation.py`: unico validatore puro per i **nuovi** mapping e le opzioni; nessun accesso alla HA o comandi di dispositivo, nessuna conversione dei formati precedenti.
+- Eliminati `preflight.py`, `tests/test_preflight.py`, `tests/test_entry_guard.py` e vecchia guida migrazione. Introdotti `tests/test_validation.py`, `tests/test_fresh_install.py` e `tests/test_clean_config_flow.py` (mock del percorso UI).
+- `strings.json` e traduzioni IT/EN corrette per i nuovi errori, README riscritto, nuova guida `docs/INSTALLAZIONE_DA_ZERO.md`.
+- Ricontrollato in sola lettura il firmware ESPHome main: gli stati `Car Connected`, `Charging`, `Telemetry Fresh` e lo slider number `Charge power` (kW) sono già previsti, e il limite `Power set` va selezionato fra i sensori della wallbox; non modificato ESPHome.
+- Il ramo predefinito `main` non è aggiornato, quindi per il primo test si usa **installazione manuale dal branch di sviluppo**, non HACS/Marketplace; nessuna release.
+
+### Verifiche svolte
+- GitHub Actions: **99 test** offline e con HA simulato passati su Python 3.12 e 3.13; Config Flow a due veicoli e Options Flow provati con API fake.
+- Hassfest: validazione ufficiale riuscita sul branch aggiornato; compilazione sintattica e traduzioni JSON verificate in CI.
+- **NON svolto:** installazione sulla HA reale, interazione con vere entità Shelly/ESPHome/Fiat/Kia, verifica Recorder live e comportamento nella casa. Non presentare questa base come release collaudata.
+
+### Limiti ancora aperti
+- v0.1 solo simulazione: nessun comando a wallbox/auto, no BLE aggiuntivo, DPM sempre attivo, automazioni esistenti invariate.
+- Dopo restart con auto già collegata, richiesta conferma esplicita della modalità prima di valutare l'automatismo (virtuale).
+- Eccezioni temporanee di partenza e taratura budget/soglie restano future attività da approvare/verificare.
