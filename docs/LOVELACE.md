@@ -22,6 +22,8 @@ cards:
         name: Rischio e margine partenza
       - entity: sensor.easywallbox_smart_charging_stabilizzatore_ricarica
         name: Cap virtuale e motivo
+      - entity: select.easywallbox_smart_charging_modalita_sessione_solo_simulazione
+        name: Modalità sessione — solo simulazione
   - type: markdown
     content: |
       Un cap proposto NON equivale a un comando inviato,
@@ -29,6 +31,29 @@ cards:
       Le metriche di SOC, energia residua e budget sono negli
       attributi dei sensori e restano stime.
 ```
+
+## Selettore virtuale: utilizzo e riavvio
+
+Il selettore presenta **Automatica**, **Manuale**, **Pausa (simulata)** e
+**Carica subito (simulazione)**. Cambia **solo** la modalità del planner:
+non invia uno Start, Stop o DPM 0 A e non cambia la potenza elettrica.
+Un veicolo può risultare **fisicamente in carica** anche mentre
+la modalità visualizzata è Pausa: la telemetria ha precedenza sulla UI.
+
+- **Automatica:** il planner può proporre attesa/avvio e cap facoltativi se il budget lo consente.
+- **Manuale:** il supervisore si ritira; non sovrascrive la scelta utente fino alla conclusione del collegamento.
+- **Pausa:** il planner non propone nuovi avvii e non toglie da solo la pausa; occorre un'esplicita scelta utente o uno scollegamento accertato.
+- **Carica subito:** raccomanda l'avvio immediato e non introduce cap stabilizzanti facoltativi; è sempre **virtuale**.
+
+Se Home Assistant riparte con il cavo già presente, lo stato entra in
+**RICONCILIAZIONE RICHIESTA**: il selettore può iniziare senza valore
+selezionato finché non si imposta esplicitamente una modalità.
+Non confondere una temporanea indisponibilità dei sensori con uno
+scollegamento, e non interpretare `start_now` come avvio elettrico riuscito.
+
+Gli `entity_id` YAML sono **esempi**: usare gli ID effettivamente creati
+dall'integrazione nella propria istanza. Nessuna scheda va usata per
+controllare il dispositivo prima del collaudo della versione attuativa.
 
 ## Verifiche necessarie prima di rilasciare v0.1
 
