@@ -15,11 +15,12 @@ from .const import (
     CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_TELEMETRY_FRESH,
     CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL,
     CONF_VEHICLES, CONF_NAME, CONF_CABLE, CONF_SOC,
-    CONF_TARGET_ENTITY, CONF_TARGET_DEFAULT, CONF_CAPACITY,
+    CONF_TARGET_ENTITY, CONF_TARGET_DEFAULT, CONF_TARGET_MODE, CONF_CAPACITY,
     CONF_SUSTAINABLE, CONF_EFFICIENCY, CONF_VEHICLE_OVERRIDES,
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND,
 )
 from .sources import finite_number
+from .target_policy import ENTITY, FIXED, selected_mode
 
 SOURCES = {
     CONF_EV_POWER: "sensor",
@@ -31,7 +32,8 @@ SOURCES = {
 }
 CLOCK_KEYS = (CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND)
 OPTION_KEYS = frozenset({
-    CONF_TARGET_DEFAULT, CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND,
+    CONF_TARGET_DEFAULT, CONF_TARGET_ENTITY, CONF_TARGET_MODE,
+    CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND,
     CONF_EFFICIENCY, CONF_SUSTAINABLE,  # Ignored existing 0.1.0 option.
 })
 
@@ -146,13 +148,21 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
                 issues.add("duplicated_vehicle_soc")
             else:
                 soc_ids.add(soc)
-            target = car.get(CONF_TARGET_ENTITY)
-            if target is not None and not _entity(
-                target, ("sensor", "number", "input_number")
-            ):
-                issues.add("invalid_target_source")
-            if not _range(car.get(CONF_TARGET_DEFAULT), 1, 100):
-                issues.add("invalid_default_target")
+            mode = selected_mode(car)
+            if mode not in (ENTITY, FIXED):
+                issues.add("invalid_target_mode")
+            elif mode == ENTITY:
+                if not _entity(
+                    car.get(CONF_TARGET_ENTITY), ("sensor", "number", "input_number")
+                ):
+                    issues.add("invalid_target_source")
+                if CONF_TARGET_MODE in car and CONF_TARGET_DEFAULT in car:
+                    issues.add("multiple_target_sources")
+            else:
+                if not _range(car.get(CONF_TARGET_DEFAULT), 1, 100):
+                    issues.add("invalid_default_target")
+                if CONF_TARGET_MODE in car and CONF_TARGET_ENTITY in car:
+                    issues.add("multiple_target_sources")
             if not _range(car.get(CONF_CAPACITY), 10, 200):
                 issues.add("invalid_capacity")
             if not _range(car.get(CONF_EFFICIENCY), 0.5, 1.0):
@@ -171,9 +181,27 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
                 continue
             if set(settings).difference(OPTION_KEYS):
                 issues.add("unknown_override_fields")
-            if (CONF_TARGET_DEFAULT in settings
-                    and not _range(settings[CONF_TARGET_DEFAULT], 1, 100)):
-                issues.add("invalid_override_target")
+            if CONF_TARGET_MODE in settings and selected_mode(settings) is None:
+                issues.add("invalid_override_target_mode")
+            # Check the effective source after merging base vehicle and
+            # per-vehicle options. The new explicit mode suppresses the
+            # unused field, including old 0.1.0 data stored in entry.data.
+            vehicle = next((v for v in cars if isinstance(v, Mapping)
+                            and v.get(CONF_CABLE) == cable), None) if isinstance(cars, list) else None
+            if vehicle is not None:
+                effective = {**vehicle, **settings}
+                mode = selected_mode(effective)
+                if mode == ENTITY:
+                    if not _entity(
+                        effective.get(CONF_TARGET_ENTITY),
+                        ("sensor", "number", "input_number")
+                    ):
+                        issues.add("invalid_override_target")
+                elif mode == FIXED:
+                    if not _range(effective.get(CONF_TARGET_DEFAULT), 1, 100):
+                        issues.add("invalid_override_target")
+                else:
+                    issues.add("invalid_override_target_mode")
             if (CONF_EFFICIENCY in settings
                     and not _range(settings[CONF_EFFICIENCY], 0.5, 1)):
                 issues.add("invalid_override_efficiency")
