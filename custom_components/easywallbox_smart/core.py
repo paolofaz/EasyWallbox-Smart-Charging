@@ -182,8 +182,12 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     if session.mode != "AUTO" or not session.charging or not session.vehicle_id or session.vehicle_ambiguous:
         # No restore: a virtual cap never existed in the real wallbox.
         state = _reset(session.session_id, now)
-        reason = ("manual_or_paused" if session.mode != "AUTO" else
-                  "not_charging_or_unidentified")
+        reason = (
+            "charge_now_disables_optional_cap" if session.mode == "CHARGE_NOW"
+            else "reconciliation_required" if session.mode == "RECONCILE"
+            else "manual_or_paused" if session.mode != "AUTO"
+            else "not_charging_or_unidentified"
+        )
         return _result(state, "inactive", reason, p)
 
     if (limits.manual_owner or not _valid(limits.confirmed_kw, positive=True)
