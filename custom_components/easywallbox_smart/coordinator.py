@@ -16,6 +16,7 @@ from .const import (
     CONF_EV_POWER, CONF_REQUESTED_LIMIT, CONF_SOC, CONF_SUSTAINABLE,
     CONF_TARGET_DEFAULT, CONF_TARGET_ENTITY, CONF_TELEMETRY_FRESH, CONF_UPSTAIRS,
     CONF_VEHICLES, CONF_WALLBOX_CHARGING, CONF_WALLBOX_CONNECTED,
+    CONF_VEHICLE_OVERRIDES,
 )
 from .departure_policy import DepartureAdvice, advise_departure
 from .core import (
@@ -81,6 +82,14 @@ class SimulationCoordinator:
         ambiguous = len(present) > 1 or wallbox_connected is None
         selected = present[0] if len(present) == 1 and wallbox_connected is True else None
         identity = selected[CONF_CABLE] if selected else None
+        if selected is not None:
+            # Options Flow edits the planner, never the underlying HA entities.
+            # Only one vehicle at a time gets an override; keys remain stable.
+            per_car = self.entry.options.get(CONF_VEHICLE_OVERRIDES, {})
+            selected = {
+                **selected,
+                **per_car.get(identity, {}),
+            }
         if identity != self._vehicle_id:
             self._session_seq += 1
             self._vehicle_id = identity
