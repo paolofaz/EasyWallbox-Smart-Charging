@@ -1,6 +1,10 @@
 """Integration constants. No entity ID is tied to any particular home."""
 DOMAIN = "easywallbox_smart"
 PLATFORMS = ["sensor", "select"]
+CONF_HOUSE_SOURCES = "house_power_sources"
+CONF_SESSION_ENERGY = "session_energy"
+CONF_SESSION_DURATION = "session_duration"
+# Historical 0.1.0 fields are read only to support an existing config entry.
 CONF_DOWNSTAIRS = "house_downstairs"
 CONF_UPSTAIRS = "house_upstairs"
 CONF_EV_POWER = "ev_power"
@@ -18,6 +22,7 @@ CONF_SOC = "soc"
 CONF_TARGET_ENTITY = "target_entity"
 CONF_TARGET_DEFAULT = "target_default"
 CONF_CAPACITY = "capacity_kwh"
+# Old 0.1.0 stored an estimated charge power; it is no longer used.
 CONF_SUSTAINABLE = "sustainable_kw"
 CONF_EFFICIENCY = "efficiency"
 CONF_DEPARTURE_WEEKDAY = "departure_weekday"
