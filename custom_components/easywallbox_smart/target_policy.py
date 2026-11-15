@@ -20,7 +20,7 @@ def selected_mode(vehicle: Mapping) -> str | None:
     """Infer mode only for older entries without an explicit selection."""
     mode = vehicle.get(CONF_TARGET_MODE)
     if mode is not None:
-        return mode if mode in MODES else None
+        return mode if isinstance(mode, str) and mode in MODES else None
     return ENTITY if vehicle.get(CONF_TARGET_ENTITY) else FIXED
 
 
