@@ -96,7 +96,7 @@
     },
     "abort": {
       "no_vehicles": "Nessun profilo automobile configurato",
-      "legacy_or_invalid_entry": "Configurazione storica o incompleta: opzioni disabilitate. Nessun dato è stato modificato; seguire la procedura di migrazione guidata."
+      "invalid_configuration": "Configurazione non valida: verifica le entità e i parametri dell'integrazione."
     }
   }
 }
