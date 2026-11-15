@@ -175,3 +175,28 @@
 - La release 0.1.0 resta **solo simulazione, senza nessun comando wallbox/auto**, con DPM originale attivo e automazioni esistenti intatte.
 
 Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni futura pubblicazione di `main` richiede nuovo consenso esplicito dell'utente e una nuova release/tag, senza sovrascrivere la 0.1.0.
+
+
+## 2026-11-15 — M4 in sviluppo: stima automatica potenza e casa universale
+
+### Richiesta dell'utente / revisione requisiti
+- Rifiutata la necessità di inserire manualmente una **potenza sostenibile prudente**: con DPM attivo la Fiat/Kia possono assorbire ad es. 2 kW di giorno o 4 kW di sera. La stima deve derivare da dati reali, con provenienza indicata e senza rappresentare come garantita la potenza futura.
+- Confermati nel firmware ESPHome main (letto, **non modificato**) i sensori `Session Energy` in kWh da AD p[22] e `Session Duration` in minuti da AD p[23]. Contatori di sessione, non statistiche storiche. Lo Shelly wallbox resta la fonte della potenza attuale.
+- Richiesta UI generica: un elenco di **uno o più sensori domestici** da sommare, separando lo Shelly EV; nessun vincolo per piano terra/primo. Chiarire che `target_entity` è un'entità percentuale di target SOC opzionale, solo letta, diversa dal SOC reale; senza entità si usa il target fisso.
+- Niente archivio persistente delle ultime 5 sessioni in questa prima fase: complessità e dati non giustificati. Nessun firmware, BLE aggiuntivo o controllo elettrico.
+
+### Modifiche al SOLO ramo di sviluppo
+- Nuovo `rate_estimator.py` puro: stima `shelly_instant` mentre carica; dopo almeno 30 minuti e due campioni coerenti crescenti dei contatori ESPHome, media kWh/min combinata come **65% potenza corrente + 35% media sessione**; valori candidati da verificare, non produzione. Resetta alla disconnessione/reset contatori e non usa counters stale o l'attuale setpoint come media reale.
+- `coordinator.py`: stima da Shelly e contatori con unità e freschezza verificate; session snapshot alimentata dal valore stimato. I contatori sono ascoltati solo con i normali eventi HA, nessun polling BLE. Ascolto dei sensori casa solo in carica effettivamente confermata; uno o più misuratori da `house_power_sources`.
+- `core.py`: `HouseSnapshot.sources_kw` sommabile senza assumere due piani fissi, con retrocompatibilità dei test puri precedenti.
+- `config_flow.py`: form multi-selector per consumi domestici; Session Energy/Duration opzionali ma accoppiati; campo di potenza sostenibile rimosso sia dalla configurazione veicolo sia dalle sue opzioni. Nuovo menu Opzioni per cambiare fonti domestiche, contatori, e singolo veicolo. `validation.py` valida il nuovo schema e conserva le entry create con la **0.1.0** (legacy del solo ultimo rilascio, NON 0.0.13), che avevano `house_downstairs` e `house_upstairs`; queste possono essere riconfigurate via Opzioni senza modificare `.storage`.
+- `departure_policy.py`: quando non esiste ancora una stima reale, l'assenza di dati **non** autorizza un'attesa: se il SOC è valido suggerisce virtualmente `start_now` per consentire la misurazione. Se ESPHome dichiara `Charging` ma Shelly non conferma potenza, mostra dati insufficienti, senza proporre un nuovo Start.
+- `sensor.py`: attributi diagnostici della stima/potenza media/provenienza; aggiornamenti di sintesi soltanto a cambi significativi, non per singolo campione Shelly.
+- Traduzioni IT/EN e `strings.json` riformulate per i nuovi campi e target SOC.
+- Sviluppo identificato da `manifest.json` **0.2.0b1**: **nessuna pubblicazione**, `main` e la release Marketplace `0.1.0` restano invariati. Non fonderli senza nuova autorizzazione.
+- Vedi `docs/STIMA_AUTOMATICA_E_CONSUMI_UNIVERSALI.md`.
+
+### Verifiche e limiti
+- Test incrementali aggiunti per power estimation (avvio, 30 min, contatori che si azzerano, dispositivi assenti, cambio sessione), configurazione 1..N sensori casa, Opzioni su config entry 0.1.0, coordinator HA mock e priorità alla sicurezza. CI va verificata sull'ultima HEAD e su Python 3.12/3.13.
+- **Non ancora provato su HA reale**: comportamento Session Energy/Duration durante primo avvio, pause e reboot; effettiva validità timestamp, UI grafica multi-selector e Recorder; coefficienti 65/35 da calibrare. La media sessione NON è garanzia che DPM e auto manterranno la stessa potenza.
+- Nessun dato di sessione viene scritto in file o `.storage`, nessuna entità di potenza duplicata, nessun servizio wallbox, nessun comando Start/Stop e DPM sempre attivo.
