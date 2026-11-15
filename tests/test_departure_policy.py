@@ -108,6 +108,38 @@ class TestDepartureAdvice(unittest.TestCase):
         self.assertEqual(a.action, "start_now")
         self.assertLess(a.latest_safe_start, s.departure_at)
 
+    def test_explicit_charge_now_bypasses_domestic_wait(self):
+        s = car(mode="CHARGE_NOW")
+        result = advice(T, s, house(2.4))
+        self.assertEqual(result.action, "start_now")
+        self.assertEqual(result.reason, "explicit_charge_now_simulation_only")
+        self.assertTrue(result.simulation_only)
+
+    def test_explicit_charge_now_still_refuses_missing_soc(self):
+        s = car(mode="CHARGE_NOW", soc=None)
+        self.assertEqual(advice(T, s, house(0.2)).action, "insufficient_data")
+
+    def test_restart_reconciliation_never_recommends_start(self):
+        s = car(mode="RECONCILE")
+        result = advice(T, s, house(0.2))
+        self.assertEqual(result.action, "insufficient_data")
+        self.assertEqual(result.reason, "explicit_mode_confirmation_required")
+
+    def test_charge_now_does_not_restart_balancing_at_target_100(self):
+        s = car(mode="CHARGE_NOW", soc=100, target_soc=100, charging=True)
+        result = advice(T, s, house(2.0))
+        self.assertEqual(result.action, "charging")
+        self.assertEqual(result.reason, "vehicle_may_be_balancing")
+
+    def test_charge_now_never_installs_optional_cap(self):
+        s = car(mode="CHARGE_NOW", charging=True)
+        state, proposal = core.evaluate(
+            T, s, house(2.2), core.LimitSnapshot(4.0, 4.0)
+        )
+        self.assertEqual(state.mode, "NORMAL")
+        self.assertEqual(proposal.action, "inactive")
+        self.assertEqual(proposal.reason, "charge_now_disables_optional_cap")
+
     def test_time_naive_and_invalid_configs_rejected(self):
         with self.assertRaises(ValueError):
             departure.advise_departure(T.replace(tzinfo=None), car(), core.plan(T, car()), house(2))
