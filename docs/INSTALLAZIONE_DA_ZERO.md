@@ -28,10 +28,12 @@ Per la prima installazione della casa con 3 Shelly, selezionare i due Shelly dom
 
 ## Scheda auto
 
-Richiede nome, sensore cavo, SOC corrente, **target SOC predefinito**, capacità utile, rendimento ed orari di partenza feriale/weekend. **Non chiede più potenza sostenibile manuale**.
+Richiede nome, sensore cavo, **SOC corrente**, capacità utile, rendimento, orari di partenza feriale/weekend e **metodo obiettivo SOC**. **Non chiede più potenza sostenibile manuale**.
 
-- **Entità obiettivo SOC (facoltativa):** un sensore o numero percentuale che contiene *il target impostato nell'auto o in Home Assistant*, per esempio 80%. Non è la misura del SOC attuale e non viene comandata.
-- Se non configuri l'entità obiettivo, il planner usa il target fisso inserito nella scheda. Se l'entità obiettivo esiste ma diventa `unknown`, il planner non inventa un valore sostitutivo.
+- Il metodo predefinito è **Leggi da un'entità Home Assistant**: nella schermata successiva seleziona il sensore/numero che contiene *il target impostato nell'auto o in Home Assistant*, per esempio 80%. Non è il SOC corrente e non viene comandato.
+- In alternativa scegli **Usa una percentuale fissa**: nella schermata successiva inserisci solo il target manuale, per chi non dispone di un'entità SOC obiettivo.
+- I due target **non coesistono nella nuova configurazione**. Se l'entità HA scelta diventa `unknown/unavailable`, il planner non inventa un valore sostitutivo.
+- Per le configurazioni create nella 0.1.0, che potevano memorizzare entrambi, mantiene la precedenza dell'entità esistente e permette di cambiare metodo nelle **Opzioni → Parametri veicolo e orari** senza rimuovere l'integrazione.
 - I due veicoli hanno schede e partenza indipendenti; il coordinatore riconosce una sola auto per volta sulla wallbox fisica.
 
 ## Da dove viene la potenza di pianificazione?
