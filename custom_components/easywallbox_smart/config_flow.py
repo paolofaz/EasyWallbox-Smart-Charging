@@ -23,6 +23,7 @@ from .const import (
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, CONF_ADD_ANOTHER,
     CONF_VEHICLE_OVERRIDES,
 )
+from .preflight import inspect
 
 
 def entity(domain: str | list[str]) -> EntitySelector:
@@ -71,7 +72,10 @@ def valid_clock(value: str) -> bool:
 
 class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Prevent multiple owners for the same local wallbox integration."""
-    VERSION = 1
+    # Legacy 0.0.13 already uses v3. Keep the same schema version during
+    # the safe test phase so existing v3 entries reach the non-mutating
+    # shape guard in __init__.py (no surprise migration or version rewrite).
+    VERSION = 3
 
     def __init__(self) -> None:
         self._wallbox: dict = {}
@@ -84,12 +88,28 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return EasyWallboxSmartOptionsFlow()
 
     async def async_step_user(self, user_input: dict | None = None):
+        # A previously installed legacy entry may have no unique_id.
+        # Prevent adding a second instance on top of an old configuration.
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
+        errors = {}
         if user_input is not None:
-            await self.async_set_unique_id("one_local_wallbox")
-            self._abort_if_unique_id_configured()
-            self._wallbox = user_input
-            return await self.async_step_vehicle()
-        return self.async_show_form(step_id="user", data_schema=WALLBOX_SCHEMA)
+            # A Shelly for EV power cannot also be the upstairs meter.
+            source_ids = [
+                user_input[CONF_DOWNSTAIRS],
+                user_input[CONF_UPSTAIRS],
+                user_input[CONF_EV_POWER],
+            ]
+            if len(set(source_ids)) != len(source_ids):
+                errors["base"] = "duplicate_sources"
+            else:
+                await self.async_set_unique_id("one_local_wallbox")
+                self._abort_if_unique_id_configured()
+                self._wallbox = dict(user_input)
+                return await self.async_step_vehicle()
+        return self.async_show_form(
+            step_id="user", data_schema=WALLBOX_SCHEMA, errors=errors
+        )
 
     async def async_step_vehicle(self, user_input: dict | None = None):
         errors = {}
@@ -102,13 +122,20 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "duplicate_vehicle"
             else:
                 another = user_input.pop(CONF_ADD_ANOTHER)
-                self._vehicles.append(user_input)
+                self._vehicles.append(dict(user_input))
                 if another:
                     return await self.async_step_vehicle()
-                return self.async_create_entry(
-                    title="EasyWallbox Smart Charging — Simulation",
-                    data={**self._wallbox, CONF_VEHICLES: self._vehicles},
-                )
+                data = {**self._wallbox, CONF_VEHICLES: self._vehicles}
+                if not inspect(data).ready:
+                    # A malformed entry must not be stored. The form can be
+                    # retried without ever changing HA's config storage.
+                    self._vehicles.pop()
+                    errors["base"] = "invalid_mapping"
+                else:
+                    return self.async_create_entry(
+                        title="EasyWallbox Smart Charging — Simulation",
+                        data=data,
+                    )
         return self.async_show_form(step_id="vehicle", data_schema=VEHICLE_SCHEMA, errors=errors)
 
 
