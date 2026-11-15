@@ -55,6 +55,17 @@
       "stabilizer": {
         "name": "Stabilizzatore ricarica"
       }
+    },
+    "select": {
+      "session_mode": {
+        "name": "Modalità sessione (solo simulazione)",
+        "state": {
+          "automatic": "Automatica",
+          "manual": "Manuale",
+          "pause": "Pausa (simulata)",
+          "charge_now": "Carica subito (simulazione)"
+        }
+      }
     }
   },
   "options": {
