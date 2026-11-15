@@ -20,18 +20,25 @@
       },
       "vehicle": {
         "title": "Profilo automobile",
-        "description": "Aggiungi un veicolo alla volta. Il sensore cavo dev’essere distinto per ogni auto. Gli orari valgono per il giorno della partenza.",
+        "description": "Imposta i dati dell'auto e scegli come leggere l'obiettivo SOC. Il valore viene richiesto nella schermata successiva. Nessun comando all'auto.",
         "data": {
           "name": "Nome automobile",
           "cable": "Cavo collegato all'auto",
           "soc": "SOC batteria (%)",
-          "target_entity": "Entità target SOC dell'auto/HA (facoltativa; se assente usa target predefinito)",
-          "target_default": "Target SOC predefinito (%) — usato se manca l'entità obiettivo",
           "capacity_kwh": "Capacità utilizzabile batteria (kWh)",
           "efficiency": "Rendimento AC ipotizzato (0–1)",
           "departure_weekday": "Partenza lun–ven (HH:MM)",
           "departure_weekend": "Partenza sab–dom (HH:MM)",
-          "add_another": "Aggiungi un'altra auto"
+          "add_another": "Aggiungi un'altra auto",
+          "target_mode": "Metodo di lettura del target SOC"
+        }
+      },
+      "target": {
+        "title": "Obiettivo SOC per questa auto",
+        "description": "È attivo UN SOLO obiettivo. Con un'entità HA, i valori unknown/unavailable NON vengono sostituiti da un vecchio valore fisso.",
+        "data": {
+          "target_entity": "Entità HA che espone il target SOC (%)",
+          "target_default": "Obiettivo SOC fisso (%)"
         }
       }
     },
@@ -82,12 +89,12 @@
       },
       "vehicle": {
         "title": "Modifica pianificazione automobile",
-        "description": "L'obiettivo SOC letto dall'auto, se configurato, prevale sul valore predefinito. Gli orari si riferiscono al giorno della partenza.",
+        "description": "Modifica orari e scegli l'origine del target SOC. La selezione non modifica l'auto.",
         "data": {
-          "target_default": "SOC obiettivo predefinito (%)",
           "departure_weekday": "Partenza lun–ven (HH:MM)",
           "departure_weekend": "Partenza sab–dom (HH:MM)",
-          "efficiency": "Rendimento AC stimato"
+          "efficiency": "Rendimento AC stimato",
+          "target_mode": "Origine dell'obiettivo SOC"
         }
       },
       "choose_vehicle": {
@@ -103,6 +110,14 @@
           "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
           "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
           "session_duration": "Durata sessione wallbox (min, facoltativo)"
+        }
+      },
+      "target": {
+        "title": "Seleziona l'obiettivo SOC attivo",
+        "description": "Per questa auto vale solo il campo che scegli. La lettura dell'entità HA ha priorità solo se è la modalità selezionata.",
+        "data": {
+          "target_entity": "Entità HA obiettivo SOC (%)",
+          "target_default": "Obiettivo SOC fisso (%)"
         }
       }
     },
