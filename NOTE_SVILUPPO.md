@@ -133,4 +133,4 @@
 
 ### Correzione conclusiva della protezione legacy
 - Aggiunto controllo preventivo anche a `OptionsFlow` (`async_step_init` e `async_step_vehicle`): una entry storica 0.0.13 o incompleta causa `async_abort(legacy_or_invalid_entry)` prima dell'accesso a campi mancanti. Nessuna modifica di opzioni o configurazione.
-- Aggiunte traduzioni IT/EN e controllo regressione statico. Suite salita a **94 test** attesi; verificare i due workflow GitHub sull'ultimo commit. Il test runtime HA resta da eseguire.
+- Aggiunte traduzioni IT/EN e controllo regressione statico. Suite salita a **94 test**, superati su Python 3.12/3.13 ([workflow 43730875739](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730875739)); hassfest ufficiale riuscito sullo stesso commit ([43730875735](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730875735)). Il test runtime HA resta da eseguire.
