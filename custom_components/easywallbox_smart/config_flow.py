@@ -20,11 +20,13 @@ from .const import (
     CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_TELEMETRY_FRESH,
     CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL,
     CONF_VEHICLES, CONF_NAME, CONF_CABLE, CONF_SOC, CONF_TARGET_ENTITY,
+    CONF_TARGET_MODE,
     CONF_TARGET_DEFAULT, CONF_CAPACITY, CONF_SUSTAINABLE, CONF_EFFICIENCY,
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, CONF_ADD_ANOTHER,
     CONF_VEHICLE_OVERRIDES,
 )
 from .validation import validate
+from .target_policy import ENTITY, FIXED, selected_mode
 
 
 def entity(domain: str | list[str], *, multiple: bool = False) -> EntitySelector:
@@ -53,8 +55,10 @@ VEHICLE_SCHEMA = vol.Schema({
     vol.Required(CONF_NAME): TextSelector(),
     vol.Required(CONF_CABLE): entity("binary_sensor"),
     vol.Required(CONF_SOC): entity("sensor"),
-    vol.Optional(CONF_TARGET_ENTITY): entity(["sensor", "number", "input_number"]),
-    vol.Required(CONF_TARGET_DEFAULT, default=80): number(1, 100, 1),
+    vol.Required(CONF_TARGET_MODE, default=ENTITY): vol.In({
+        ENTITY: "Home Assistant SOC target entity",
+        FIXED: "Fixed SOC target (%)",
+    }),
     vol.Required(CONF_CAPACITY): number(10, 200),
     vol.Required(CONF_EFFICIENCY, default=0.90): number(0.5, 1.0, 0.01),
     vol.Required(CONF_DEPARTURE_WEEKDAY, default="07:00"): TextSelector(),
@@ -79,6 +83,7 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._wallbox: dict = {}
         self._vehicles: list[dict] = []
+        self._pending_vehicle: dict | None = None
 
     @staticmethod
     @callback
@@ -110,34 +115,63 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_vehicle(self, user_input: dict | None = None):
+        """Configure vehicle identity and planning; target comes next."""
         errors = {}
         if user_input is not None:
-            if not valid_clock(user_input[CONF_DEPARTURE_WEEKDAY]) or not valid_clock(user_input[CONF_DEPARTURE_WEEKEND]):
+            if (not valid_clock(user_input[CONF_DEPARTURE_WEEKDAY])
+                    or not valid_clock(user_input[CONF_DEPARTURE_WEEKEND])):
                 errors["base"] = "invalid_clock"
             elif user_input[CONF_CABLE] in {v[CONF_CABLE] for v in self._vehicles}:
                 errors["base"] = "duplicate_cable"
-            elif user_input[CONF_NAME].strip().casefold() in {v[CONF_NAME].strip().casefold() for v in self._vehicles}:
+            elif user_input[CONF_NAME].strip().casefold() in {
+                    v[CONF_NAME].strip().casefold() for v in self._vehicles}:
                 errors["base"] = "duplicate_vehicle"
+            elif user_input[CONF_TARGET_MODE] not in (ENTITY, FIXED):
+                errors["base"] = "invalid_mapping"
             else:
-                another = user_input[CONF_ADD_ANOTHER]
-                vehicle = {key: value for key, value in user_input.items()
-                           if key != CONF_ADD_ANOTHER}
-                self._vehicles.append(vehicle)
-                if another:
+                self._pending_vehicle = dict(user_input)
+                return await self.async_step_target()
+        return self.async_show_form(
+            step_id="vehicle", data_schema=VEHICLE_SCHEMA, errors=errors
+        )
+
+    async def async_step_target(self, user_input: dict | None = None):
+        """Ask for exactly the chosen SOC target source; no hidden fallback."""
+        pending = self._pending_vehicle
+        if pending is None:
+            return await self.async_step_vehicle()
+        mode = pending[CONF_TARGET_MODE]
+        target_field = CONF_TARGET_ENTITY if mode == ENTITY else CONF_TARGET_DEFAULT
+        errors = {}
+        if user_input is not None:
+            value = user_input.get(target_field)
+            if value is None:
+                errors["base"] = "invalid_mapping"
+            else:
+                car = {key: value for key, value in pending.items()
+                       if key != CONF_ADD_ANOTHER}
+                car[target_field] = value
+                self._vehicles.append(car)
+                if pending[CONF_ADD_ANOTHER]:
+                    self._pending_vehicle = None
                     return await self.async_step_vehicle()
-                data = {**self._wallbox, CONF_VEHICLES: self._vehicles}
-                if not validate(data).ready:
-                    # A malformed entry must not be stored. The form can be
-                    # retried without ever changing HA's config storage.
-                    self._vehicles.pop()
-                    errors["base"] = "invalid_mapping"
-                else:
+                data = {**self._wallbox, CONF_VEHICLES: list(self._vehicles)}
+                if validate(data).ready:
+                    self._pending_vehicle = None
                     return self.async_create_entry(
                         title="EasyWallbox Smart Charging — Simulation",
                         data=data,
                     )
-        return self.async_show_form(step_id="vehicle", data_schema=VEHICLE_SCHEMA, errors=errors)
-
+                self._vehicles.pop()
+                errors["base"] = "invalid_mapping"
+        schema = vol.Schema({
+            vol.Required(target_field):
+                entity(["sensor", "number", "input_number"])
+                if mode == ENTITY else number(1, 100, 1),
+        })
+        return self.async_show_form(
+            step_id="target", data_schema=schema, errors=errors
+        )
 
 class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
     """Edit one vehicle's planning settings and reload the read-only adapter.
@@ -148,6 +182,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
 
     def __init__(self):
         self._chosen_cable: str | None = None
+        self._pending_settings: dict | None = None
 
     async def async_step_init(self, user_input: dict | None = None):
         """Choose meter sources or per-vehicle planning settings."""
@@ -212,12 +247,12 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         )
 
     async def async_step_vehicle(self, user_input: dict | None = None):
-        """Save one vehicle override without rewriting the initial mapping."""
+        """Edit vehicle schedule and explicitly choose one target method."""
         if not validate(self.config_entry.data, self.config_entry.options).ready:
             return self.async_abort(reason="invalid_configuration")
-        choices = self.config_entry.data.get(CONF_VEHICLES, [])
         vehicle = next(
-            (v for v in choices if v[CONF_CABLE] == self._chosen_cable), None
+            (v for v in self.config_entry.data[CONF_VEHICLES]
+             if v[CONF_CABLE] == self._chosen_cable), None
         )
         if vehicle is None:
             return self.async_abort(reason="no_vehicles")
@@ -228,28 +263,22 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             if (not valid_clock(user_input[CONF_DEPARTURE_WEEKDAY])
                     or not valid_clock(user_input[CONF_DEPARTURE_WEEKEND])):
                 errors["base"] = "invalid_clock"
+            elif user_input.get(CONF_TARGET_MODE) not in (ENTITY, FIXED):
+                errors["base"] = "invalid_mapping"
             else:
-                updated = {
-                    key: value for key, value in user_input.items()
-                    if key in (
-                        CONF_TARGET_DEFAULT, CONF_DEPARTURE_WEEKDAY,
-                        CONF_DEPARTURE_WEEKEND, CONF_EFFICIENCY,
-                    )
+                self._pending_settings = {
+                    k: v for k, v in user_input.items()
+                    if k in (CONF_TARGET_MODE, CONF_DEPARTURE_WEEKDAY,
+                             CONF_DEPARTURE_WEEKEND, CONF_EFFICIENCY)
                 }
-                all_overrides = {
-                    k: dict(v) for k, v in overrides.items()
-                }
-                all_overrides[self._chosen_cable] = updated
-                return self.async_create_entry(
-                    data={
-                        **dict(self.config_entry.options),
-                        CONF_VEHICLE_OVERRIDES: all_overrides,
-                    }
-                )
+                return await self.async_step_target()
         schema = vol.Schema({
             vol.Required(
-                CONF_TARGET_DEFAULT, default=current[CONF_TARGET_DEFAULT]
-            ): number(1, 100, 1),
+                CONF_TARGET_MODE, default=selected_mode(current)
+            ): vol.In({
+                ENTITY: "Home Assistant SOC target entity",
+                FIXED: "Fixed SOC target (%)",
+            }),
             vol.Required(
                 CONF_DEPARTURE_WEEKDAY, default=current[CONF_DEPARTURE_WEEKDAY]
             ): TextSelector(),
@@ -262,4 +291,49 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         })
         return self.async_show_form(
             step_id="vehicle", data_schema=schema, errors=errors
+        )
+
+    async def async_step_target(self, user_input: dict | None = None):
+        """Persist only the chosen target in per-car options, then reload."""
+        if self._pending_settings is None or self._chosen_cable is None:
+            return self.async_abort(reason="no_vehicles")
+        mode = self._pending_settings[CONF_TARGET_MODE]
+        field = CONF_TARGET_ENTITY if mode == ENTITY else CONF_TARGET_DEFAULT
+        vehicle = next(
+            (v for v in self.config_entry.data[CONF_VEHICLES]
+             if v[CONF_CABLE] == self._chosen_cable), None
+        )
+        if vehicle is None:
+            return self.async_abort(reason="no_vehicles")
+        overrides = self.config_entry.options.get(CONF_VEHICLE_OVERRIDES, {})
+        current = {**vehicle, **overrides.get(self._chosen_cable, {})}
+        errors = {}
+        if user_input is not None:
+            value = user_input.get(field)
+            if value is None:
+                errors["base"] = "invalid_mapping"
+            else:
+                updated = dict(overrides.get(self._chosen_cable, {}))
+                updated.update(self._pending_settings)
+                updated.pop(CONF_TARGET_ENTITY if mode == FIXED else CONF_TARGET_DEFAULT, None)
+                updated[field] = value
+                all_overrides = {k: dict(v) for k, v in overrides.items()}
+                all_overrides[self._chosen_cable] = updated
+                options = {
+                    **dict(self.config_entry.options),
+                    CONF_VEHICLE_OVERRIDES: all_overrides,
+                }
+                if validate(self.config_entry.data, options).ready:
+                    return self.async_create_entry(data=options)
+                errors["base"] = "invalid_mapping"
+        marker = (
+            vol.Required(field, default=current[field])
+            if current.get(field) is not None else vol.Required(field)
+        )
+        schema = vol.Schema({
+            marker: entity(["sensor", "number", "input_number"])
+                    if mode == ENTITY else number(1, 100, 1),
+        })
+        return self.async_show_form(
+            step_id="target", data_schema=schema, errors=errors
         )
