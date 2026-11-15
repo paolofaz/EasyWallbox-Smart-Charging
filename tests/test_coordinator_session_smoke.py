@@ -246,6 +246,60 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertEqual(c.control.mode, "PAUSE")
         self.assertEqual(c.control.phase, "UNKNOWN")
 
+    def test_three_house_meters_sum_without_ev(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["house_power_sources"] = [
+            "sensor.downstairs", "sensor.upstairs", "sensor.extra_house",
+        ]
+        h.states["sensor.extra_house"] = FakeState("400", "W")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertAlmostEqual(c._house().kw, 2.65)
+        self.assertEqual(len(c.house_sources), 3)
+        self.assertEqual(len([x for x in h.listeners if x["active"]
+                              and "sensor.extra_house" in x["entities"]]), 1)
+
+    def test_measured_rate_ignores_old_configured_power(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["vehicles"][0]["sustainable_kw"] = 4.0
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.rate.source, "shelly_instant")
+        self.assertEqual(c.session.sustainable_kw, 3.0)
+
+    def test_session_counters_mature_rate_and_reset(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["session_energy"] = "sensor.session_energy"
+        entry.data["session_duration"] = "sensor.session_duration"
+        h.states["sensor.session_energy"] = FakeState("1.0", "kWh")
+        h.states["sensor.session_duration"] = FakeState("30", "min")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.rate.source, "shelly_instant")
+        self.setstate(h, "sensor.session_energy", "1.1", "kWh")
+        self.setstate(h, "sensor.session_duration", "31", "min")
+        c.refresh()
+        self.assertEqual(c.rate.source, "mixed_session_mean")
+        self.assertTrue(c.rate.kw < 3.0)
+        self.setstate(h, "sensor.session_energy", "0.1", "kWh")
+        self.setstate(h, "sensor.session_duration", "1", "min")
+        c.refresh()
+        self.assertEqual(c.rate.source, "shelly_instant")
+
+    def test_unknown_house_source_never_becomes_zero(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["house_power_sources"] = [
+            "sensor.downstairs", "sensor.upstairs", "sensor.missing",
+        ]
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertIsNone(c._house().kw)
+        self.assertEqual(c._house().quality, "unavailable_or_stale")
+
     def test_select_entity_changes_only_virtual_mode(self):
         import asyncio
         _, coordinator = self.setup()
