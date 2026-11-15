@@ -31,3 +31,29 @@
 - Confrontare test completi con replay storico 7–13/11 (CSV non disponibili nel repository), workflow CI e installazione HA.
 - Definire in versione attuativa una riconciliazione sicura di cap dopo restart/stop, mai con retry ciechi.
 - La piattaforma GitHub richiede sempre un branch predefinito; l'accesso GitHub qui non espone un comando per eliminare i branch. La rimozione dei rami storici resta da completare separatamente, senza modificare main nel frattempo.
+
+
+## 2026-11-15 — M2: prima custom integration HA, ancora NON rilasciata
+
+### Codice aggiunto e ragioni
+- `manifest.json` (versione pre-release **0.1.0b1**, non tag/release), `hacs.json`, `const.py`.
+- `config_flow.py`: due fasi GUI, entità Shelly/ESPHome selezionabili; profili 1..N auto con SOC, target, capacità utile, potenza prudente, rendimento e partenza feriali/weekend.
+- `sources.py`: distingue W/kW, valori invalidi, stringhe `unknown`/`unavailable`, calcolo della partenza in Europe/Rome dal **giorno della partenza**.
+- `coordinator.py`: listener eventi HA; i **due Shelly casa** sono ascoltati soltanto quando è attestata la ricarica; timer puntuali per conferma del carico, quiete o budget, niente monitor periodico ogni 2 minuti; non raccoglie né conserva campioni grezzi. Letture identiche non sono trattate come buchi dello storico, ma la validità live richiede stato disponibile e un dato recentemente riportato.
+- `sensor.py`: tre sensori virtuali (sessione, piano, stabilizzatore) con attributi esplicativi. Nessun nuovo sensore di potenza duplicato; la pubblicazione è condizionata a differenze nel riepilogo.
+- `translations/{it,en}.json`, `docs/LOVELACE.md` con card native e avviso chiarissimo **SIMULAZIONE — NESSUN COMANDO**.
+- `brand/icon.png`: immagine quadrata PNG **256×256** in brand locale dell'integrazione, prima diffusione con la prossima release ufficiale autorizzata.
+- Modificato `__init__.py` per lifecycle HA e protezione config entry obsolete senza cancellazioni/migrazioni automatiche. Adeguata gestione eccezioni a pattern 2026.11 (errore non recuperabile per vecchia configurazione).
+
+### Verifiche eseguite
+- GitHub Actions [M1 offline tests](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43719548835) **success** sulle versioni Python **3.12 e 3.13**: **23 unit test** passati (15 core + 8 sorgenti/safety), compileall di `core.py`.
+- I nuovi moduli HA, le traduzioni e `hacs.json` sono stati scritti ma **non è stata ancora eseguita una installazione/registrazione su HA reale**, né un test hassfest/Marketplace. Verifica offline della sintassi Python dei moduli M2 eseguita localmente; non confondere questa prova con il runtime.
+- Nessun servizio `hass.services.async_call`, comando BLE/auto, aggiornamento DPM, salvataggio campioni o modifica `.storage`. Nessun commit su main, firmware o branch storici.
+
+### Limitazioni e verifiche prima di v0.1
+- L'adapter HA simula il supervisore soltanto **durante una carica già attiva**; planner di avvio/attesa e modalità Manuale/Pausa/Carica subito/override di sessione rimangono da completare. Attualmente `mode=AUTO` è preimpostato nel simulatore HA, non un controllo operativo.
+- TTL delle letture Shelly live attualmente prudenziale (20 min) e Shelly EV (5 min): verificare realmente i tempi di aggiornamento e distinguere valore costante da integrazione disconnessa; sincronizzazione tra due Shelly da misurare.
+- Lo SOC che aggiorna ogni ~15 min e il budget calcolato dalla stima iniziale non sono ancora calibrati con l'energia EV reale della sessione.
+- Non esiste una migrazione provata dalla vecchia `0.0.13`; non installare questa beta sopra l'istanza abituale senza backup e procedura concordata. `ConfigEntryError` segnala esplicitamente l'incompatibilità invece di sovrascrivere vecchie opzioni.
+- Da verificare su HA reale: Config Flow, entry/unload, UI Lovelace, nomi entità, assenza scritture per campione nel Recorder, restart, dati indisponibili, confronto replay 7 sere, branding nel Marketplace.
+- Alla prossima revisione della fonte 03 aggiungere la milestone M2 verificata e lo SHA prima di chiudere la release; parametri numerici restano candidati.
