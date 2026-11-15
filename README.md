@@ -1,37 +1,44 @@
-# EasyWallbox Smart Charging — nuova base M1
+# EasyWallbox Smart Charging
 
-**Stato: CORE OFFLINE IN SOLA SIMULAZIONE. Non è una custom integration Home Assistant installabile.**
-Nessun servizio, comando BLE, avvio/stop, scrittura wallbox/auto o modifica del DPM.
+> **Sviluppo M2 — 15 novembre 2026.** Il branch `stabilizzatore-m1` contiene una custom integration Home Assistant in versione preliminare `0.1.0b1`, **SOLO SIMULAZIONE**. Config Flow e sensori sono stati codificati, ma l'installazione su Home Assistant reale e il comportamento elettrico NON sono stati collaudati. **Non è stata pubblicata alcuna release.**
 
-## Obiettivo
+## Perché esiste
 
-La wallbox conserva il suo DPM autonomo e sempre attivo, responsabile di picchi e sicurezza elettrica. La futura integrazione HA gestirà la sessione e la partenza. Un supervisore **lento** vede la sola potenza domestica senza EV (piano terra + primo piano): se carichi intermittenti persistono e il planner ha flessibilità, propone un limite EV stabile; dopo quiete propone di ripristinare **direttamente il limite precedente**. Se l'obiettivo di partenza rischia di non essere raggiunto, il planner fa rientrare la propria limitazione e lascia operare il DPM.
+EasyWallbox Smart Charging aiuta a preparare una ricarica EV per il SOC obiettivo e l'ora di partenza. Il suo *stabilizzatore lento* propone un massimo di potenza EV temporaneamente più basso quando la **casa senza wallbox** ha consumi elevati e intermittenti, per ridurre inutili ritorni al massimo del DPM. Il cap è unico per episodio; dopo quiete torna direttamente al limite originario, oppure viene ritirato prima se la partenza è a rischio. **Il DPM originale resta sempre attivo e gestisce tutti i picchi elettrici.**
 
-Il regolatore NON riconosce elettrodomestici, NON usa il totale da 5 kW, NON insegue i picchi con step continui, NON disattiva il DPM.
+La prima versione non controlla nulla: tutti gli stati e i limiti sono **virtuali**. Non vengono eseguiti `switch.turn_on/off`, `number.set_value`, comandi BLE o servizi delle automobili. Nessun polling BLE nuovo.
 
-## M1 disponibile ora
+## Stato attuale: base M2 in sviluppo
 
-- `custom_components/easywallbox_smart/core.py`: contratto input/output, `plan()` ed `evaluate()` puri, `NORMAL/LIMITED`, ownership virtuale, budget conservativo cumulativo, azioni e motivazioni spiegabili.
-- `tests/test_core.py`: test di sessione, SOC, partenza, carichi intermittenti, quiete, budget, proprietà manuale, stop e dati mancanti.
-- Parametri in `Config` **solo candidati da laboratorio**, non di produzione. Non trasferire il modello DPM a 4,3 kW ad altri impianti senza configurazione.
-- Nessun `manifest.json`, `config_flow.py`, sensore HA, dashboard o release: volutamente non installabile.
+- `core.py`: planner e supervisore deterministici `NORMAL/LIMITED`, budget e ownership **solo simulati**.
+- `config_flow.py`: configurazione grafica di due Shelly domestici, uno Shelly wallbox, telemetria ESPHome, limite richiesto/confermato e **1..N automobili**. Gli ID sono selezionabili e non hardcodati.
+- `coordinator.py`: lettura a eventi HA e timer puntuali, non un monitor a intervallo fisso. Lo stream dei due Shelly casa è seguito soltanto durante la ricarica effettivamente osservata; nessun campione viene salvato.
+- `sensor.py`: tre entità sintetiche — sessione, piano, stabilizzatore — con attributi diagnostici, pubblicate soltanto quando cambia il riepilogo. Non duplica le potenze Shelly.
+- `translations/it.json` e `en.json`: interfaccia italiana e inglese.
+- `brand/icon.png`: icona 256×256 conforme al percorso HA locale delle custom integration dal 2026.3, disponibile per la prossima release.
+- `docs/LOVELACE.md`: dashboard di esempio con card native e dicitura **SIMULAZIONE — NESSUN COMANDO**.
 
-### Test locali
+**Non ancora implementato nella GUI**: modifiche dei profili tramite Options Flow, modalità Manuale/Pausa/Carica subito, eccezioni temporanee e il planner completo di avvio/attesa. L'adapter M2 attualmente propone cap soltanto quando la carica è già attiva. Non installare come versione approvata.
 
-```bash
-python -m unittest discover -s tests -v
-```
+## Configurazione prevista
 
-## Cosa resta da fare
+I tre Shelly sono distinti: piano terra + primo piano costituiscono `P_casa`; lo Shelly della wallbox serve a verificare potenza EV e energia effettiva, **mai per innescare il cap**. L'integrazione seleziona sensori di cavo/SOC/target per ciascuna auto e legge `Charge power` (richiesto), `Power set` (confermato), `Charging` e `Telemetry Fresh` da ESPHome. Un valore `unavailable` non diventa zero e non autorizza nuovi cap.
 
-1. Test ripetibili con eventi coerenti di veri Shelly/auto; nel replay storico un valore invariato può essere mantenuto come stabile su conferma dell'utente, ma una sorgente offline/non disponibile NON è lettura stabile. Il futuro adapter dovrà certificarne lo stato.
-2. Raffinare la stima del budget con energia EV misurata e SOC che aggiorna lentamente (~15 min), senza sostituire mai il SOC ufficiale.
-3. Costruire config flow con mappatura **configurabile** per 1..N auto, i tre Shelly, gli stati BLE/ESPHome, capacità, limiti e target; non hardcodare entity_id domestici. Per la prima installazione verificheremo con le due auto e gli Shelly già presenti.
-4. Adapter HA read-only a eventi, timer solo in sessione, dashboard Lovelace **«SIMULAZIONE — NESSUN COMANDO»**, nessun Recorder per campione, test su HA reale e rollback dalla 0.0.13.
-5. Solo in un successivo rilascio approvato, progettare attuazione/ack/riconciliazione, senza due proprietari dei comandi e senza modificare firmware o automazioni legacy prima di migrazione collaudata.
+I parametri `1,5 / 1,0 kW`, `10 minuti`, budget `25%` dello slack, DPM modello `4,3 kW`, rendimento e potenza sostenibile sono **ipotesi di simulazione**, non taratura elettrica di produzione. Il Config Flow richiede che capacità, potenze, sensori e orari siano esplicitamente confermati prima dell'uso; le precompilazioni sono soltanto esempi.
 
-## Repositoy e sicurezza
+### Attenzione alla vecchia 0.0.13
 
-Il nuovo branch `stabilizzatore-m1` nasce dal **commit iniziale di main contenente solo LICENSE**, non dai prototipi precedenti. I vecchi branch rimangono per ora come riferimenti storici separati; nessun merge su main. Vedere `NOTE_SVILUPPO.md`.
+La nuova configurazione M2 **non è compatibile automaticamente** con la config entry della vecchia 0.0.13. Non aggiornare sopra una installazione esistente prima di aver definito e verificato una migrazione o una reinstallazione con backup. Il codice controlla la compatibilità e rifiuta le config entry mancanti, senza eliminarle né modificarle. Nessuna automazione Fiat SOC o mattutina viene toccata.
 
-Non caricare storico puntuale privato dei consumi, dati `.storage`, credenziali, BLE PIN, MAC personali. La simulazione non dimostra una riduzione reale degli interventi DPM o del rischio di distacco.
+## Test e sicurezza
+
+- `python -m unittest discover -s tests -v` — **23 test** (15 M1 + 8 M2), passati su GitHub Actions con Python 3.12 e 3.13 alla verifica del 15/11/2026.
+- `python -m compileall -q custom_components/easywallbox_smart` per verificare la sintassi di tutti i moduli.
+- I test automatici NON sostituiscono hassfest, verifiche GUI Config Flow, prove idle/Recorder, test su HA reale, replay delle sette sere e simulazioni di reboot/assenza dati.
+- Non pubblicare cronologie puntuali private, account auto, PIN BLE, token, dati `.storage` di Home Assistant o credenziali.
+
+## Sviluppo e roadmap
+
+Questo branch deriva dal commit iniziale `main` che conteneva soltanto `LICENSE`. I branch storici restano separati e non sono stati fusi. README e diario distinguono ciò che è codificato, testato offline e ancora da collaudare.
+
+La v0.1 **sola simulazione** richiede il completamento del planner di avvio/attesa, una GUI di modifica, verifica dell'adapter su Home Assistant e della dashboard prima della pubblicazione. Il controllo reale sarà progettato **solo dopo autorizzazione**, con DPM sempre attivo e un unico proprietario software dei comandi. Vedi `NOTE_SVILUPPO.md` e `docs/ARCHITETTURA_M1.md`.
