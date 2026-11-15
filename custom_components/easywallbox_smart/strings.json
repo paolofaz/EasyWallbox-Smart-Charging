@@ -38,7 +38,9 @@
     "error": {
       "invalid_clock": "Use 24-hour HH:MM format",
       "duplicate_vehicle": "Vehicle name already used",
-      "duplicate_cable": "Cable sensor already used"
+      "duplicate_cable": "Cable sensor already used",
+      "duplicate_sources": "Choose distinct sensors for downstairs, upstairs and EV power.",
+      "invalid_mapping": "Incomplete or inconsistent configuration: review entities and vehicle parameters."
     },
     "abort": {
       "already_configured": "This wallbox is already configured"
