@@ -29,9 +29,12 @@ La wallbox e il DPM gestiscono come sempre il carico istantaneo; il supervisore 
 
 ## Target SOC in GUI
 
-- **SOC attuale**: lettura dell'auto.
-- **Entità obiettivo SOC facoltativa**: *un numero percentuale di destinazione già esposto da HA*, per esempio il limite configurato nell'auto. Viene letto soltanto; non provoca scritture nell'auto.
-- **Target SOC predefinito**: usato solo quando non è stata configurata alcuna entità obiettivo. Se un'entità configurata diventa `unknown/unavailable`, non si inventa un target sostitutivo.
+- **SOC attuale**: lettura dell'auto, sempre distinto dal target.
+- **Metodo obiettivo SOC (scelta esclusiva)**: il Config Flow propone per prima **entità Home Assistant**, oppure **percentuale fissa**. La schermata successiva richiede soltanto l'entità o soltanto il valore, non entrambi. Le Opzioni consentono di cambiare il metodo per ciascuna auto.
+- **Entità HA**: un valore percentuale di destinazione già esposto da Home Assistant (sensore, numero o input_number), per esempio il limite impostato sulla Kia EV3. Si legge soltanto, senza scritture.
+- **Percentuale fissa**: disponibile per impianti privi di entità obiettivo. Non è il fallback implicito quando è stata scelta un'entità.
+- **Compatibilità 0.1.0**: i vecchi profili privi del campo `target_mode` vengono interpretati secondo la precedenza precedente: se esiste `target_entity` si usa quella, altrimenti `target_default`. Nessuna conversione di `.storage`, nessuna perdita dei profili.
+- **Sicurezza**: un'entità obiettivo scelta che diventa `unknown/unavailable`, esce dall'intervallo 1–100% o riporta unità non percentuali non viene mai sostituita da un target fisso dimenticato. Il planner segnala dati insufficienti. Il coordinatore ascolta anche i cambi dell'entità scelta dalle Opzioni dopo un reload.
 
 ## Stato / rischi ancora aperti
 
