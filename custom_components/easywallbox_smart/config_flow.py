@@ -23,7 +23,7 @@ from .const import (
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, CONF_ADD_ANOTHER,
     CONF_VEHICLE_OVERRIDES,
 )
-from .preflight import inspect
+from .validation import validate
 
 
 def entity(domain: str | list[str]) -> EntitySelector:
@@ -72,10 +72,8 @@ def valid_clock(value: str) -> bool:
 
 class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Prevent multiple owners for the same local wallbox integration."""
-    # Legacy 0.0.13 already uses v3. Keep the same schema version during
-    # the safe test phase so existing v3 entries reach the non-mutating
-    # shape guard in __init__.py (no surprise migration or version rewrite).
-    VERSION = 3
+    # Brand-new integration entry; no legacy conversion or migration.
+    VERSION = 1
 
     def __init__(self) -> None:
         self._wallbox: dict = {}
@@ -88,8 +86,7 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return EasyWallboxSmartOptionsFlow()
 
     async def async_step_user(self, user_input: dict | None = None):
-        # A previously installed legacy entry may have no unique_id.
-        # Prevent adding a second instance on top of an old configuration.
+        # One configured wallbox/integration instance per Home Assistant.
         if self._async_current_entries():
             return self.async_abort(reason="already_configured")
         errors = {}
@@ -121,12 +118,14 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif user_input[CONF_NAME].strip().casefold() in {v[CONF_NAME].strip().casefold() for v in self._vehicles}:
                 errors["base"] = "duplicate_vehicle"
             else:
-                another = user_input.pop(CONF_ADD_ANOTHER)
-                self._vehicles.append(dict(user_input))
+                another = user_input[CONF_ADD_ANOTHER]
+                vehicle = {key: value for key, value in user_input.items()
+                           if key != CONF_ADD_ANOTHER}
+                self._vehicles.append(vehicle)
                 if another:
                     return await self.async_step_vehicle()
                 data = {**self._wallbox, CONF_VEHICLES: self._vehicles}
-                if not inspect(data).ready:
+                if not validate(data).ready:
                     # A malformed entry must not be stored. The form can be
                     # retried without ever changing HA's config storage.
                     self._vehicles.pop()
@@ -151,10 +150,8 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_init(self, user_input: dict | None = None):
         """Pick the car whose target and departure plan should be revised."""
-        # Never open a v0.1 Options Flow on a legacy 0.0.13 entry.
-        # This is a read-only abort, not a migration.
-        if not inspect(self.config_entry.data, self.config_entry.options).ready:
-            return self.async_abort(reason="legacy_or_invalid_entry")
+        if not validate(self.config_entry.data, self.config_entry.options).ready:
+            return self.async_abort(reason="invalid_configuration")
         vehicles = self.config_entry.data.get(CONF_VEHICLES, [])
         choices = {v[CONF_CABLE]: v[CONF_NAME] for v in vehicles}
         if not choices:
@@ -169,8 +166,8 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_vehicle(self, user_input: dict | None = None):
         """Save one vehicle override without rewriting the initial mapping."""
-        if not inspect(self.config_entry.data, self.config_entry.options).ready:
-            return self.async_abort(reason="legacy_or_invalid_entry")
+        if not validate(self.config_entry.data, self.config_entry.options).ready:
+            return self.async_abort(reason="invalid_configuration")
         choices = self.config_entry.data.get(CONF_VEHICLES, [])
         vehicle = next(
             (v for v in choices if v[CONF_CABLE] == self._chosen_cable), None
