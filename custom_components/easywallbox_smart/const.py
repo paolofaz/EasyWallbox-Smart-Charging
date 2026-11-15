@@ -1,6 +1,6 @@
 """Integration constants. No entity ID is tied to any particular home."""
 DOMAIN = "easywallbox_smart"
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "select"]
 CONF_DOWNSTAIRS = "house_downstairs"
 CONF_UPSTAIRS = "house_upstairs"
 CONF_EV_POWER = "ev_power"
