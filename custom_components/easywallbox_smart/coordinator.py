@@ -395,10 +395,15 @@ class SimulationCoordinator:
             self.config[key] for key in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION)
             if self.config.get(key)
         )
+        overrides = self.entry.options.get(CONF_VEHICLE_OVERRIDES, {})
         for vehicle in self.config[CONF_VEHICLES]:
             entities.extend((vehicle[CONF_CABLE], vehicle[CONF_SOC]))
-            if vehicle.get(CONF_TARGET_ENTITY):
-                entities.append(vehicle[CONF_TARGET_ENTITY])
+            # An Options Flow may change a car from a fixed target to an HA
+            # entity (or replace the entity). Listen only to the effective
+            # source, not to an obsolete base configuration value.
+            effective = {**vehicle, **overrides.get(vehicle[CONF_CABLE], {})}
+            if selected_mode(effective) == "entity" and effective.get(CONF_TARGET_ENTITY):
+                entities.append(effective[CONF_TARGET_ENTITY])
         self._base_unsub = async_track_state_change_event(
             self.hass, sorted(set(entities)), self._on_change,
         )
