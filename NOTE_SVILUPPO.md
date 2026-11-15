@@ -229,3 +229,16 @@ Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni fu
 - Il branch è sempre `stabilizzatore-m1`, manifest `0.2.0b1` in sviluppo; `main` e la GitHub Release Marketplace `0.1.0` **restano invariati** fino a nuova autorizzazione esplicita.
 - DPM sempre attivo, zero chiamate verso servizi di wallbox/ESPHome/auto; niente modifica alle automazioni Fiat esistenti.
 - Test reali del flusso GUI, target SOC, timer, contatori Session Energy/Duration e stima potenza restano **da svolgere** su HA e durante la successiva ricarica ordinaria. Non attribuire validità produttiva ai soli test simulati.
+
+
+## 2026-11-15 — M4: replay offline pattern ferro da stiro, prima del dato reale
+
+**Contesto:** l'utente riferisce che in casa è in corso una sessione di stiratura e invierà un pattern del ferro. L'auto non dovrebbe essere caricata prima di sabato 21/11. Non sono stati ricevuti campioni reali in questa fase; non attribuire ai dati sintetici un'origine osservata.
+
+- Ho ricontrollato `core.py` e `tests/test_core.py`: esisteva già un caso ferro sintetico con 4 minuti di carico e 4 minuti di pausa, che dimostrava un unico `reduce` senza `restore` durante cicli ravvicinati.
+- Aggiunto `tests/household_replay.py`: lettore CSV puramente offline di **potenza casa esclusa EV** con timestamps timezone-aware e qualità del campione. Rifiuta ordinamento temporale errato, misure negative/non finite, unità errate e missing spacciato per zero. `replay_trace` richiama solo `core.evaluate` con una sessione EV **ipotetica** esplicitamente costruita; nessun I/O, comando o polling BLE.
+- Aggiunti **10 test** `tests/test_household_replay.py` con carichi sintetici (ferro termostatico, quiete continua, qualità stale/unknown, gap tra campioni, potenza 0 vera, cambio unità W/kW e scenario senza EV). Le soglie di prova non vengono modificate automaticamente dai test.
+- **157 test** complessivi Python 3.12/3.13 passati su GitHub Actions al commit `06abbd9a19c0c57b6a373fbb059dfe4fbdf0d45d` (CI [43762858948](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43762858948)).
+- La guida `docs/REPLAY_CARICHI_DOMESTICI.md` spiega screenshot/CSV, unità, quale sensore inviare, e salvaguardia privacy: non committare dati reali domestici sul repository pubblico.
+- **Non modificati** algoritmi di protezione DPM, firmware, controller HA, controlli reali, `main` o release Marketplace `0.1.0`; il codice sperimentale è solo `stabilizzatore-m1`.
+- **Da fare:** analizzare il pattern reale appena l'utente lo invierà, distinguendo un ramo da totale casa; confrontare la curva con proposte virtuali del core, senza tarare soglie su un solo caso e senza confondere simulazione di auto con auto realmente in carica.
