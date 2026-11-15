@@ -62,6 +62,10 @@ def advise_departure(
         return DepartureAdvice("charging", "vehicle_may_be_balancing")
     if planned.reason == "target_reached":
         return DepartureAdvice("complete", "target_reached")
+    # The wallbox may report Charging while the Shelly sees 0 W or stale
+    # data; do not pretend it needs a new Start or that it is confirmed.
+    if session.wallbox_reports_charging is True and not session.charging:
+        return DepartureAdvice("insufficient_data", "charging_report_without_ev_power")
     # A car that has not charged yet has no observed sustainable rate.
     # Never pretend that the configured power limit is a measured average,
     # nor use such an optimistic assumption to justify waiting.
