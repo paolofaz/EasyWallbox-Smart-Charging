@@ -57,3 +57,7 @@
 - Non esiste una migrazione provata dalla vecchia `0.0.13`; non installare questa beta sopra l'istanza abituale senza backup e procedura concordata. `ConfigEntryError` segnala esplicitamente l'incompatibilità invece di sovrascrivere vecchie opzioni.
 - Da verificare su HA reale: Config Flow, entry/unload, UI Lovelace, nomi entità, assenza scritture per campione nel Recorder, restart, dati indisponibili, confronto replay 7 sere, branding nel Marketplace.
 - Alla prossima revisione della fonte 03 aggiungere la milestone M2 verificata e lo SHA prima di chiudere la release; parametri numerici restano candidati.
+
+### Correzione M2 del blocco scadenza (15/11)
+- La prima versione dell'adapter ricalcolava la prossima partenza a ogni evento, rischiando di spostare l'obiettivo al giorno seguente dopo una deadline mancata. Corretto: `_active_departure` resta fissata all'interno della sessione fino a disconnessione/cambio auto.
+- Aggiunto test statico regressione; 24 test attesi in CI (15 M1 + 9 M2). L'esito va verificato sul nuovo commit prima di dichiararli superati.
