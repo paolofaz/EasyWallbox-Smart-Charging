@@ -20,6 +20,7 @@ CONF_NAME = "name"
 CONF_CABLE = "cable"
 CONF_SOC = "soc"
 CONF_TARGET_ENTITY = "target_entity"
+CONF_TARGET_MODE = "target_mode"  # entity | fixed; absent in old 0.1.0 entries
 CONF_TARGET_DEFAULT = "target_default"
 CONF_CAPACITY = "capacity_kwh"
 # Old 0.1.0 stored an estimated charge power; it is no longer used.
