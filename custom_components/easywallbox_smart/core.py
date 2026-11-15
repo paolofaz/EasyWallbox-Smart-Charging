@@ -32,6 +32,7 @@ class SessionSnapshot:
     ac_efficiency: float | None
     sustainable_kw: float | None
     reserve_minutes: float = 30.0
+    wallbox_reports_charging: bool | None = None
 
 
 @dataclass(frozen=True)
