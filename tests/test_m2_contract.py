@@ -44,6 +44,18 @@ class TestM2Contract(unittest.TestCase):
         self.assertEqual(keys[:2], ["domain", "name"])
         self.assertEqual(keys[2:], sorted(keys[2:]))
 
+    def test_legacy_option_flow_aborts_before_accessing_old_fields(self):
+        flow = (INTEGRATION / "config_flow.py").read_text()
+        self.assertIn("VERSION = 3", flow)
+        self.assertEqual(
+            flow.count(
+                'if not inspect(self.config_entry.data, self.config_entry.options).ready:'
+            ),
+            2,
+        )
+        self.assertIn('reason="legacy_or_invalid_entry"', flow)
+        self.assertNotIn("async_update_entry", flow)
+
     def test_brand_icon_is_real_square_png(self):
         data = (INTEGRATION / "brand/icon.png").read_bytes()
         self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
