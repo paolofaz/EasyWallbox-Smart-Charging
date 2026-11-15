@@ -102,3 +102,12 @@
 - Il motivo di un arresto fisico non si può desumere unicamente da `charging=False`. Il software deve continuare a distinguere stop manuale, fine auto, target software, cavo staccato e telemetria ignota senza inventare uno stato confermato.
 - Non ancora realizzati override temporanei della deadline e modalità speciali con persistenza; nessun controllo attuativo autorizzato.
 - Test HA dal vivo e percorso di migrazione con backup della vecchia config entry 0.0.13 restano bloccanti per v0.1. I valori del modello e i limiti non sono tarati per produzione.
+
+## 2026-11-15 — Validazione ufficiale Home Assistant della base M3
+
+- Verificato il branch `stabilizzatore-m1`: la macchina a stati della sessione e il selettore simulato sono già presenti; non duplicati. `session_policy.py` distingue AUTO, MANUAL, PAUSE, CHARGE_NOW, RECONCILE, stato del collegamento e ricarica effettivamente osservata. Il riavvio con auto già collegata richiede nuova conferma; nessun comando reale è inviato.
+- Aggiunto `.github/workflows/validate-ha.yml`: `home-assistant/actions/hassfest@master` su push al solo branch di sviluppo, più avvio manuale.
+- **Prima esecuzione hassfest fallita** esclusivamente per l'ordine delle chiavi del `manifest.json` (dopo `domain`, `name`, chiavi alfabetiche). Ripristinato l'ordine corretto nel commit `50279602868cf795cf5f64849251bd7c50ffbade`. **Seconda esecuzione hassfest riuscita**: [run 43728553871](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43728553871).
+- Aggiunta verifica offline regressione `test_manifest_keys_are_hassfest_ordered` in `tests/test_m2_contract.py`. Rieseguire la CI sull'ultimo commit e riportarne l'esito esatto (la precedente suite contava 74 test).
+- HACS/Marketplace action da rimandare finché il default branch contiene solo LICENSE: il validatore HACS consulta il ramo predefinito, quindi una verifica sul ramo di sviluppo darebbe un risultato fuorviante. Non cambiare default/main e non pubblicare release senza consenso.
+- **Non equivale a test runtime HA**: sono ancora da verificare su una istanza HA reale Config Flow, Options Flow, select, Recorder e migrazione della vecchia 0.0.13. DPM, ESPHome, automazioni legacy, `main` e altri branch non modificati.
