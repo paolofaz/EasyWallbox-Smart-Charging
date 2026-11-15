@@ -34,7 +34,7 @@ I parametri `1,5 / 1,0 kW`, `10 minuti`, budget `25%` dello slack, DPM modello `
 
 La vecchia configurazione `0.0.13` è **schema v3**, ma il formato è diverso dalla nuova simulazione. Durante questa fase la nuova Config Flow mantiene `VERSION=3` **solo per impedire una migrazione automatica** sulle entry storiche v3 e lasciare intervenire il controllo della struttura. Il numero di schema non equivale a compatibilità dei contenuti.
 
-Se la nuova versione viene copiata sopra una 0.0.13, l'entry legacy viene **riconosciuta e lasciata intatta**: il setup rifiuta l'avvio spiegandone il motivo. In questa fase non si possono configurare due integrazioni `easywallbox_smart` in parallelo sulla stessa istanza HA. Non cancellare la vecchia entry, non modificare `.storage` e non caricare credenziali su GitHub.
+Se la nuova versione viene copiata sopra una 0.0.13, l'entry legacy viene **riconosciuta e lasciata intatta**: il setup rifiuta l'avvio spiegandone il motivo e il pannello Opzioni termina senza scrivere dati. In questa fase non si possono configurare due integrazioni `easywallbox_smart` in parallelo sulla stessa istanza HA. Non cancellare la vecchia entry, non modificare `.storage` e non caricare credenziali su GitHub.
 
 **Procedura raccomandata prima di usare la nuova integrazione:** [installazione isolata, backup e rollback](docs/INSTALLAZIONE_PROVA_E_ROLLBACK.md). Nessuna automazione Fiat SOC o mattutina viene toccata.
 
