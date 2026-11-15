@@ -13,6 +13,7 @@ La prima versione non controlla nulla: tutti gli stati e i limiti sono **virtual
 - `core.py`: calcolo durata/slack/budget e supervisore deterministico `NORMAL/LIMITED`, ownership **solo simulata**.
 - `session_policy.py`: macchina a stati **pura**, che separa identità della sessione, modalità AUTO/MANUAL/PAUSE/CHARGE_NOW, fase elettrica osservata e stato di riconciliazione dopo HA restart. Le preferenze restano nella RAM della sessione; un gap di sensori non è uno scollegamento certo.
 - `select.py`: selettore HA per **Automatica, Manuale, Pausa e Carica subito**, solo simulati. `select.select_option` agisce esclusivamente sul coordinatore locale, non su ESPHome o su una wallbox.
+- `preflight.py`: controllo puro non distruttivo dei mapping, riconoscimento della vecchia 0.0.13 e protezione contro Shelly duplicati/ruoli errati. **Non migra né modifica** la entry HA.
 - `departure_policy.py`: raccomandazione **attendere / avviare ora / in carica / target raggiunto / dati insufficienti**. Se la casa è impegnata e il margine lo consente propone un'attesa breve, mai oltre l'ultimo avvio prudente. È una raccomandazione, non un comando.
 - `config_flow.py`: configurazione grafica di due Shelly domestici, uno Shelly wallbox, telemetria ESPHome, limite richiesto/confermato e **1..N automobili**. Gli ID sono selezionabili. **Options Flow** per cambiare target predefinito, partenza feriale/weekend, potenza sostenibile ed efficienza di ciascun veicolo, ricaricando l'adapter in sola lettura.
 - `coordinator.py`: adapter HA a eventi; mentre la vettura è collegata ma ferma legge snapshot saltuari e fissa il prossimo controllo dell'attesa. Durante carica elettrica osservata segue i due Shelly casa; nessun campione viene salvato. Timer singoli invalidano SOC/potenza EV obsoleti anche senza nuovi eventi. Nessun polling BLE o monitor continuo da scollegata.
@@ -31,11 +32,15 @@ I parametri `1,5 / 1,0 kW`, `10 minuti`, budget `25%` dello slack, DPM modello `
 
 ### Attenzione alla vecchia 0.0.13
 
-La nuova configurazione M2 **non è compatibile automaticamente** con la config entry della vecchia 0.0.13. Non aggiornare sopra una installazione esistente prima di aver definito e verificato una migrazione o una reinstallazione con backup. Il codice controlla la compatibilità e rifiuta le config entry mancanti, senza eliminarle né modificarle. Nessuna automazione Fiat SOC o mattutina viene toccata.
+La vecchia configurazione `0.0.13` è **schema v3**, ma il formato è diverso dalla nuova simulazione. Durante questa fase la nuova Config Flow mantiene `VERSION=3` **solo per impedire una migrazione automatica** sulle entry storiche v3 e lasciare intervenire il controllo della struttura. Il numero di schema non equivale a compatibilità dei contenuti.
+
+Se la nuova versione viene copiata sopra una 0.0.13, l'entry legacy viene **riconosciuta e lasciata intatta**: il setup rifiuta l'avvio spiegandone il motivo. In questa fase non si possono configurare due integrazioni `easywallbox_smart` in parallelo sulla stessa istanza HA. Non cancellare la vecchia entry, non modificare `.storage` e non caricare credenziali su GitHub.
+
+**Procedura raccomandata prima di usare la nuova integrazione:** [installazione isolata, backup e rollback](docs/INSTALLAZIONE_PROVA_E_ROLLBACK.md). Nessuna automazione Fiat SOC o mattutina viene toccata.
 
 ## Test e sicurezza
 
-- `python -m unittest discover -s tests -v` — **75 test offline e con adapter HA simulato** passati su GitHub Actions con Python 3.12 e 3.13 il 15/11/2026 (M1/M2, stati di sessione, interfaccia select con HA mock, privacy e vincoli non attuativi).
+- `python -m unittest discover -s tests -v` — **93 test offline e con adapter HA simulato** passati su GitHub Actions con Python 3.12 e 3.13 il 15/11/2026 (M1/M2, stati di sessione, interfaccia select con HA mock, privacy e vincoli non attuativi).
 - `python -m compileall -q custom_components/easywallbox_smart` per verificare la sintassi di tutti i moduli.
 - `home-assistant/actions/hassfest@master`: **superato** su `stabilizzatore-m1` il 15/11/2026, inclusa correzione ordinamento del manifest; [esecuzione](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43728645220).
 - I test automatici NON sostituiscono hassfest, verifiche GUI Config Flow, prove idle/Recorder, test su HA reale, replay delle sette sere e simulazioni di reboot/assenza dati.
@@ -47,4 +52,4 @@ Questo branch deriva dal commit iniziale `main` che conteneva soltanto `LICENSE`
 
 La verifica HACS del repository andrà eseguita soltanto dopo la preparazione autorizzata del branch predefinito (che adesso contiene ancora solo LICENSE). Non confondere hassfest con installazione HA o rilascio Marketplace.
 
-La v0.1 **sola simulazione** richiede ancora il completamento delle eccezioni temporanee, una migrazione guidata, test runtime sull'Home Assistant dell'utente (compreso il Config/Options Flow e il select) e la verifica della dashboard prima della pubblicazione. Il controllo reale sarà progettato **solo dopo autorizzazione**, con DPM sempre attivo e un unico proprietario software dei comandi. Vedi `NOTE_SVILUPPO.md` e `docs/ARCHITETTURA_M1.md`.
+La v0.1 **sola simulazione** richiede ancora le eccezioni temporanee, una **migrazione guidata esplicitamente autorizzata** (non automatica), test runtime su una istanza HA isolata e poi sulla HA dell'utente (Config/Options Flow e select), prova rollback reale e verifica della dashboard prima della pubblicazione. Il controllo reale sarà progettato **solo dopo autorizzazione**, con DPM sempre attivo e un unico proprietario software dei comandi. Vedi `NOTE_SVILUPPO.md` e `docs/ARCHITETTURA_M1.md`.
