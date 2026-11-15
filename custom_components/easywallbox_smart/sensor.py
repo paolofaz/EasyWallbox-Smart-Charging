@@ -99,6 +99,17 @@ class SimulationSensor(SensorEntity):
             attrs.update(
                 planner_reason=p.reason,
                 recommendation_reason=advice.reason if advice else None,
+                estimated_charge_rate_kw=(
+                    round(self.coordinator.rate.kw, 2)
+                    if self.coordinator.rate.kw is not None else None
+                ),
+                estimated_rate_source=self.coordinator.rate.source,
+                wallbox_session_average_kw=(
+                    round(self.coordinator.rate.session_mean_kw, 2)
+                    if self.coordinator.rate.session_mean_kw is not None else None
+                ),
+                rate_observation_minutes=self.coordinator.rate.sample_minutes,
+                rate_is_observation_not_guarantee=True,
                 latest_safe_start=(
                     advice.latest_safe_start.isoformat()
                     if advice and advice.latest_safe_start else None
