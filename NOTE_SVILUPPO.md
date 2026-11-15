@@ -79,3 +79,26 @@
 - Restano non implementati come funzioni operative: modalità sessione Manuale/Pausa, Carica subito, obiettivo temporaneo e riconciliazione del riavvio. `session.mode` resta AUTO nell'adapter, quindi non presentare il suggerimento di avvio come garanzia di rispettare una pausa manuale.
 - La precedente config entry 0.0.13 resta intoccata; migrazione e rollback non collaudati. Non rilasciare, non sostituire l'integrazione della casa, non fare merge su main.
 - Soglie modello 1,5/1,0 kW, quiete 10 min e budget 25% dello slack **non sono parametri di produzione approvati**.
+
+
+## 2026-11-15 — M3: macchina di sessione e modalità utente simulate
+
+### Modifiche effettive (branch `stabilizzatore-m1`)
+- Nuovo `session_policy.py` **puro**, con per-session `SessionControl(session_id, mode, phase, reason)`. Modi AUTO, MANUAL, PAUSE, CHARGE_NOW; modalità interna RECONCILE per ripristino HA senza prova di intenzione precedente. La fase è un'**osservazione**, non un effetto dedotto dai comandi UI.
+- Il primo collegamento dopo un bootstrap HA con auto già collegata entra in **RECONCILE**: nessuna proposta di avvio/cap fino a scelta esplicita. Se HA parte con cavo realmente scollegato e l'auto viene collegata dopo, modalità AUTO di default.
+- Manuale e Pausa restano attive per l'intera sessione, non si cancellano con `unknown`, `unavailable` o ritardi di uno dei sensori. Solo uno scollegamento comprovato da wallbox **e** sensori auto chiude la sessione; cambio di veicolo senza disconnessione confermata richiede riconciliazione.
+- Opzione Carica subito: override esplicito della sessione che propone un avvio immediato virtuale e disabilita i cap facoltativi; non comanda alcun dispositivo. Una selezione manuale successiva può cambiarla; scollegamento la cancella.
+- Modificati `coordinator.py` per riconciliazione delle evidenze di collegamento, `departure_policy.py` per modalità e bilanciamento reale al 100% SOC; `core.py` veto cap per riconciliazione/Carica subito. Il selettore HA `select.py` espone solo le scelte locali; registrato in `PLATFORMS`. Traduzioni IT/EN e `strings.json` aggiornati.
+- Il sensore di sessione mostra il **vero stato di ricarica osservato** anche se l'utente ha selezionato PAUSE (simulata); espone modo, fase e ragione. Non scambia un UI toggle per un effetto elettrico.
+- Documentato il selettore in `docs/LOVELACE.md` con avvisi inequivocabili.
+
+### Test verificati
+- GitHub Actions `M1-M2 offline checks` (nome storico workflow): **74 test** su Python 3.12 e 3.13 superati, inclusi 17 test di dominio sessione, 10 prove dinamiche di coordinator con API HA mock e 2 test del selettore HA mock, oltre ai 45 test preesistenti/potenziati. Eseguiti compileall e controllo JSON.
+- La prova dinamica usa stubs locali delle API eventi e non equivale all'esecuzione con Home Assistant reale 2026.11.x; hassfest, Recorder, Config/Options Flow e traduzioni UI non sono ancora collaudati sull'istanza vera.
+- Nessun servizio HA invocato per wallbox/auto, nessun BLE, nessun DPM 0 A/Start-Stop, nessun logger di campioni, nessun comando ESPHome. Firmware, main, rami storici e automazioni legacy invariati. Nessun merge, PR, issue o release.
+
+### Limitazioni / prossima verifica
+- In v0.1 il modo sessione è **RAM-only**: su riavvio con cavo presente si richiede un'esplicita selezione in RECONCILE, non si pretende di ricordare quale modo fosse selezionato prima. La Pausa non viene convertita automaticamente in Auto dopo il riavvio.
+- Il motivo di un arresto fisico non si può desumere unicamente da `charging=False`. Il software deve continuare a distinguere stop manuale, fine auto, target software, cavo staccato e telemetria ignota senza inventare uno stato confermato.
+- Non ancora realizzati override temporanei della deadline e modalità speciali con persistenza; nessun controllo attuativo autorizzato.
+- Test HA dal vivo e percorso di migrazione con backup della vecchia config entry 0.0.13 restano bloccanti per v0.1. I valori del modello e i limiti non sono tarati per produzione.
