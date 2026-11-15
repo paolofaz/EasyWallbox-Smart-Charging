@@ -88,7 +88,7 @@ def car(name, cable, soc, another=False):
         "name": name,
         "cable": cable,
         "soc": soc,
-        "target_default": 80,
+        "target_mode": "entity",
         "capacity_kwh": 37.0 if name == "Fiat" else 77.0,
         "efficiency": 0.9,
         "departure_weekday": "07:00",
@@ -151,11 +151,19 @@ class TestCleanConfigFlow(unittest.TestCase):
         self.assertEqual(out["step_id"], "vehicle")
         a = car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc", another=True)
         self.assertEqual(
-            asyncio.run(flow.async_step_vehicle(a))["step_id"], "vehicle"
+            asyncio.run(flow.async_step_vehicle(a))["step_id"], "target"
         )
+        self.assertEqual(asyncio.run(flow.async_step_target(
+            {"target_entity": "number.fiat_target"}))["step_id"], "vehicle")
         b = car("Kia", "binary_sensor.kia", "sensor.kia_soc")
-        done = asyncio.run(flow.async_step_vehicle(b))
+        self.assertEqual(asyncio.run(flow.async_step_vehicle(b))["step_id"], "target")
+        done = asyncio.run(flow.async_step_target(
+            {"target_entity": "sensor.kia_target"}))
         self.assertEqual(done["type"], "create_entry")
+        for vehicle in done["data"]["vehicles"]:
+            self.assertEqual(vehicle["target_mode"], "entity")
+            self.assertIn("target_entity", vehicle)
+            self.assertNotIn("target_default", vehicle)
         self.assertEqual(len(done["data"]["vehicles"]), 2)
         self.assertTrue(
             self.module.validate(done["data"]).ready
@@ -176,9 +184,11 @@ class TestCleanConfigFlow(unittest.TestCase):
         chosen.pop("session_energy")
         chosen.pop("session_duration")
         self.assertEqual(asyncio.run(flow.async_step_user(chosen))["step_id"], "vehicle")
-        created = asyncio.run(flow.async_step_vehicle(
+        self.assertEqual(asyncio.run(flow.async_step_vehicle(
             car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
-        ))
+        ))["step_id"], "target")
+        created = asyncio.run(flow.async_step_target(
+            {"target_entity": "number.fiat_target"}))
         self.assertTrue(self.module.validate(created["data"]).ready)
 
     def test_session_counters_must_be_paired(self):
@@ -191,10 +201,16 @@ class TestCleanConfigFlow(unittest.TestCase):
     def test_options_can_reconfigure_sources_on_existing_0_1_0(self):
         flow = self.module.EasyWallboxSmartConfigFlow()
         asyncio.run(flow.async_step_user(entity_data()))
-        base = asyncio.run(flow.async_step_vehicle(
+        asyncio.run(flow.async_step_vehicle(
             car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
-        ))["data"]
+        ))
+        base = asyncio.run(flow.async_step_target(
+            {"target_entity": "number.fiat_target"}))["data"]
         old = dict(base)
+        old["vehicles"] = [{**v, "target_default": 80,
+                            "target_mode": None} for v in base["vehicles"]]
+        for v in old["vehicles"]:
+            v.pop("target_mode", None)
         old["house_downstairs"] = "sensor.sotto"
         old["house_upstairs"] = "sensor.sopra"
         old.pop("house_power_sources")
@@ -211,6 +227,40 @@ class TestCleanConfigFlow(unittest.TestCase):
         }))
         self.assertEqual(updated["type"], "create_entry")
         self.assertTrue(self.module.validate(old, updated["data"]).ready)
+
+    def test_fixed_target_mode_stores_only_fixed_value(self):
+        flow = self.module.EasyWallboxSmartConfigFlow()
+        asyncio.run(flow.async_step_user(entity_data()))
+        car_input = car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
+        car_input["target_mode"] = "fixed"
+        self.assertEqual(asyncio.run(flow.async_step_vehicle(car_input))["step_id"], "target")
+        done = asyncio.run(flow.async_step_target({"target_default": 85}))
+        self.assertEqual(done["type"], "create_entry")
+        saved = done["data"]["vehicles"][0]
+        self.assertEqual(saved["target_mode"], "fixed")
+        self.assertEqual(saved["target_default"], 85)
+        self.assertNotIn("target_entity", saved)
+
+    def test_options_can_switch_existing_fixed_target_to_entity(self):
+        flow = self.module.EasyWallboxSmartConfigFlow()
+        asyncio.run(flow.async_step_user(entity_data()))
+        car_input = car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
+        car_input["target_mode"] = "fixed"
+        asyncio.run(flow.async_step_vehicle(car_input))
+        initial = asyncio.run(flow.async_step_target({"target_default": 80}))["data"]
+        opts = self.module.EasyWallboxSmartOptionsFlow()
+        opts.config_entry = types.SimpleNamespace(data=initial,options={})
+        asyncio.run(opts.async_step_choose_vehicle({"vehicle": "binary_sensor.fiat"}))
+        fields={"target_mode":"entity","departure_weekday":"07:00",
+                "departure_weekend":"08:00","efficiency":.9}
+        self.assertEqual(asyncio.run(opts.async_step_vehicle(fields))["step_id"], "target")
+        result = asyncio.run(opts.async_step_target({"target_entity":"number.fiat_target"}))
+        self.assertEqual(result["type"], "create_entry")
+        selected=result["data"]["vehicle_overrides"]["binary_sensor.fiat"]
+        self.assertEqual(selected["target_mode"],"entity")
+        self.assertEqual(selected["target_entity"],"number.fiat_target")
+        self.assertNotIn("target_default",selected)
+        self.assertTrue(self.module.validate(initial,result["data"]).ready)
 
     def test_second_instance_does_not_create_entry(self):
         flow = self.module.EasyWallboxSmartConfigFlow()
@@ -230,9 +280,11 @@ class TestCleanConfigFlow(unittest.TestCase):
     def test_options_flow_modifies_only_one_car(self):
         flow = self.module.EasyWallboxSmartConfigFlow()
         asyncio.run(flow.async_step_user(entity_data()))
-        initial = asyncio.run(flow.async_step_vehicle(
+        asyncio.run(flow.async_step_vehicle(
             car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
-        ))["data"]
+        ))
+        initial = asyncio.run(flow.async_step_target(
+            {"target_entity": "number.fiat_target"}))["data"]
         options = self.module.EasyWallboxSmartOptionsFlow()
         options.config_entry = types.SimpleNamespace(data=initial, options={})
         response = asyncio.run(options.async_step_init())
@@ -243,17 +295,18 @@ class TestCleanConfigFlow(unittest.TestCase):
         ))
         self.assertEqual(response["step_id"], "vehicle")
         values = {
-            "target_default": 85,
+            "target_mode": "fixed",
             "departure_weekday": "06:30",
             "departure_weekend": "09:00",
             "efficiency": .9,
         }
-        result = asyncio.run(options.async_step_vehicle(values))
+        self.assertEqual(asyncio.run(options.async_step_vehicle(values))["step_id"], "target")
+        result = asyncio.run(options.async_step_target({"target_default": 85}))
         self.assertEqual(result["type"], "create_entry")
-        self.assertEqual(
-            result["data"]["vehicle_overrides"]["binary_sensor.fiat"]["target_default"],
-            85,
-        )
+        override = result["data"]["vehicle_overrides"]["binary_sensor.fiat"]
+        self.assertEqual(override["target_default"], 85)
+        self.assertEqual(override["target_mode"], "fixed")
+        self.assertNotIn("target_entity", override)
         self.assertTrue(self.module.validate(initial, result["data"]).ready)
 
 
