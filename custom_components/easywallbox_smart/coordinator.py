@@ -16,7 +16,8 @@ from .const import (
     CONF_EV_POWER, CONF_REQUESTED_LIMIT, CONF_SOC, CONF_SUSTAINABLE,
     CONF_TARGET_DEFAULT, CONF_TARGET_ENTITY, CONF_TELEMETRY_FRESH, CONF_UPSTAIRS,
     CONF_VEHICLES, CONF_WALLBOX_CHARGING, CONF_WALLBOX_CONNECTED,
-    CONF_VEHICLE_OVERRIDES,
+    CONF_VEHICLE_OVERRIDES, CONF_HOUSE_SOURCES,
+    CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
 )
 from .departure_policy import DepartureAdvice, advise_departure
 from .session_policy import SessionControl, observe, user_select_mode
@@ -25,10 +26,12 @@ from .core import (
     SessionSnapshot, evaluate, plan,
 )
 from .sources import finite_number, next_departure, on, power_kw
+from .rate_estimator import RateState, RateEstimate, estimate
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
 SHELLY_REPORT_AGE = timedelta(minutes=20)
 EV_REPORT_AGE = timedelta(minutes=5)
+COUNTER_REPORT_AGE = timedelta(minutes=5)
 
 
 class SimulationCoordinator:
@@ -38,6 +41,15 @@ class SimulationCoordinator:
         self.hass = hass
         self.entry = entry
         self.config = dict(entry.data)
+        # Saved 0.1.0 config entries remain usable: options can update the
+        # meter list and counters without editing .storage or reinstalling.
+        for field in (CONF_HOUSE_SOURCES, CONF_SESSION_ENERGY, CONF_SESSION_DURATION):
+            if field in entry.options:
+                self.config[field] = entry.options[field]
+        self.house_sources = self.config.get(
+            CONF_HOUSE_SOURCES,
+            [self.config.get(CONF_DOWNSTAIRS), self.config.get(CONF_UPSTAIRS)],
+        )
         self.policy = Config(dpm_model_kw=float(self.config[CONF_DPM_MODEL]))
         self.state: CoreState | None = None
         self.proposal: Proposal | None = None
@@ -45,6 +57,8 @@ class SimulationCoordinator:
         self.advice: DepartureAdvice | None = None
         self.session: SessionSnapshot | None = None
         self.control: SessionControl | None = None
+        self.rate_state: RateState | None = None
+        self.rate: RateEstimate = RateEstimate(None, "unavailable")
         self._vehicle_id = None
         self._active_departure = None  # Lock goal for session, even after deadline
         self._session_seq = 0
@@ -77,6 +91,18 @@ class SimulationCoordinator:
             if reported is None or datetime.now(timezone.utc) - reported > max_age:
                 return None
         return power_kw(source.state, source.attributes.get("unit_of_measurement"))
+
+    def _counter(self, entity_id: str | None, unit: str) -> float | None:
+        """Read an ESPHome session counter only when recent and unit-matched."""
+        source = self._raw(entity_id)
+        if source is None or source.attributes.get("unit_of_measurement") != unit:
+            return None
+        reported = getattr(source, "last_reported", None) or source.last_updated
+        if (reported is None
+                or not timedelta(0) <= datetime.now(timezone.utc) - reported <= COUNTER_REPORT_AGE):
+            return None
+        value = finite_number(source.state)
+        return value if value is not None and value >= 0 else None
 
     def _make_session(self, now: datetime) -> SessionSnapshot:
         cable_states = [
@@ -144,6 +170,17 @@ class SimulationCoordinator:
                     and self._on(self.config[CONF_TELEMETRY_FRESH]) is True
                     and ev_kw is not None and ev_kw >= 0.10)
         self._charging = bool(charging)
+        telemetry_trusted = self._on(self.config[CONF_TELEMETRY_FRESH]) is True
+        sid = f"{self.entry.entry_id}:{self._session_seq}" if identity else None
+        self.rate_state, self.rate = estimate(
+            now, sid, bool(charging), ev_kw,
+            self._counter(self.config.get(CONF_SESSION_ENERGY), "kWh")
+                if telemetry_trusted else None,
+            self._counter(self.config.get(CONF_SESSION_DURATION), "min")
+                if telemetry_trusted else None,
+            self._power(self.config[CONF_CONFIRMED_LIMIT]),
+            self.rate_state,
+        )
         target_known_reached = (
             soc is not None and target is not None and soc >= target
             and soc_at is not None
@@ -169,14 +206,14 @@ class SimulationCoordinator:
             soc=soc, soc_at=soc_at, target_soc=target, departure_at=departure,
             usable_capacity_kwh=(float(selected[CONF_CAPACITY]) if selected else None),
             ac_efficiency=(float(selected[CONF_EFFICIENCY]) if selected else None),
-            sustainable_kw=(float(selected[CONF_SUSTAINABLE]) if selected else None),
+            sustainable_kw=self.rate.kw if selected else None,
         )
 
     def _house(self) -> HouseSnapshot:
-        downstairs = self._power(self.config[CONF_DOWNSTAIRS], SHELLY_REPORT_AGE)
-        upstairs = self._power(self.config[CONF_UPSTAIRS], SHELLY_REPORT_AGE)
-        quality = "ok" if downstairs is not None and upstairs is not None else "unavailable_or_stale"
-        return HouseSnapshot(downstairs, upstairs, quality)
+        sources = tuple(self._power(entity_id, SHELLY_REPORT_AGE)
+                        for entity_id in self.house_sources)
+        quality = "ok" if sources and all(v is not None for v in sources) else "unavailable_or_stale"
+        return HouseSnapshot(None, None, quality, sources_kw=sources)
 
     def _limits(self) -> LimitSnapshot:
         return LimitSnapshot(
@@ -186,7 +223,7 @@ class SimulationCoordinator:
 
     def _observe_house_only_in_charge(self, charging: bool) -> None:
         if charging and self._house_unsub is None:
-            watch = [self.config[CONF_DOWNSTAIRS], self.config[CONF_UPSTAIRS]]
+            watch = list(self.house_sources)
             self._house_unsub = async_track_state_change_event(self.hass, watch, self._on_change)
         if not charging and self._house_unsub is not None:
             self._house_unsub()
@@ -280,6 +317,8 @@ class SimulationCoordinator:
             self.control.mode if self.control else None,
             self.control.phase if self.control else None,
             self.control.reason if self.control else None,
+            self.rate.source, 
+            (round(self.rate.kw * 2) / 2 if self.rate.kw is not None else None),
             self.quality,
         )
 
@@ -348,6 +387,10 @@ class SimulationCoordinator:
             CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_EV_POWER,
         )
         entities = [self.config[key] for key in keys]
+        entities.extend(
+            self.config[key] for key in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION)
+            if self.config.get(key)
+        )
         for vehicle in self.config[CONF_VEHICLES]:
             entities.extend((vehicle[CONF_CABLE], vehicle[CONF_SOC]))
             if vehicle.get(CONF_TARGET_ENTITY):
