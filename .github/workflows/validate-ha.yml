@@ -1,0 +1,19 @@
+name: Home Assistant integration validation
+
+on:
+  push:
+    branches:
+      - stabilizzatore-m1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@master
