@@ -1,86 +1,54 @@
-# Installazione da zero — EasyWallbox Smart Charging (v0.1 simulazione)
+# Configurazione EasyWallbox Smart Charging — versione M4 in sviluppo
 
-**Aggiornato: 15 novembre 2026. Stato: prima installazione di prova su Home Assistant, NON release collaudata.** L'utente ha confermato che la vecchia integrazione 0.0.13 è stata rimossa. Non occorre alcuna migrazione: si crea una nuova configurazione dalla UI. La versione su `stabilizzatore-m1` è **rigorosamente read-only**; `Pausa`, `Carica subito`, `reduce`, `restore` e gli altri stati sono **proposte virtuali**, non attuazioni.
+**15 novembre 2026.** La versione installabile tramite Marketplace è attualmente **0.1.0** (su `main`, già pubblicata). Questa pagina descrive il Config Flow **0.2.0b1 in sviluppo**, *non ancora pubblicato*: le nuove schermate compariranno soltanto in una release successiva autorizzata. Non installare copie manuali del branch per anticipare un aggiornamento Marketplace.
 
-## 1. Prerequisiti
+## Primo avvio tramite Marketplace — dopo una futura release
 
-- Home Assistant con le entità ESPHome EasyWallbox, i due Shelly di consumo casa, lo Shelly dedicato wallbox e almeno un veicolo già visibili in **Strumenti per sviluppatori → Stati**.
-- Assicurati che la vecchia integrazione *EasyWallbox Smart Charging* non compaia più fra le integrazioni configurate e che la vecchia directory `custom_components/easywallbox_smart`, se presente, non contenga file 0.0.13. Non cancellare automazioni Fiat o firmware.
-- Per sicurezza crea prima un backup HA (Impostazioni → Sistema → Backup). Non condividere backup, credenziali o `.storage`.
-- Il ramo `main` di questo repository è ancora storico e **non contiene la nuova integrazione**: in questa fase non installare da HACS usando il repository e il default branch. Usare il download manuale del branch di test.
+1. In HA 2026.11+ aggiungere il repository `https://github.com/paolofaz/EasyWallbox-Smart-Charging` da **Impostazioni → Marketplace → Add from link**.
+2. Installare la release futura quando effettivamente pubblicata, riavviare Home Assistant.
+3. Aprire **Impostazioni → Dispositivi e servizi → Aggiungi integrazione → EasyWallbox Smart Charging**. Se esiste già una entry creata dalla 0.1.0, non eliminarla: il nuovo codice riconosce il mapping precedente e permette di aggiornare le fonti da **Opzioni**.
+4. Eseguire una verifica in sola lettura prima di valutare eventuali ulteriori funzioni.
 
-## 2. Copia dell'integrazione
+## Config Flow aggiornato: consumi domestici ed EV
 
-1. Apri [branch `stabilizzatore-m1`](https://github.com/paolofaz/EasyWallbox-Smart-Charging/tree/stabilizzatore-m1).
-2. Su GitHub scegli **Code → Download ZIP**, poi estrai l'archivio.
-3. Individua **soltanto** la cartella `custom_components/easywallbox_smart` dell'archivio.
-4. Copia la cartella nella directory di configurazione della tua Home Assistant, ottenendo:
+| Campo | Che cosa scegliere |
+|---|---|
+| **Consumi domestici — uno o più sensori** | Selezionare uno o più sensori `sensor` che coprano i consumi domestici **senza auto**, in W o kW. Vengono sommati; evitare duplicazioni e sensori che già riportano il totale |
+| **Potenza wallbox** | Shelly EM che misura **solo** la ricarica auto, separato da tutti i sensori domestici |
+| **Session Energy (facoltativo)** | Sensore ESPHome `Session Energy`, in **kWh**, del firmware EasyWallbox |
+| **Session Duration (facoltativo)** | Sensore ESPHome `Session Duration`, in **minuti**: selezionare insieme a Session Energy o non selezionarli entrambi |
+| **Wallbox cable connected** | ESPHome `Car Connected` (non `Connection` BLE) |
+| **Wallbox Charging** | ESPHome `Charging` |
+| **Telemetry Fresh** | ESPHome `Telemetry Fresh` |
+| **Charge power requested** | Numero ESPHome `Charge power` (kW) |
+| **Power set confirmed** | Sensore ESPHome `Power set` (kW): limite confermato, **non** potenza effettiva |
+| **DPM model** | Parametro numerico **solo per simulazione**, da non confondere con una modifica del DPM fisico |
 
-```text
-/config/
-  custom_components/
-    easywallbox_smart/
-      __init__.py
-      manifest.json
-      config_flow.py
-      coordinator.py
-      core.py
-      session_policy.py
-      departure_policy.py
-      validation.py
-      select.py
-      sensor.py
-      const.py
-      sources.py
-      strings.json
-      translations/
-      brand/
-```
+Per la prima installazione della casa con 3 Shelly, selezionare i due Shelly domestici nella prima voce e il terzo Shelly dedicato alla wallbox nella seconda. Per una casa con un solo sensore domestico totale *senza EV* ne basta uno; con tre rami domestici ne puoi selezionare tre.
 
-**Non** copiare l'intero repository direttamente in `custom_components`, non copiare i test, non modificare il firmware e non configurare script o container esterni. Riavvia Home Assistant.
+## Scheda auto
 
-## 3. Config Flow: associazione fonti dati
+Richiede nome, sensore cavo, SOC corrente, **target SOC predefinito**, capacità utile, rendimento ed orari di partenza feriale/weekend. **Non chiede più potenza sostenibile manuale**.
 
-Apri **Impostazioni → Dispositivi e servizi → Aggiungi integrazione → EasyWallbox Smart Charging**. La prima schermata richiede:
+- **Entità obiettivo SOC (facoltativa):** un sensore o numero percentuale che contiene *il target impostato nell'auto o in Home Assistant*, per esempio 80%. Non è la misura del SOC attuale e non viene comandata.
+- Se non configuri l'entità obiettivo, il planner usa il target fisso inserito nella scheda. Se l'entità obiettivo esiste ma diventa `unknown`, il planner non inventa un valore sostitutivo.
+- I due veicoli hanno schede e partenza indipendenti; il coordinatore riconosce una sola auto per volta sulla wallbox fisica.
 
-| Campo UI | Origine | Significato |
-|---|---|---|
-| Casa piano terra | Shelly EM casa, es. `sensor.assorbimento_sotto` da confermare | Potenza W/kW senza auto |
-| Casa piano primo | Secondo Shelly EM casa, es. `sensor.assorbimento_sopra` da confermare | Potenza W/kW senza auto |
-| Potenza EV | Terzo Shelly EM dedicato wallbox | Potenza effettiva W/kW, **non** totale casa |
-| Wallbox cavo collegato | ESPHome **Car Connected** | Presenza reale del cavo, **non** semplice BLE Connection |
-| Wallbox in carica | ESPHome **Charging** | Ricarica osservata, non comando Start |
-| Telemetria aggiornata | ESPHome **Telemetry Fresh** | Validità della lettura BLE |
-| Limite richiesto | ESPHome `number` **Charge power** | Massimo impostato/richiesto kW |
-| Limite confermato | ESPHome `sensor` **Power set** | Massimo confermato dalla wallbox kW |
-| DPM modello | Numero da confermare (4,3 kW è **solo candidato** per l'impianto di test) | Non modifica il DPM fisico |
+## Da dove viene la potenza di pianificazione?
 
-I **tre Shelly devono essere differenti**. L'integrazione non usa il consumo totale comprensivo di auto per riconoscere carichi domestici. Le entità sono selezionate graficamente, senza hardcode.
+- Al primo avvio della ricarica: **Shelly wallbox** (potenza effettiva osservata). Una misura isolata non garantisce che quella potenza resti costante per ore.
+- Dopo almeno 30 minuti, con contatori di sessione disponibili e verificati in almeno due progressioni: stima combinata 65% potenza corrente / 35% energia sessione divisa durata. Percentuali ancora da testare.
+- Senza potenza osservata, non assumere 4 kW come potenza futura; il planner può suggerire virtualmente di iniziare, anziché un'attesa basata su numeri inventati.
+- Un target SOC già raggiunto viene riconosciuto anche senza stima di potenza. Se lo Shelly EV è assente/stale o ESPHome e Shelly discordano, il sistema mostra dati insufficienti.
 
-La seconda schermata configura un'automobile per volta: nome, sensore **cavo collegato all'auto**, SOC, eventuale target SOC letto da HA, target predefinito, capacità utile in kWh, potenza sostenibile stimata, efficienza e partenza feriale/weekend. I valori precompilati **non** sono misure approvate: verifica capacità e limiti reali. Per Kia EV3 puoi selezionare il target impostato sull'auto, se esposto con unità percentuale; per Fiat 500e mantieni l'automazione SOC legacy già esistente e puoi configurare il target software disponibile in HA. Se scegli *Aggiungi un'altra auto*, ripeti per il secondo veicolo. Non inventare sensori che non esistono.
+Tutte le modalità **Automatica, Manuale, Pausa, Carica subito** sono *solo simulate*; il sistema non avvia o interrompe fisicamente l'auto e non scrive valori su ESPHome. Il DPM originale mantiene le protezioni.
 
-## 4. Cosa vedrai, e cosa controllare
+## Modificare le fonti in una installazione già esistente
 
-L'integrazione crea **tre sensori** (sessione, pianificatore, stabilizzatore) e **un selettore modalità simulata**. Cerca le entità con `easywallbox_smart` nel registro entità; i loro ID finali dipendono dalla tua Home Assistant. Il messaggio **SIMULAZIONE — NESSUN COMANDO** deve essere visibile negli attributi.
+Da **Dispositivi e servizi → EasyWallbox Smart Charging → Opzioni**: scegliere **Sensori consumi e contatori sessione** per modificare l'elenco dei misuratori o i due contatori, oppure **Parametri veicolo e orari**. Le nuove impostazioni ricaricano il coordinatore in sola lettura. Le entry 0.1.0 con due sensori casa `house_downstairs`/`house_upstairs` rimangono leggibili; **non** modificare `.storage` a mano.
 
-- Senza cavo nessuna carica simulata è autorizzata e non si attiva lo stream dei due Shelly casa.
-- Con auto collegata dopo un **riavvio HA**, il selettore può richiedere esplicita riconciliazione: scegli *Automatica* per avviare soltanto il ragionamento virtuale.
-- In **Manuale** il planner non propone cambi automatici; in **Pausa** non propone di riavviare, ma una carica elettrica già attiva **non viene fermata**.
-- **Carica subito** propone virtualmente una partenza immediata, senza inviare un comando Start.
-- Il regolatore `NORMAL/LIMITED` propone eventualmente un unico cap e poi il ripristino. DPM e firmware operano autonomamente.
-- Con SOC obsoleto, sensori `unknown` o ambiguo collegamento, il consiglio deve essere sospeso o dichiarare dati insufficienti; mai tradurre dati mancanti in zero.
-- Controlla log Home Assistant e Recorder: il plugin **non** deve introdurre chiamate verso la wallbox o salvare una sequenza di potenze Shelly per ogni campione.
+## Limiti e rollback
 
-## 5. Se qualcosa non funziona: rollback
+Prima di usare la nuova versione creare un backup HA. In caso di errore, tornare alla release Marketplace stabile precedente. Nessun test runtime sulla HA reale è ancora stato svolto per la versione M4: controllare GUI, Recorder, reset dei contatori tra sessioni, stale SOC, sessione sospesa e tempi di riavvio. Non inviare dati privati, PIN BLE o backup in GitHub.
 
-Per questa **nuova installazione**, non serve recuperare alcuna entry 0.0.13:
-1. In **Impostazioni → Dispositivi e servizi** rimuovi l'entry *EasyWallbox Smart Charging* di test.
-2. Rimuovi solo la cartella `/config/custom_components/easywallbox_smart` installata per questa prova.
-3. Riavvia Home Assistant. Le integrazioni originali ESPHome/Shelly/Fiat/Kia e le automazioni preesistenti **non devono essere cambiate**.
-4. Se sorgono problemi di configurazione HA indipendenti da questa integrazione, usa il backup del punto 1; non modificare manualmente `.storage`.
-
-La prova non è ancora avvenuta sul tuo Home Assistant: **hassfest e i test fake-HA non equivalgono al collaudo runtime**. Riporta eventuali errori di log ripuliti da token, PIN, IP privati non necessari e dati personali.
-
-## 6. Prima della pubblicazione
-
-Nessuna release pubblicata e nessun merge su main. Soglie di 1,5/1,0 kW, quiete 10 min, budget 25% dello slack e modello DPM 4,3 kW restano **parametri interni candidati**. Le eccezioni temporanee di partenza non sono ancora nella UI. L'obiettivo della prova è verificare affidabilità della simulazione con le fonti reali, non certificare una risposta elettrica.
+Dettagli tecnici in [Stima automatica e consumi universali](STIMA_AUTOMATICA_E_CONSUMI_UNIVERSALI.md). Una futura release richiede test e autorizzazione esplicita.
