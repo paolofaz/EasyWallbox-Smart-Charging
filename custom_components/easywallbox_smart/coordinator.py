@@ -41,6 +41,7 @@ class SimulationCoordinator:
         self.planning = None
         self.session: SessionSnapshot | None = None
         self._vehicle_id = None
+        self._active_departure = None  # Lock goal for session, even after deadline
         self._session_seq = 0
         self._base_unsub = None
         self._house_unsub = None
@@ -81,6 +82,7 @@ class SimulationCoordinator:
         if identity != self._vehicle_id:
             self._session_seq += 1
             self._vehicle_id = identity
+            self._active_departure = None
             self.state = None
         if selected:
             source = self._raw(selected[CONF_SOC])
@@ -89,10 +91,14 @@ class SimulationCoordinator:
                       if source else None)
             target_id = selected.get(CONF_TARGET_ENTITY)
             target = self._number(target_id) if target_id else float(selected[CONF_TARGET_DEFAULT])
-            departure = next_departure(
-                now.astimezone(ZoneInfo(self.hass.config.time_zone)),
-                selected[CONF_DEPARTURE_WEEKDAY], selected[CONF_DEPARTURE_WEEKEND],
-            )
+            if self._active_departure is None:
+                self._active_departure = next_departure(
+                    now.astimezone(ZoneInfo(self.hass.config.time_zone)),
+                    selected[CONF_DEPARTURE_WEEKDAY], selected[CONF_DEPARTURE_WEEKEND],
+                )
+            # Preserve original departure throughout a session (evcc goal lock).
+            # Missing the deadline must NOT advance it to tomorrow.
+            departure = self._active_departure
         else:
             soc = soc_at = target = departure = None
         ev_kw = self._power(self.config[CONF_EV_POWER], EV_REPORT_AGE)
