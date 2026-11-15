@@ -1,0 +1,60 @@
+{
+  "title": "EasyWallbox Smart Charging",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wallbox e contatori — sola lettura",
+        "description": "SOLO SIMULAZIONE: nessun comando sarà inviato alla wallbox o alle auto. Seleziona entità già presenti in Home Assistant.",
+        "data": {
+          "house_downstairs": "Potenza domestica — piano terra",
+          "house_upstairs": "Potenza domestica — piano primo",
+          "ev_power": "Potenza reale wallbox — Shelly dedicato",
+          "wallbox_connected": "Cavo collegato alla wallbox",
+          "wallbox_charging": "Wallbox realmente in carica",
+          "telemetry_fresh": "Telemetria BLE ESPHome aggiornata",
+          "requested_limit": "Charge power richiesto (number, kW)",
+          "confirmed_limit": "Power set confermato (sensor, kW)",
+          "dpm_model_kw": "Totale DPM modello (kW) — ipotesi di simulazione"
+        }
+      },
+      "vehicle": {
+        "title": "Profilo automobile",
+        "description": "Aggiungi un veicolo alla volta. Il sensore cavo dev’essere distinto per ogni auto. Gli orari valgono per il giorno della partenza.",
+        "data": {
+          "name": "Nome automobile",
+          "cable": "Cavo collegato all'auto",
+          "soc": "SOC batteria (%)",
+          "target_entity": "Entità obiettivo SOC (facoltativa)",
+          "target_default": "SOC obiettivo predefinito (%)",
+          "capacity_kwh": "Capacità utilizzabile batteria (kWh)",
+          "sustainable_kw": "Potenza sostenibile prudente (kW)",
+          "efficiency": "Rendimento AC ipotizzato (0–1)",
+          "departure_weekday": "Partenza lun–ven (HH:MM)",
+          "departure_weekend": "Partenza sab–dom (HH:MM)",
+          "add_another": "Aggiungi un'altra auto"
+        }
+      }
+    },
+    "error": {
+      "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore",
+      "duplicate_vehicle": "Nome automobile già utilizzato",
+      "duplicate_cable": "Sensore cavo già utilizzato"
+    },
+    "abort": {
+      "already_configured": "Questa wallbox è già configurata"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "session": {
+        "name": "Sessione di ricarica"
+      },
+      "plan": {
+        "name": "Pianificatore partenza"
+      },
+      "stabilizer": {
+        "name": "Stabilizzatore ricarica"
+      }
+    }
+  }
+}
