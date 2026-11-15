@@ -11,6 +11,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
 )
 
@@ -55,10 +58,11 @@ VEHICLE_SCHEMA = vol.Schema({
     vol.Required(CONF_NAME): TextSelector(),
     vol.Required(CONF_CABLE): entity("binary_sensor"),
     vol.Required(CONF_SOC): entity("sensor"),
-    vol.Required(CONF_TARGET_MODE, default=ENTITY): vol.In({
-        ENTITY: "Home Assistant SOC target entity",
-        FIXED: "Fixed SOC target (%)",
-    }),
+    vol.Required(CONF_TARGET_MODE, default=ENTITY): SelectSelector(SelectSelectorConfig(
+        options=[ENTITY, FIXED],
+        translation_key="target_mode",
+        mode=SelectSelectorMode.DROPDOWN,
+    )),
     vol.Required(CONF_CAPACITY): number(10, 200),
     vol.Required(CONF_EFFICIENCY, default=0.90): number(0.5, 1.0, 0.01),
     vol.Required(CONF_DEPARTURE_WEEKDAY, default="07:00"): TextSelector(),
@@ -275,10 +279,11 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         schema = vol.Schema({
             vol.Required(
                 CONF_TARGET_MODE, default=selected_mode(current)
-            ): vol.In({
-                ENTITY: "Home Assistant SOC target entity",
-                FIXED: "Fixed SOC target (%)",
-            }),
+            ): SelectSelector(SelectSelectorConfig(
+                options=[ENTITY, FIXED],
+                translation_key="target_mode",
+                mode=SelectSelectorMode.DROPDOWN,
+            )),
             vol.Required(
                 CONF_DEPARTURE_WEEKDAY, default=current[CONF_DEPARTURE_WEEKDAY]
             ): TextSelector(),
