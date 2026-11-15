@@ -47,7 +47,7 @@ def observe(
     """
     if not isinstance(charging, bool) or not isinstance(ambiguous, bool):
         raise ValueError("invalid observed boolean")
-    if connection not in (None, True, False):
+    if connection is not None and not isinstance(connection, bool):
         raise ValueError("invalid connection observation")
 
     if connection is False:
