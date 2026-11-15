@@ -10,7 +10,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .const import (
-    CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
+    CONF_HOUSE_SOURCES, CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
+    CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
     CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_TELEMETRY_FRESH,
     CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL,
     CONF_VEHICLES, CONF_NAME, CONF_CABLE, CONF_SOC,
@@ -21,8 +22,6 @@ from .const import (
 from .sources import finite_number
 
 SOURCES = {
-    CONF_DOWNSTAIRS: "sensor",
-    CONF_UPSTAIRS: "sensor",
     CONF_EV_POWER: "sensor",
     CONF_WALLBOX_CONNECTED: "binary_sensor",
     CONF_WALLBOX_CHARGING: "binary_sensor",
@@ -33,7 +32,7 @@ SOURCES = {
 CLOCK_KEYS = (CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND)
 OPTION_KEYS = frozenset({
     CONF_TARGET_DEFAULT, CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND,
-    CONF_SUSTAINABLE, CONF_EFFICIENCY,
+    CONF_EFFICIENCY,
 })
 
 
@@ -83,10 +82,34 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
     for field, domain in SOURCES.items():
         if not _entity(data.get(field), domain):
             issues.add("invalid_" + field)
-    # Distinct physical channels must not be counted twice.
-    source_ids = [data.get(key) for key in SOURCES]
-    known = [x for x in source_ids if isinstance(x, str)]
-    if len(known) != len(set(known)):
+    # A 0.1.0 saved entry still has the original two house sensors.
+    # A new entry uses an arbitrary list; options may change that list.
+    household = options.get(CONF_HOUSE_SOURCES, data.get(CONF_HOUSE_SOURCES))
+    if household is None and CONF_DOWNSTAIRS in data and CONF_UPSTAIRS in data:
+        household = [data[CONF_DOWNSTAIRS], data[CONF_UPSTAIRS]]
+    if not isinstance(household, (list, tuple)) or not household:
+        issues.add("invalid_house_sources")
+        household = []
+    elif len(household) > 32 or any(not _entity(x, "sensor") for x in household):
+        issues.add("invalid_house_sources")
+    if len(household) != len(set(x for x in household if isinstance(x, str))):
+        issues.add("duplicated_source_entity")
+    if data.get(CONF_EV_POWER) in household:
+        issues.add("duplicated_source_entity")
+    # Verify session counters, if selected: both are required together.
+    energy_id = options.get(CONF_SESSION_ENERGY, data.get(CONF_SESSION_ENERGY))
+    duration_id = options.get(CONF_SESSION_DURATION, data.get(CONF_SESSION_DURATION))
+    if (energy_id is None) != (duration_id is None):
+        issues.add("incomplete_session_counters")
+    if energy_id is not None and not _entity(energy_id, "sensor"):
+        issues.add("invalid_session_energy")
+    if duration_id is not None and not _entity(duration_id, "sensor"):
+        issues.add("invalid_session_duration")
+    all_source_ids = list(household) + [
+        data.get(k) for k in SOURCES
+    ] + [energy_id, duration_id]
+    valid_source_ids = [x for x in all_source_ids if isinstance(x, str)]
+    if len(valid_source_ids) != len(set(valid_source_ids)):
         issues.add("duplicated_source_entity")
     if not _range(data.get(CONF_DPM_MODEL), 1.4, 20.0):
         issues.add("invalid_dpm_model")
@@ -132,13 +155,11 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
                 issues.add("invalid_default_target")
             if not _range(car.get(CONF_CAPACITY), 10, 200):
                 issues.add("invalid_capacity")
-            if not _range(car.get(CONF_SUSTAINABLE), 1.4, 22.0):
-                issues.add("invalid_sustainable_power")
             if not _range(car.get(CONF_EFFICIENCY), 0.5, 1.0):
                 issues.add("invalid_ac_efficiency")
             if not all(_clock(car.get(key)) for key in CLOCK_KEYS):
                 issues.add("invalid_departure_clock")
-    if cables.intersection(known):
+    if cables.intersection(valid_source_ids):
         issues.add("vehicle_cable_matches_wallbox_source")
     overrides = options.get(CONF_VEHICLE_OVERRIDES, {})
     if not isinstance(overrides, Mapping):
@@ -153,9 +174,6 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
             if (CONF_TARGET_DEFAULT in settings
                     and not _range(settings[CONF_TARGET_DEFAULT], 1, 100)):
                 issues.add("invalid_override_target")
-            if (CONF_SUSTAINABLE in settings
-                    and not _range(settings[CONF_SUSTAINABLE], 1.4, 22)):
-                issues.add("invalid_override_power")
             if (CONF_EFFICIENCY in settings
                     and not _range(settings[CONF_EFFICIENCY], 0.5, 1)):
                 issues.add("invalid_override_efficiency")
