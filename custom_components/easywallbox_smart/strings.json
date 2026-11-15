@@ -95,7 +95,8 @@
       "invalid_clock": "Use 24-hour HH:MM format"
     },
     "abort": {
-      "no_vehicles": "No vehicle profiles configured"
+      "no_vehicles": "No vehicle profiles configured",
+      "legacy_or_invalid_entry": "Legacy or incomplete configuration: options are disabled. No data was changed; follow the guided migration procedure."
     }
   }
 }
