@@ -38,7 +38,9 @@
     "error": {
       "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore",
       "duplicate_vehicle": "Nome automobile già utilizzato",
-      "duplicate_cable": "Sensore cavo già utilizzato"
+      "duplicate_cable": "Sensore cavo già utilizzato",
+      "duplicate_sources": "Seleziona sensori distinti per piano terra, piano primo e wallbox.",
+      "invalid_mapping": "Configurazione incompleta o incoerente: verificare le entità e i parametri delle auto."
     },
     "abort": {
       "already_configured": "Questa wallbox è già configurata"
