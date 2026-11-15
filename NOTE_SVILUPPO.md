@@ -208,3 +208,24 @@ Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni fu
 - Test aggiuntivi su target raggiunto senza velocità osservata, energia residua calcolabile senza stima del tempo, e discordanza tra wallbox `Charging` e potenza Shelly.
 - **Nessun test su HA reale eseguito**: la validazione formale non certifica il comportamento dei sensori di sessione in presenza di stop, pausa, DPM o BLE offline.
 - Prossima eventuale pubblicazione richiede **autorizzazione esplicita**: `main`, release e tag `0.1.0` sono rimasti invariati; la M4 è soltanto sul branch di sviluppo.
+
+
+## 2026-11-15 — M4: target SOC esclusivo, scelta da entità HA e test per sabato 21/11
+
+**Decisione dell'utente:** usare preferibilmente le entità di target SOC già presenti in Home Assistant per Fiat 500e e Kia EV3; un singolo target attivo per automobile, senza dover mantenere un valore manuale duplicato. L'utente prevede di non ricaricare l'auto prima di sabato 21 novembre 2026. **Non** svolgere test elettrici anticipati o promettere verifiche in background.
+
+### Implementazione (solo su `stabilizzatore-m1`)
+
+- Nuova costante `target_mode` con due opzioni esclusive: `entity` (predefinita) oppure `fixed`. `config_flow.py` separa i dati auto dalla schermata `target`: compare **solo** l'entità Home Assistant o **solo** il valore fisso, mai entrambi. Stessa struttura nelle Opzioni: possibile passare da fisso a entità o viceversa senza reinstallazione.
+- Scelta in italiano/inglese con `SelectSelector` nativo di Home Assistant, `SelectSelectorConfig(translation_key="target_mode")`; traduzioni in `selector.target_mode.options` di `strings.json`, `translations/it.json` e `translations/en.json`. Seguito pattern ufficiale Home Assistant.
+- Nuovo `target_policy.py` puro: determina un'unica sorgente effettiva. Se il metodo scelto è `entity`, legge un valore percentuale 1–100% da `sensor`, `number` o `input_number` e **non** applica alcun fallback a `target_default` se la lettura è `unknown`, `unavailable`, invalida o non percentuale. In metodo `fixed` usa soltanto il valore numerico. Nessun comando all'auto.
+- Compatibilità con le entry create dalla **0.1.0**: in assenza del nuovo campo, se era stata configurata `target_entity` essa mantiene la precedenza, altrimenti vale `target_default`. Se la 0.1.0 conservava entrambi, l'entità resta prioritaria anche se non disponibile. Nessuna migrazione della vecchia 0.0.13 e nessuna modifica manuale di `.storage`.
+- `validation.py`: vieta di salvare entrambi i target nelle nuove schede che dichiarano `target_mode`, e valida anche la configurazione effettiva dopo gli override. `coordinator.py` ascolta gli eventi dell'entità target **effettivamente scelta dalle Opzioni**, non una fonte obsoleta precedentemente salvata.
+- Nuovi test puri e fake-HA per transizioni entità/fisso, salvare un solo target, tenere leggibili le entry 0.1.0, valori `unknown` e `unavailable`, percentuale fuori intervallo, unità non percentuale, aggiornamenti dell'entità e listener corretti dopo un cambio nelle Opzioni.
+- `docs/CHECKLIST_COLLAUDO_2026-11-21.md` prepara le verifiche **solo in lettura** per il prossimo sabato; nessun test sulla wallbox reale è stato effettuato in questa iterazione.
+
+### Confini
+
+- Il branch è sempre `stabilizzatore-m1`, manifest `0.2.0b1` in sviluppo; `main` e la GitHub Release Marketplace `0.1.0` **restano invariati** fino a nuova autorizzazione esplicita.
+- DPM sempre attivo, zero chiamate verso servizi di wallbox/ESPHome/auto; niente modifica alle automazioni Fiat esistenti.
+- Test reali del flusso GUI, target SOC, timer, contatori Session Energy/Duration e stima potenza restano **da svolgere** su HA e durante la successiva ricarica ordinaria. Non attribuire validità produttiva ai soli test simulati.
