@@ -56,5 +56,33 @@
         "name": "Charging stabilizer"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Choose a vehicle",
+        "description": "Edit read-only charging plan settings. This never sends commands.",
+        "data": {
+          "vehicle": "Vehicle to edit"
+        }
+      },
+      "vehicle": {
+        "title": "Edit vehicle planning",
+        "description": "The SOC target from the car, if configured, still takes precedence over this default. Departure times use the day of departure.",
+        "data": {
+          "target_default": "Default target SOC (%)",
+          "departure_weekday": "Departure Mon–Fri (HH:MM)",
+          "departure_weekend": "Departure Sat–Sun (HH:MM)",
+          "sustainable_kw": "Conservative sustained power (kW)",
+          "efficiency": "Estimated AC charging efficiency"
+        }
+      }
+    },
+    "error": {
+      "invalid_clock": "Use 24-hour HH:MM format"
+    },
+    "abort": {
+      "no_vehicles": "No vehicle profiles configured"
+    }
   }
 }
