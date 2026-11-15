@@ -199,16 +199,16 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             if check.ready:
                 return self.async_create_entry(data=updated)
             errors["base"] = "invalid_mapping"
+        schema = {
+            vol.Required(CONF_HOUSE_SOURCES, default=initial[CONF_HOUSE_SOURCES]):
+                entity("sensor", multiple=True),
+        }
+        for key in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION):
+            marker = (vol.Optional(key, default=initial[key])
+                      if initial[key] is not None else vol.Optional(key))
+            schema[marker] = entity("sensor")
         return self.async_show_form(
-            step_id="sources",
-            data_schema=vol.Schema({
-                vol.Required(CONF_HOUSE_SOURCES, default=initial[CONF_HOUSE_SOURCES]):
-                    entity("sensor", multiple=True),
-                vol.Optional(CONF_SESSION_ENERGY, default=initial[CONF_SESSION_ENERGY]):
-                    entity("sensor"),
-                vol.Optional(CONF_SESSION_DURATION, default=initial[CONF_SESSION_DURATION]):
-                    entity("sensor"),
-            }), errors=errors,
+            step_id="sources", data_schema=vol.Schema(schema), errors=errors,
         )
 
     async def async_step_vehicle(self, user_input: dict | None = None):
