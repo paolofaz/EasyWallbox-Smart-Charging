@@ -96,7 +96,7 @@
     },
     "abort": {
       "no_vehicles": "No vehicle profiles configured",
-      "legacy_or_invalid_entry": "Legacy or incomplete configuration: options are disabled. No data was changed; follow the guided migration procedure."
+      "invalid_configuration": "Invalid configuration: check the integration's entities and settings."
     }
   }
 }
