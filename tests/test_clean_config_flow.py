@@ -40,6 +40,10 @@ class FakeConfigFlow:
     def async_abort(self, *, reason):
         return {"type": "abort", "reason": reason}
 
+    def async_show_menu(self, *, step_id, menu_options):
+        return {"type": "menu", "step_id": step_id,
+                "menu_options": menu_options}
+
 
 class FakeOptionsFlowWithReload(FakeConfigFlow):
     def __init__(self):
@@ -66,8 +70,9 @@ def vol_stub():
 
 def entity_data():
     return {
-        "house_downstairs": "sensor.sotto",
-        "house_upstairs": "sensor.sopra",
+        "house_power_sources": ["sensor.sotto", "sensor.sopra"], 
+        "session_energy": "sensor.session_energy",
+        "session_duration": "sensor.session_duration",
         "ev_power": "sensor.wallbox",
         "wallbox_connected": "binary_sensor.wb_car",
         "wallbox_charging": "binary_sensor.wb_charging",
@@ -85,7 +90,6 @@ def car(name, cable, soc, another=False):
         "soc": soc,
         "target_default": 80,
         "capacity_kwh": 37.0 if name == "Fiat" else 77.0,
-        "sustainable_kw": 3.2,
         "efficiency": 0.9,
         "departure_weekday": "07:00",
         "departure_weekend": "08:00",
@@ -161,9 +165,52 @@ class TestCleanConfigFlow(unittest.TestCase):
     def test_reject_duplicate_house_and_ev_meters(self):
         flow = self.module.EasyWallboxSmartConfigFlow()
         chosen = entity_data()
-        chosen["ev_power"] = chosen["house_downstairs"]
+        chosen["ev_power"] = chosen["house_power_sources"][0]
         response = asyncio.run(flow.async_step_user(chosen))
         self.assertEqual(response["errors"].get("base"), "duplicate_sources")
+
+    def test_one_house_source_and_optional_counters(self):
+        flow = self.module.EasyWallboxSmartConfigFlow()
+        chosen = entity_data()
+        chosen["house_power_sources"] = ["sensor.sotto"]
+        chosen.pop("session_energy")
+        chosen.pop("session_duration")
+        self.assertEqual(asyncio.run(flow.async_step_user(chosen))["step_id"], "vehicle")
+        created = asyncio.run(flow.async_step_vehicle(
+            car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
+        ))
+        self.assertTrue(self.module.validate(created["data"]).ready)
+
+    def test_session_counters_must_be_paired(self):
+        flow = self.module.EasyWallboxSmartConfigFlow()
+        chosen = entity_data()
+        chosen.pop("session_duration")
+        answer = asyncio.run(flow.async_step_user(chosen))
+        self.assertEqual(answer["errors"]["base"], "incomplete_counters")
+
+    def test_options_can_reconfigure_sources_on_existing_0_1_0(self):
+        flow = self.module.EasyWallboxSmartConfigFlow()
+        asyncio.run(flow.async_step_user(entity_data()))
+        base = asyncio.run(flow.async_step_vehicle(
+            car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
+        ))["data"]
+        old = dict(base)
+        old["house_downstairs"] = "sensor.sotto"
+        old["house_upstairs"] = "sensor.sopra"
+        old.pop("house_power_sources")
+        old.pop("session_energy")
+        old.pop("session_duration")
+        opts = self.module.EasyWallboxSmartOptionsFlow()
+        opts.config_entry = types.SimpleNamespace(data=old, options={})
+        initial = asyncio.run(opts.async_step_sources())
+        self.assertEqual(initial["step_id"], "sources")
+        updated = asyncio.run(opts.async_step_sources({
+            "house_power_sources": ["sensor.sotto", "sensor.sopra", "sensor.extra"],
+            "session_energy": "sensor.session_energy",
+            "session_duration": "sensor.session_duration",
+        }))
+        self.assertEqual(updated["type"], "create_entry")
+        self.assertTrue(self.module.validate(old, updated["data"]).ready)
 
     def test_second_instance_does_not_create_entry(self):
         flow = self.module.EasyWallboxSmartConfigFlow()
@@ -190,13 +237,15 @@ class TestCleanConfigFlow(unittest.TestCase):
         options.config_entry = types.SimpleNamespace(data=initial, options={})
         response = asyncio.run(options.async_step_init())
         self.assertEqual(response["step_id"], "init")
-        response = asyncio.run(options.async_step_init({"vehicle": "binary_sensor.fiat"}))
+        self.assertEqual(response["type"], "menu")
+        response = asyncio.run(options.async_step_choose_vehicle(
+            {"vehicle": "binary_sensor.fiat"}
+        ))
         self.assertEqual(response["step_id"], "vehicle")
         values = {
             "target_default": 85,
             "departure_weekday": "06:30",
             "departure_weekend": "09:00",
-            "sustainable_kw": 3.2,
             "efficiency": .9,
         }
         result = asyncio.run(options.async_step_vehicle(values))
