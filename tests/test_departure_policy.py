@@ -72,6 +72,11 @@ class TestDepartureAdvice(unittest.TestCase):
         s = car(departure_at=T + timedelta(hours=2))
         self.assertEqual(advice(T, s, house(2.4)).action, "start_now")
 
+    def test_target_reached_without_observed_rate_is_complete(self):
+        s = car(soc=80, target_soc=80, sustainable_kw=None)
+        self.assertEqual(core.plan(T, s).reason, "target_reached")
+        self.assertEqual(advice(T, s, house(0.5)).action, "complete")
+
     def test_target_reached_does_not_start(self):
         self.assertEqual(advice(T, car(soc=80), house(0.1)).action, "complete")
 
