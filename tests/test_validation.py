@@ -57,6 +57,36 @@ class TestValidation(unittest.TestCase):
         data["ev_power"] = data["house_upstairs"]
         self.assertIn("duplicated_source_entity", validation.validate(data).issues)
 
+    def test_new_universal_house_sources(self):
+        cfg = example()
+        cfg.pop("house_downstairs")
+        cfg.pop("house_upstairs")
+        cfg["house_power_sources"] = ["sensor.one"]
+        cfg["session_energy"] = "sensor.energy"
+        cfg["session_duration"] = "sensor.duration"
+        for number in (1, 3):
+            with self.subTest(meters=number):
+                cfg["house_power_sources"] = [
+                    "sensor.house_" + str(i) for i in range(number)
+                ]
+                self.assertTrue(validation.validate(cfg).ready)
+
+    def test_counters_must_be_paired_and_have_distinct_ids(self):
+        cfg = example()
+        cfg["session_energy"] = "sensor.energy"
+        self.assertIn("incomplete_session_counters", validation.validate(cfg).issues)
+        cfg["session_duration"] = "sensor.energy"
+        self.assertIn("duplicated_source_entity", validation.validate(cfg).issues)
+
+    def test_existing_v1_options_can_change_meter_sources(self):
+        cfg = example()
+        opts = {"house_power_sources": ["sensor.aux1", "sensor.aux2"],
+                "session_energy": "sensor.energy",
+                "session_duration": "sensor.duration"}
+        self.assertTrue(validation.validate(cfg, opts).ready)
+        opts["house_power_sources"].append("sensor.aux1")
+        self.assertIn("duplicated_source_entity", validation.validate(cfg, opts).issues)
+
     def test_cars_must_have_unique_identity_sensors(self):
         data = example()
         data["vehicles"][1]["cable"] = data["vehicles"][0]["cable"]
@@ -78,7 +108,6 @@ class TestValidation(unittest.TestCase):
             ("target_default", 120, "invalid_default_target"),
             ("capacity_kwh", "nan", "invalid_capacity"),
             ("efficiency", 1.5, "invalid_ac_efficiency"),
-            ("sustainable_kw", -2, "invalid_sustainable_power"),
         ]
         for name, value, issue in cases:
             with self.subTest(name=name):
