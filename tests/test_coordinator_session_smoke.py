@@ -300,6 +300,64 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertIsNone(c._house().kw)
         self.assertEqual(c._house().quality, "unavailable_or_stale")
 
+    def test_kia_target_from_ha_number_only(self):
+        h, entry = fixture(connected=True, charging=False)
+        kia = entry.data["vehicles"][0]
+        kia["target_mode"] = "entity"
+        kia["target_entity"] = "number.kia_target"
+        kia.pop("target_default")
+        h.states["number.kia_target"] = FakeState("85", "%")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.session.target_soc, 85)
+        self.setstate(h, "number.kia_target", "90", "%")
+        c.refresh()
+        self.assertEqual(c.session.target_soc, 90)
+        self.setstate(h, "number.kia_target", "unavailable", "%")
+        c.refresh()
+        self.assertIsNone(c.session.target_soc)
+        self.assertEqual(c.planning.reason, "insufficient_planner_data")
+
+    def test_old_0_1_0_entity_target_unavailable_no_default_fallback(self):
+        h, entry = fixture(connected=True, charging=False)
+        entry.data["vehicles"][0]["target_entity"] = "sensor.kia_target"
+        h.states["sensor.kia_target"] = FakeState("80", "%")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.session.target_soc, 80)
+        self.setstate(h, "sensor.kia_target", "unknown", "%")
+        c.refresh()
+        self.assertIsNone(c.session.target_soc)
+        self.assertNotEqual(c.session.target_soc, entry.data["vehicles"][0]["target_default"])
+
+    def test_0_1_0_option_switch_to_fixed_target(self):
+        h, entry = fixture(connected=True, charging=False)
+        entry.data["vehicles"][0]["target_entity"] = "sensor.kia_target"
+        h.states["sensor.kia_target"] = FakeState("80", "%")
+        entry.options={"vehicle_overrides":{
+            "binary_sensor.kia_cable":{
+                "target_mode":"fixed", "target_default":95,
+            },
+        }}
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.session.target_soc, 95)
+
+    def test_target_with_wrong_unit_is_not_soc_percent(self):
+        h, entry = fixture(connected=True, charging=False)
+        kia=entry.data["vehicles"][0]
+        kia["target_mode"]="entity"
+        kia["target_entity"]="sensor.kia_target"
+        kia.pop("target_default")
+        h.states["sensor.kia_target"] = FakeState("80", "kWh")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertIsNone(c.session.target_soc)
+
     def test_select_entity_changes_only_virtual_mode(self):
         import asyncio
         _, coordinator = self.setup()
