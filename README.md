@@ -40,7 +40,7 @@ Se la nuova versione viene copiata sopra una 0.0.13, l'entry legacy viene **rico
 
 ## Test e sicurezza
 
-- `python -m unittest discover -s tests -v` — **93 test offline e con adapter HA simulato** passati su GitHub Actions con Python 3.12 e 3.13 il 15/11/2026 (M1/M2, stati di sessione, interfaccia select con HA mock, privacy e vincoli non attuativi).
+- `python -m unittest discover -s tests -v` — **94 test offline e con adapter HA simulato** passati su GitHub Actions con Python 3.12 e 3.13 il 15/11/2026 (M1/M2, stati di sessione, interfaccia select con HA mock, privacy e vincoli non attuativi).
 - `python -m compileall -q custom_components/easywallbox_smart` per verificare la sintassi di tutti i moduli.
 - `home-assistant/actions/hassfest@master`: **superato** su `stabilizzatore-m1` il 15/11/2026, inclusa correzione ordinamento del manifest; [esecuzione](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43728645220).
 - I test automatici NON sostituiscono hassfest, verifiche GUI Config Flow, prove idle/Recorder, test su HA reale, replay delle sette sere e simulazioni di reboot/assenza dati.
