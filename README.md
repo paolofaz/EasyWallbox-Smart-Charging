@@ -1,6 +1,6 @@
 # EasyWallbox Smart Charging
 
-**Versione 0.1.0 — PRIMA RELEASE MARKETPLACE — SOLO SIMULAZIONE**
+**Sviluppo 0.2.0b1 — NON PUBBLICATO — SOLO SIMULAZIONE.** La release Marketplace attuale è **0.1.0** su `main`; le nuove funzioni non sono ancora installabili dal Marketplace.
 
 Custom integration Python per Home Assistant che simula la pianificazione di ricarica e uno stabilizzatore lento della potenza EV. Il DPM fisico della EasyWallbox resta attivo, autonomo e responsabile di picchi e sicurezza elettrica. **La 0.1.0 non invia alcun comando reale alla wallbox o alle automobili.** I pulsanti/selettori sono consigli virtuali, non interruttori elettrici.
 
@@ -21,13 +21,13 @@ Il repository non è ancora incluso nel catalogo pubblico, quindi si aggiunge un
 ## Funzionamento
 
 - **Pianificatore**: legge SOC auto, target, partenza e capacità; propone quando attendere o partire. Gli orari feriali/weekend sono impostabili per auto.
-- **Stabilizzatore**: legge soltanto i due Shelly di casa **esclusa la wallbox**; propone un limite EV virtuale stabile durante carichi intermittenti e un ripristino dopo quiete o quando il planner perde margine.
+- **Stabilizzatore**: legge uno o più sensori di potenza domestica, escludendo la wallbox; propone un limite EV virtuale stabile durante carichi intermittenti e un ripristino dopo quiete o quando il planner perde margine.
 - **DPM**: resta sempre attivo e gestisce autonomamente i picchi rapidi. La simulazione non sostituisce alcuna protezione elettrica.
 - **Modalità**: Automatica, Manuale, Pausa e Carica subito sono modalità di simulazione. Una Pausa nel selettore NON interrompe la ricarica reale; Carica subito NON la avvia.
 
 ## Configurazione
 
-Il Config Flow permette di selezionare i sensori già presenti in Home Assistant: due Shelly EM dei consumi casa, il terzo Shelly dedicato alla wallbox, ESPHome **Car Connected**, **Charging**, **Telemetry Fresh**, **Charge power** (number in kW) e **Power set** (sensore kW). Configura uno o più veicoli con cavo collegato, SOC, target SOC facoltativo, capacità utile, rendimento, potenza sostenibile e orari di partenza. Nessun `entity_id` è fisso, quindi non è limitata a Fiat 500e o Kia EV3.
+Nel nuovo Config Flow si possono selezionare **uno o più sensori di consumo domestico**, sommati fra loro, e uno Shelly dedicato alla wallbox separato dalla somma. ESPHome espone **Car Connected**, **Charging**, **Telemetry Fresh**, **Charge power** (number in kW), **Power set** (sensore kW) e, per perfezionare la stima, **Session Energy** (kWh) e **Session Duration** (min). I due contatori sono facoltativi, ma si selezionano insieme. Per ogni veicolo servono cavo collegato, SOC, target SOC predefinito, eventuale entità target SOC, capacità, rendimento e orari di partenza. **Non viene richiesta alcuna potenza media da inserire a mano**: Nessun `entity_id` è fisso, quindi non è limitata a Fiat 500e o Kia EV3.
 
 Il Config Flow crea un profilo nuovo: non è prevista la migrazione della vecchia 0.0.13. L'utente ha confermato che la precedente installazione è stata rimossa.
 
@@ -37,12 +37,12 @@ Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettor
 
 ## Qualità e limiti
 
-**Verifiche completate:** 99 test offline e con mock HA su Python 3.12/3.13, validazione ufficiale hassfest e HACS/Marketplace. **Non ancora collaudato** su una Home Assistant reale: Config Flow, Recorder, selettore, runtime con Shelly/ESPHome/auto e riavvio. Quindi questa è una **prima release di prova in sola simulazione**.
+**Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b1 si trovano nella CI del branch di sviluppo. **Non ancora collaudato** su una Home Assistant reale: Config Flow, Recorder, selettore, runtime con Shelly/ESPHome/auto e riavvio. Quindi questa è una **prima release di prova in sola simulazione**.
 
 Le soglie 1,5/1,0 kW, quiete 10 min, budget 25% dello slack e modello DPM 4,3 kW sono ipotesi interne al simulatore, **non tarature approvate** per altri impianti.
 
 Nessuna modifica a firmware ESPHome, DPM e automazioni Fiat esistenti. Non inserire PIN BLE, credenziali, token, cronologie private o cartelle `.storage` nel repository.
 
-**Approfondimenti:** [Note tecniche](NOTE_SVILUPPO.md), [Architettura M1](docs/ARCHITETTURA_M1.md), [Dashboard Lovelace](docs/LOVELACE.md), [Note release 0.1.0](docs/RELEASE_NOTES_0.1.0.md).
+**Novità sviluppo 0.2.0b1:** il planner usa prima la potenza reale Shelly e, dopo almeno 30 minuti di contatori coerenti, combina potenza corrente e media energia/durata della sessione. In assenza di misure non inventa una media. La selezione dei sensori è modificabile dalle Opzioni e le configurazioni già create dalla 0.1.0 restano leggibili. Non salva uno storico di cinque sessioni. Dettagli in [Stima automatica e consumi universali](docs/STIMA_AUTOMATICA_E_CONSUMI_UNIVERSALI.md).\n\n**Approfondimenti:** [Note tecniche](NOTE_SVILUPPO.md), [Architettura M1](docs/ARCHITETTURA_M1.md), [Dashboard Lovelace](docs/LOVELACE.md), [Note release 0.1.0](docs/RELEASE_NOTES_0.1.0.md).
 
 In caso di problemi puoi rimuovere l'entry di test da Dispositivi e servizi, disinstallare la custom integration da Marketplace e riavviare HA. Questo non cambia il DPM né le automazioni originali.
