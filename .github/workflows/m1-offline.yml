@@ -1,4 +1,4 @@
-name: M1 offline tests
+name: M1-M2 offline checks
 on:
   push:
     branches:
@@ -24,5 +24,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Run offline deterministic tests
         run: python -m unittest discover -s tests -v
-      - name: Verify core syntax
-        run: python -m compileall -q custom_components/easywallbox_smart/core.py
+      - name: Compile all integration Python modules
+        run: python -m compileall -q custom_components/easywallbox_smart
+      - name: Validate JSON metadata and translations
+        run: |
+          python -m json.tool custom_components/easywallbox_smart/manifest.json > /dev/null
+          python -m json.tool hacs.json > /dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/it.json > /dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/en.json > /dev/null
