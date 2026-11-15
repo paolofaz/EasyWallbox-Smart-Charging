@@ -112,9 +112,11 @@ class TestCleanConfigFlow(unittest.TestCase):
         helpers.__path__ = []
         selector = types.ModuleType("homeassistant.helpers.selector")
         for key in ("EntitySelector", "EntitySelectorConfig", "NumberSelector",
-                    "NumberSelectorConfig", "TextSelector"):
+                    "NumberSelectorConfig", "SelectSelector", "SelectSelectorConfig",
+                    "TextSelector"):
             setattr(selector, key, FakeSelector)
         selector.NumberSelectorMode = types.SimpleNamespace(BOX="box")
+        selector.SelectSelectorMode = types.SimpleNamespace(DROPDOWN="dropdown")
         cls.patcher = patch.dict(sys.modules, {
             "homeassistant": homeassistant,
             "homeassistant.config_entries": config_entries,
