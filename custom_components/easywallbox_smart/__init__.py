@@ -1,46 +1,49 @@
-"""Home Assistant read-only simulated planner; never sends device commands."""
+"""Read-only Home Assistant simulation lifecycle with non-destructive entry guard.
+
+No migration is attempted here. A legacy 0.0.13 config entry with an old
+vehicle/energy layout stays intact, even if the new code is mistakenly copied
+onto an existing HA installation.
+"""
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryError
 from homeassistant.core import HomeAssistant
 
-from .const import (
-    DOMAIN, PLATFORMS, CONF_VEHICLES, CONF_DOWNSTAIRS, CONF_UPSTAIRS,
-    CONF_EV_POWER, CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING,
-    CONF_TELEMETRY_FRESH, CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT,
-    CONF_DPM_MODEL,
-)
+from .const import DOMAIN, PLATFORMS
 from .coordinator import SimulationCoordinator
+from .preflight import inspect, LEGACY
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Set up one simulated integration from its UI configuration."""
-    required = (
-        CONF_VEHICLES, CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
-        CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_TELEMETRY_FRESH,
-        CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL,
-    )
-    if any(key not in entry.data for key in required) or not entry.data.get(CONF_VEHICLES):
-        # No destructive migration of the legacy 0.0.13 config entry.
+    """Start a simulation only when the entry has an explicitly valid mapping."""
+    report = inspect(entry.data, entry.options)
+    if report.kind == LEGACY:
         raise ConfigEntryError(
-            "Existing configuration requires a guided migration; no data was changed"
+            "EasyWallbox Smart Charging 0.0.13 configuration was preserved. "
+            "Automatic migration is intentionally disabled. "
+            "Use the documented backup and guided reconfiguration procedure."
+        )
+    if not report.ready:
+        # Issue codes describe categories only, never user entity IDs.
+        raise ConfigEntryError(
+            "EasyWallbox Smart Charging simulation mapping is incomplete or "
+            "invalid (" + ", ".join(report.issues) + "). "
+            "No configuration was changed."
         )
     coordinator = SimulationCoordinator(hass, entry)
-    coordinator.start()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     try:
+        coordinator.start()
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
+        # Release any listeners/timers allocated before a setup failure.
         coordinator.close()
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         raise
-    return None
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unsubscribe timers and listeners before returning to idle."""
-    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        return False
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Unload platforms first, then release read-only listeners and timers."""
+    await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
     coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if coordinator is not None:
         coordinator.close()
-    return True
