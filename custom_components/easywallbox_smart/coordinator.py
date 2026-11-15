@@ -17,6 +17,7 @@ from .const import (
     CONF_TARGET_DEFAULT, CONF_TARGET_ENTITY, CONF_TELEMETRY_FRESH, CONF_UPSTAIRS,
     CONF_VEHICLES, CONF_WALLBOX_CHARGING, CONF_WALLBOX_CONNECTED,
 )
+from .departure_policy import DepartureAdvice, advise_departure
 from .core import (
     Config, CoreState, HouseSnapshot, LimitSnapshot, Proposal,
     SessionSnapshot, evaluate, plan,
@@ -39,6 +40,7 @@ class SimulationCoordinator:
         self.state: CoreState | None = None
         self.proposal: Proposal | None = None
         self.planning = None
+        self.advice: DepartureAdvice | None = None
         self.session: SessionSnapshot | None = None
         self._vehicle_id = None
         self._active_departure = None  # Lock goal for session, even after deadline
@@ -151,20 +153,36 @@ class SimulationCoordinator:
         self.refresh()
 
     def _schedule(self, now: datetime, proposal: Proposal):
+        """Only schedule useful future decisions for an identified session."""
         self._clear_timer()
-        if not self._charging:
-            return
-        choices = []
-        if proposal.next_check_at and proposal.next_check_at > now:
-            choices.append(proposal.next_check_at)
-        if self.state and self.state.mode == "LIMITED" and self.planning:
-            cap, original = self.state.cap_kw, self.state.original_kw
-            if cap is not None and original is not None and original > cap:
-                budget_left = self.planning.discretionary_budget_kwh - self.state.spent_kwh_upper_bound
-                if budget_left > 0:
-                    choices.append(now + timedelta(hours=budget_left / (original - cap)))
-        if proposal.slack_minutes is not None and proposal.slack_minutes > self.policy.min_slack_minutes:
-            choices.append(now + timedelta(minutes=proposal.slack_minutes - self.policy.min_slack_minutes))
+        choices: list[datetime] = []
+        # While the car is plugged in and waiting, re-check only at the next
+        # advisory milestone (never sample continuously while disconnected).
+        if self.advice and self.advice.next_check_at and self.advice.next_check_at > now:
+            choices.append(self.advice.next_check_at)
+
+        if self._charging:
+            if proposal.next_check_at and proposal.next_check_at > now:
+                choices.append(proposal.next_check_at)
+            if self.state and self.state.mode == "LIMITED" and self.planning:
+                cap, original = self.state.cap_kw, self.state.original_kw
+                if cap is not None and original is not None and original > cap:
+                    budget_left = (
+                        self.planning.discretionary_budget_kwh
+                        - self.state.spent_kwh_upper_bound
+                    )
+                    if budget_left > 0:
+                        choices.append(
+                            now + timedelta(hours=budget_left / (original - cap))
+                        )
+            if (proposal.slack_minutes is not None
+                    and proposal.slack_minutes > self.policy.min_slack_minutes):
+                choices.append(
+                    now + timedelta(
+                        minutes=proposal.slack_minutes - self.policy.min_slack_minutes
+                    )
+                )
+
         if choices:
             due = max(now + timedelta(seconds=10), min(choices))
             self._timer_unsub = async_track_point_in_utc_time(
@@ -180,7 +198,10 @@ class SimulationCoordinator:
             s.vehicle_id, s.vehicle_ambiguous, s.charging,
             round(s.soc, 1) if s.soc is not None else None,
             s.target_soc, s.departure_at, p.reason,
-            d.state, d.action, d.reason, d.proposed_cap_kw, self.quality,
+            d.state, d.action, d.reason, d.proposed_cap_kw,
+            self.advice.action if self.advice else None,
+            self.advice.reason if self.advice else None,
+            self.quality,
         )
 
     @callback
@@ -189,12 +210,31 @@ class SimulationCoordinator:
         self.session = self._make_session(now)
         self._observe_house_only_in_charge(self.session.charging)
         self.planning = plan(now, self.session, self.policy)
-        house = self._house() if self.session.charging else HouseSnapshot(None, None, "inactive")
-        self.state, self.proposal = evaluate(
-            now, self.session, house, self._limits(), self.state, self.policy,
+        # In WAITING, read one snapshot when relevant; subscribe to Shelly
+        # changes only if electrical charging is actually confirmed.
+        house = (
+            self._house() if self.session.vehicle_id
+            else HouseSnapshot(None, None, "inactive")
         )
-        self.quality = ("ready" if self.session.charging and self.planning.reason == "flexible"
-                        else self.planning.reason)
+        self.advice = advise_departure(
+            now, self.session, self.planning, house,
+            busy_threshold_kw=self.policy.trigger_kw,
+            minimum_slack_minutes=self.policy.min_slack_minutes,
+        )
+        supervising_house = (
+            house if self.session.charging
+            else HouseSnapshot(None, None, "inactive")
+        )
+        self.state, self.proposal = evaluate(
+            now, self.session, supervising_house, self._limits(),
+            self.state, self.policy,
+        )
+        self.quality = (
+            self.planning.reason
+            if self.planning.reason != "flexible"
+            else "house_data_not_trusted" if house.kw is None
+            else "ready"
+        )
         self.last_evaluation = now
         self._schedule(now, self.proposal)
         signature = self._signature()
