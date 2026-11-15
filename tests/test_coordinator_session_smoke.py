@@ -94,13 +94,29 @@ class TestCoordinatorSessionSmoke(TestCase):
         ha_core.callback = lambda fn: fn
         helpers = types.ModuleType("homeassistant.helpers")
         helpers.__path__ = []
+        components = types.ModuleType("homeassistant.components")
+        components.__path__ = []
+        select_component = types.ModuleType("homeassistant.components.select")
+        class FakeSelectEntity:
+            @property
+            def options(self):
+                return self._attr_options
+        select_component.SelectEntity = FakeSelectEntity
+        exceptions = types.ModuleType("homeassistant.exceptions")
+        exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
+        registry = types.ModuleType("homeassistant.helpers.device_registry")
+        registry.DeviceInfo = lambda **kwargs: kwargs
         event = types.ModuleType("homeassistant.helpers.event")
         event.async_track_state_change_event = lambda hass, ids, cb: hass.watch(ids, cb)
         event.async_track_point_in_utc_time = lambda hass, cb, at: hass.track(cb, at)
         cls._module_patch = patch.dict(sys.modules, {
             "homeassistant": homeassistant,
             "homeassistant.core": ha_core,
+            "homeassistant.components": components,
+            "homeassistant.components.select": select_component,
+            "homeassistant.exceptions": exceptions,
             "homeassistant.helpers": helpers,
+            "homeassistant.helpers.device_registry": registry,
             "homeassistant.helpers.event": event,
         })
         cls._module_patch.start()
@@ -114,6 +130,14 @@ class TestCoordinatorSessionSmoke(TestCase):
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         cls.Implementation = module.SimulationCoordinator
+        select_spec = importlib.util.spec_from_file_location(
+            PACKAGE + ".select", COMP / "select.py"
+        )
+        select_module = importlib.util.module_from_spec(select_spec)
+        sys.modules[select_spec.name] = select_module
+        select_spec.loader.exec_module(select_module)
+        cls.ModeSelect = select_module.SimulationModeSelect
+        cls.SelectError = exceptions.HomeAssistantError
 
     @classmethod
     def tearDownClass(cls):
@@ -221,6 +245,36 @@ class TestCoordinatorSessionSmoke(TestCase):
         c.refresh()
         self.assertEqual(c.control.mode, "PAUSE")
         self.assertEqual(c.control.phase, "UNKNOWN")
+
+    def test_select_entity_changes_only_virtual_mode(self):
+        import asyncio
+        _, coordinator = self.setup()
+        entry = types.SimpleNamespace(entry_id="example-1")
+        entity = self.ModeSelect(coordinator, entry)
+        self.assertTrue(entity.available)
+        self.assertIsNone(entity.current_option)
+        self.assertEqual(
+            entity.options, ["automatic", "manual", "pause", "charge_now"]
+        )
+        asyncio.run(entity.async_select_option("pause"))
+        self.assertEqual((entity.current_option, coordinator.advice.action),
+                         ("pause", "paused"))
+        self.assertIn("NESSUN COMANDO", entity.extra_state_attributes["warning"])
+        asyncio.run(entity.async_select_option("charge_now"))
+        self.assertEqual(coordinator.advice.action, "start_now")
+        self.assertTrue(coordinator.proposal.simulation_only)
+
+    def test_select_entity_rejects_unknown_connection(self):
+        import asyncio
+        hass, coordinator = self.setup()
+        entity = self.ModeSelect(
+            coordinator, types.SimpleNamespace(entry_id="example-1")
+        )
+        self.setstate(hass, "binary_sensor.kia_cable", "unavailable")
+        coordinator.refresh()
+        self.assertFalse(entity.available)
+        with self.assertRaises(self.SelectError):
+            asyncio.run(entity.async_select_option("automatic"))
 
     def test_mode_selection_requires_known_connection(self):
         h, c = self.setup()
