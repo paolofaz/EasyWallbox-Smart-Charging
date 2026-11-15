@@ -21,6 +21,13 @@ class TestM2Safety(unittest.TestCase):
             imported = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
             self.assertFalse(any(n and n.startswith("homeassistant") for n in imported))
 
+    def test_goal_is_locked_until_disconnect(self):
+        # Prevent the missed-departure rollover regression in HA adapter.
+        text = (ROOT / "coordinator.py").read_text()
+        self.assertIn("self._active_departure = None", text)
+        self.assertIn("if self._active_departure is None:", text)
+        self.assertIn("departure = self._active_departure", text)
+
     def test_no_high_frequency_state_reporting(self):
         text = (ROOT / "coordinator.py").read_text()
         self.assertIn("_observe_house_only_in_charge(self.session.charging)", text)
