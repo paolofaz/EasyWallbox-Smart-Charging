@@ -130,3 +130,7 @@
 - CI offline (Python 3.12/3.13) con **93 test superati** al commit `d9acca54511de807e97b3a5fe888d443e48334a8` (run [43730371513](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730371513)); hassfest [43730371551](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43730371551) **superato**. Verificare nuovamente HEAD successivo per documentazione.
 - Tutte le prove sui file HA di produzione **non effettuate**: Config Flow reale, test con storici Shelly reali, Backup/Restore, dashboard, Recorder e comportamento su hardware. Nessuna release, main, ESPHome, DPM o automazione Fiat toccati.
 - M3 non supporta ancora una conversione guidata `0.0.13 -> 0.1`. Da progettare/approvare esplicitamente solo dopo prove su HA isolata; niente migrazioni cieche. Le impostazioni di M1 del simulatore rimangono candidate, non valori collaudati di produzione.
+
+### Correzione conclusiva della protezione legacy
+- Aggiunto controllo preventivo anche a `OptionsFlow` (`async_step_init` e `async_step_vehicle`): una entry storica 0.0.13 o incompleta causa `async_abort(legacy_or_invalid_entry)` prima dell'accesso a campi mancanti. Nessuna modifica di opzioni o configurazione.
+- Aggiunte traduzioni IT/EN e controllo regressione statico. Suite salita a **94 test** attesi; verificare i due workflow GitHub sull'ultimo commit. Il test runtime HA resta da eseguire.
