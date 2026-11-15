@@ -48,12 +48,18 @@ def advise_departure(
         return DepartureAdvice("paused", "explicit_user_pause")
     if session.mode == "MANUAL":
         return DepartureAdvice("manual", "manual_session_owned_by_user")
-    if session.mode != "AUTO":
+    if session.mode == "RECONCILE":
+        return DepartureAdvice("insufficient_data", "explicit_mode_confirmation_required")
+    if session.mode not in ("AUTO", "CHARGE_NOW"):
         return DepartureAdvice("insufficient_data", "unknown_session_mode")
     if session.vehicle_ambiguous:
         return DepartureAdvice("insufficient_data", "ambiguous_vehicle")
     if not session.vehicle_id:
         return DepartureAdvice("inactive", "no_identified_vehicle")
+    # An observed real charge at SOC target (especially 100%) may be
+    # vehicle-controlled balancing; never claim that charging stopped.
+    if planned.reason == "target_reached" and session.charging:
+        return DepartureAdvice("charging", "vehicle_may_be_balancing")
     if planned.reason == "target_reached":
         return DepartureAdvice("complete", "target_reached")
     if (planned.reason in ("unidentified_vehicle", "insufficient_planner_data")
@@ -67,6 +73,9 @@ def advise_departure(
     latest = session.departure_at - timedelta(
         minutes=planned.required_minutes + session.reserve_minutes
     )
+    if session.mode == "CHARGE_NOW":
+        # This is a UI preference in v0.1, NOT a wallbox start command.
+        return DepartureAdvice("start_now", "explicit_charge_now_simulation_only", latest)
     if (latest <= now or planned.slack_minutes <= minimum_slack_minutes):
         return DepartureAdvice("start_now", "departure_priority_dpm_remains_active", latest)
 
