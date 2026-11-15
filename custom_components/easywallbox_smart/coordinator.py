@@ -27,6 +27,7 @@ from .core import (
 )
 from .sources import finite_number, next_departure, on, power_kw
 from .rate_estimator import RateState, RateEstimate, estimate
+from .target_policy import resolved_target, selected_mode
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
 SHELLY_REPORT_AGE = timedelta(minutes=20)
@@ -152,8 +153,10 @@ class SimulationCoordinator:
             soc = finite_number(source.state) if source else None
             soc_at = ((getattr(source, "last_reported", None) or source.last_updated)
                       if source else None)
+            # One active source only. A selected HA target that is unavailable,
+            # invalid, or not a percentage NEVER falls back to old fixed data.
             target_id = selected.get(CONF_TARGET_ENTITY)
-            target = self._number(target_id) if target_id else float(selected[CONF_TARGET_DEFAULT])
+            target = resolved_target(selected, self._raw(target_id))
             if self._active_departure is None:
                 self._active_departure = next_departure(
                     now.astimezone(ZoneInfo(self.hass.config.time_zone)),
