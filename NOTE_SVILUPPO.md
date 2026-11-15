@@ -242,3 +242,20 @@ Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni fu
 - La guida `docs/REPLAY_CARICHI_DOMESTICI.md` spiega screenshot/CSV, unità, quale sensore inviare, e salvaguardia privacy: non committare dati reali domestici sul repository pubblico.
 - **Non modificati** algoritmi di protezione DPM, firmware, controller HA, controlli reali, `main` o release Marketplace `0.1.0`; il codice sperimentale è solo `stabilizzatore-m1`.
 - **Da fare:** analizzare il pattern reale appena l'utente lo invierà, distinguendo un ramo da totale casa; confrontare la curva con proposte virtuali del core, senza tarare soglie su un solo caso e senza confondere simulazione di auto con auto realmente in carica.
+
+
+## 2026-11-15 — M4: secondo campione domestico e confronto anti-oscillazione
+
+**Nuovo input ricevuto in chat (non pubblicato):** un secondo tracciato di potenza domestica da un solo ramo, immediatamente successivo al primo. L'utente ha indicato a voce un secondo carico domestico sostanzialmente costante. L'analisi è stata eseguita localmente e **nessun CSV grezzo** contenente orari domestici è stato inviato al repository.
+
+### Diagnosi / nessuna modifica alla policy attiva
+- Un carico domestico intermittente può produrre una **potenza totale sostenuta inferiore alla soglia M4 fissa di 1,5 kW**, pur avendo margine ridotto rispetto a un cap richiesto EV di 4 kW su un modello DPM di 4,3 kW. Il regolatore lento allora non propone riduzioni e delega gli adattamenti al DPM.
+- Un replay locale delle due tracce concatenate, con 200 W di altri consumi **assunti**, modello DPM 4,3 kW, EV ipotetico 4 kW, target 80%, partenza 07:00, SOC iniziale 70%, mantiene la simulazione in modalità NORMAL durante il secondo episodio. Nessun evento BLE reale è stato generato.
+- La sola riduzione della soglia di attivazione a 1,3 kW in un replay **sperimentale** porta a una limitazione virtuale di 2,4 kW; non implica che quel cap sia ottimale né che sia desiderabile in produzione. Con SOC ipotetico 40% e target 80%, il planner non concede margine di sacrificio e non propone la limitazione.
+- Sono state aggiunte regressioni **sintetiche, prive di date o tracce private del reale campione**, in `tests/test_hairdryer_candidate.py`: la soglia esistente non riconosce il carico sotto-soglia, una soglia candidata più bassa produce una sola proposta stabile con ampio slack, mentre basso margine e potenza EV non attendibile vietano la riduzione. Il codice `core.py` e la policy attiva **non sono stati modificati**.
+
+### Decisione architetturale ancora da verificare
+- Il criterio primario è la **raggiungibilità del target SOC** e poi il compromesso fra energia di ricarica aggiuntivamente sacrificata, frequenza di intervento effettivo del DPM e numero di scritture BLE. Non è giustificato assumere che ogni scrittura BLE provochi usura elettrica rilevante; distinguere comandi al dispositivo, persistenza interna e manovre elettromeccaniche.
+- Valutare tre fasce di margine (*ampio, intermedio, scarso/nullo*); mantenere il DPM sempre attivo. Evitare soglie più basse per default senza dati sul reale comportamento della wallbox durante l'episodio.
+- Il replay osserva solo potenza domestica: non misura carico del DPM, potenza EV reale né numero di comandi/writes DPM. L'eventuale vantaggio del cap virtuale è quindi un'**ipotesi** da confermare alla prima carica ordinaria.
+- Non fare merge, non pubblicare release, non alterare il firmware o le automazioni precedenti.
