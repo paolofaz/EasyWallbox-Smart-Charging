@@ -158,3 +158,20 @@
 - v0.1 solo simulazione: nessun comando a wallbox/auto, no BLE aggiuntivo, DPM sempre attivo, automazioni esistenti invariate.
 - Dopo restart con auto già collegata, richiesta conferma esplicita della modalità prima di valutare l'automatismo (virtuale).
 - Eccezioni temporanee di partenza e taratura budget/soglie restano future attività da approvare/verificare.
+
+
+## 2026-11-15 — Pubblicata la prima release Marketplace 0.1.0
+
+**Autorizzazione dell'utente:** installazione diretta da Marketplace, ripartenza pulita senza tag/release precedenti; già rimossa la vecchia 0.0.13. L'autorizzazione alla release ha comportato aggiornare `main` con il codice precedentemente verificato (senza modificare firmware, DPM o automazioni HA).
+
+- `manifest.json` versione **0.1.0**, categoria `energy.ev_charging`, `hacs.json` per Home Assistant 2026.11+, BRAND locale incluso.
+- Nuova CI `validate-marketplace.yml`: `hacs/action@main` categoria integrazione senza esenzioni; validazione superata sul ramo di sviluppo.
+- Nuova CI `publish-v0.1.0.yml`: primo rilascio **una tantum**, vincolato alla stringa di commit `release: publish v0.1.0 to Marketplace`; esegue 99 test Python, hassfest e HACS, poi crea tag + GitHub Release con `gh release create`. I futuri push su main **non** pubblicano automaticamente altre versioni.
+- `main` avanzato per fast-forward al commit `2e90c64bbd8f2f2e4eb2174c90ac5ee1b714e9e6`, basato sul tree verificato di `stabilizzatore-m1`; nessun merge PR, nessuna issue.
+- **Workflow release [43754953906](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43754953906) concluso SUCCESS**. HACS validation su main [43754953951](https://github.com/paolofaz/EasyWallbox-Smart-Charging/actions/runs/43754953951) SUCCESS.
+- Verificato via API GitHub il tag `0.1.0` -> commit `2e90c64`, la release pubblica non draft, non prerelease: [EasyWallbox Smart Charging 0.1.0](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases/tag/0.1.0).
+- Verificati i file al tag: `manifest.json` `version: 0.1.0`, `hacs.json`, PNG BRAND e codice installabile nel percorso `custom_components/easywallbox_smart`.
+- **Installazione dell'utente non ancora eseguita**, quindi non dichiarare runtime HA collaudato. Marketplace richiede aggiunta repo tramite **Settings → Marketplace → Add from link**: non è ancora inclusa nel catalogo pubblico.
+- La release 0.1.0 resta **solo simulazione, senza nessun comando wallbox/auto**, con DPM originale attivo e automazioni esistenti intatte.
+
+Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni futura pubblicazione di `main` richiede nuovo consenso esplicito dell'utente e una nuova release/tag, senza sovrascrivere la 0.1.0.
