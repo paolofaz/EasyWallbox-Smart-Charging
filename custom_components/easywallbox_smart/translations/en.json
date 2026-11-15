@@ -1,0 +1,60 @@
+{
+  "title": "EasyWallbox Smart Charging",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wallbox and meter sources (read-only)",
+        "description": "SIMULATION ONLY: No commands will be sent to the wallbox or cars. Select existing Home Assistant entities.",
+        "data": {
+          "house_downstairs": "House meter — downstairs",
+          "house_upstairs": "House meter — upstairs",
+          "ev_power": "Wallbox dedicated meter (real EV power)",
+          "wallbox_connected": "Wallbox cable connected",
+          "wallbox_charging": "Wallbox actually charging",
+          "telemetry_fresh": "ESPHome BLE telemetry fresh",
+          "requested_limit": "Charge power requested (number, kW)",
+          "confirmed_limit": "Power set confirmed (sensor, kW)",
+          "dpm_model_kw": "DPM model total power (kW) — simulation assumption"
+        }
+      },
+      "vehicle": {
+        "title": "Vehicle profile",
+        "description": "Add one EV at a time. Use a unique cable sensor for each. Departure hours depend on the day of departure.",
+        "data": {
+          "name": "Vehicle name",
+          "cable": "Vehicle cable connected",
+          "soc": "Vehicle SOC (%)",
+          "target_entity": "Target SOC entity (optional)",
+          "target_default": "Default SOC target (%)",
+          "capacity_kwh": "Usable battery capacity (kWh)",
+          "sustainable_kw": "Conservative sustained charge rate (kW)",
+          "efficiency": "Assumed AC charging efficiency (0–1)",
+          "departure_weekday": "Departure Mon–Fri (HH:MM)",
+          "departure_weekend": "Departure Sat–Sun (HH:MM)",
+          "add_another": "Add another vehicle"
+        }
+      }
+    },
+    "error": {
+      "invalid_clock": "Use 24-hour HH:MM format",
+      "duplicate_vehicle": "Vehicle name already used",
+      "duplicate_cable": "Cable sensor already used"
+    },
+    "abort": {
+      "already_configured": "This wallbox is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "session": {
+        "name": "Charging session"
+      },
+      "plan": {
+        "name": "Departure planner"
+      },
+      "stabilizer": {
+        "name": "Charging stabilizer"
+      }
+    }
+  }
+}
