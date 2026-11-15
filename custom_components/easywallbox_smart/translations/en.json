@@ -55,6 +55,17 @@
       "stabilizer": {
         "name": "Charging stabilizer"
       }
+    },
+    "select": {
+      "session_mode": {
+        "name": "Session mode (simulation only)",
+        "state": {
+          "automatic": "Automatic",
+          "manual": "Manual",
+          "pause": "Pause (simulated)",
+          "charge_now": "Charge now (simulated)"
+        }
+      }
     }
   },
   "options": {
