@@ -33,6 +33,8 @@ class SessionSnapshot:
     sustainable_kw: float | None
     reserve_minutes: float = 30.0
     wallbox_reports_charging: bool | None = None
+    # Explicit ESPHome freshness confirmation, not inferred from a UI switch.
+    wallbox_telemetry_fresh: bool | None = None
 
 
 @dataclass(frozen=True)
