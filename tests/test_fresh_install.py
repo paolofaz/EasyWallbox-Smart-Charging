@@ -75,6 +75,9 @@ class FakeCoordinator:
     def close(self):
         self.closed = True
 
+    async def async_close(self):
+        self.close()
+
 
 class TestEntryGuard(unittest.TestCase):
     @classmethod
