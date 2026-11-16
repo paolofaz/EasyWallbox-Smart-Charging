@@ -171,7 +171,13 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
         if st.mode == "LIMITED":
             return _proposal(_initial(session.session_id, now), "retire",
                              "ownership_or_limits_lost", p)
-        return _proposal(st, "insufficient_data", "invalid_or_manual_limit", p)
+        reason = ("dpm_limit_unavailable"
+                  if not _valid(limits.dpm_kw, positive=True)
+                  and not limits.manual_owner
+                  and _valid(limits.requested_kw, positive=True)
+                  and _valid(limits.confirmed_kw, positive=True)
+                  else "invalid_or_manual_limit")
+        return _proposal(st, "insufficient_data", reason, p)
 
     # The selected DPM source, if present, must be fresh and valid.
     dpm = limits.dpm_kw
