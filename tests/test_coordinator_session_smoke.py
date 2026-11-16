@@ -8,7 +8,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import TestCase, main
 from unittest.mock import patch
@@ -434,6 +434,53 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertEqual(c.dpm_limit_source, "sensor")
         self.assertEqual(c.dpm_limit_kw, 4.4)
         self.assertEqual(c.dpm_pressure_kw, max(0.0, 2.25 + 4. - 4.4))
+
+    def test_shelly_last_reported_expiry_has_a_timer_without_polling(self):
+        h, entry = fixture(connected=True, charging=True)
+        h.states["sensor.downstairs"] = FakeState("100", "W")
+        h.states["sensor.upstairs"] = FakeState("100", "W")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        c.choose_mode("AUTO")
+        active = [t["at"] for t in h.timers if t["active"]]
+        self.assertEqual(len(active), 1)
+        # Shelly report expires after 3m; EV after 5m. The earlier
+        # event is precisely the Shelly deadline, not a repeating poll.
+        due = min(
+            h.states[x].last_reported + timedelta(minutes=3, seconds=1)
+            for x in ("sensor.downstairs", "sensor.upstairs")
+        )
+        self.assertLess(abs((active[0] - due).total_seconds()), 20)
+        self.assertTrue(all(l["active"] is False or l["entities"]
+                            for l in h.listeners))
+
+    def test_shelly_absence_schedules_bounded_virtual_cap_recovery(self):
+        from importlib import import_module
+        mod = import_module(PACKAGE + ".johnny_policy")
+        h, entry = fixture(connected=True, charging=True)
+        h.states["sensor.downstairs"] = FakeState("100", "W")
+        h.states["sensor.upstairs"] = FakeState("100", "W")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        c.choose_mode("AUTO")
+        now = datetime.now(timezone.utc)
+        # Missing reports do not create a timer that continually polls;
+        # an existing virtual cap has one cleanup deadline at +8m.
+        for id in ("sensor.downstairs", "sensor.upstairs"):
+            h.states[id].last_reported = now - timedelta(minutes=6)
+        c.state = mod.JohnnyState(
+            session_id=c.session.session_id, mode="LIMITED",
+            cap_kw=2.8, original_kw=4.0,
+            last_good_house_at=now - timedelta(minutes=4),
+            locked_budget_kwh=20.0,
+        )
+        c._schedule(now, c.proposal)
+        active = [t["at"] for t in h.timers if t["active"]]
+        self.assertEqual(len(active), 1)
+        expected = now + timedelta(minutes=4, seconds=1)
+        self.assertLess(abs((active[0] - expected).total_seconds()), 20)
 
     def test_select_entity_changes_only_virtual_mode(self):
         import asyncio
