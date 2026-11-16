@@ -50,6 +50,9 @@ class JohnnyState:
     last_sample_at: datetime | None = None
     # Time of the last genuinely trusted household report, never an HA timer.
     last_good_house_at: datetime | None = None
+    # Diagnostic history: only virtual, not a confirmed hardware transition.
+    last_transition_reason: str | None = None
+    last_transition_at: datetime | None = None
     # Last 3 minutes of independent household reports, for a robust high
     # percentile. No smoothing of the DPM itself or frequent write proposals.
     recent_loads: tuple[tuple[datetime, float], ...] = ()
@@ -62,6 +65,9 @@ def _initial(session_id, now):
 
 
 def _proposal(state, action, reason, p, due=None):
+    if action in ("reduce", "restore", "retire"):
+        state = replace(state, last_transition_reason=reason,
+                        last_transition_at=state.last_at)
     return state, Proposal(
         action, state.mode, state.cap_kw, reason,
         state.locked_budget_kwh if state.locked_budget_kwh is not None
@@ -197,8 +203,10 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     pressure = max(0., value + limits.confirmed_kw - dpm) if value is not None else None
     if st.mode == "LIMITED":
         if band not in ("wide", "medium"):
-            return _proposal(_restored(st, now, 10), "restore",
-                             "planner_needs_full_power", p)
+            why = ("target_reached_restore_proposed" if p.reason == "target_reached"
+                   else "planner_needs_full_power")
+            return _proposal(_restored(st, now, cfg.cooldown_minutes),
+                             "restore", why, p)
         if (st.locked_budget_kwh is not None
                 and st.spent_kwh_upper_bound >= st.locked_budget_kwh):
             return _proposal(_restored(st, now, 10), "restore",
