@@ -13,7 +13,7 @@ from .const import (
     CONF_HOUSE_SOURCES, CONF_DOWNSTAIRS, CONF_UPSTAIRS, CONF_EV_POWER,
     CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
     CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_TELEMETRY_FRESH,
-    CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL,
+    CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_MODEL, CONF_DPM_CONFIRMED,
     CONF_VEHICLES, CONF_NAME, CONF_CABLE, CONF_SOC,
     CONF_TARGET_ENTITY, CONF_TARGET_DEFAULT, CONF_TARGET_MODE, CONF_CAPACITY,
     CONF_SUSTAINABLE, CONF_EFFICIENCY, CONF_VEHICLE_OVERRIDES,
@@ -101,6 +101,9 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
     # Verify session counters, if selected: both are required together.
     energy_id = options.get(CONF_SESSION_ENERGY, data.get(CONF_SESSION_ENERGY))
     duration_id = options.get(CONF_SESSION_DURATION, data.get(CONF_SESSION_DURATION))
+    dpm_source = options.get(CONF_DPM_CONFIRMED, data.get(CONF_DPM_CONFIRMED))
+    if dpm_source is not None and not _entity(dpm_source, "sensor"):
+        issues.add("invalid_dpm_confirmed")
     if (energy_id is None) != (duration_id is None):
         issues.add("incomplete_session_counters")
     if energy_id is not None and not _entity(energy_id, "sensor"):
@@ -109,7 +112,7 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
         issues.add("invalid_session_duration")
     all_source_ids = list(household) + [
         data.get(k) for k in SOURCES
-    ] + [energy_id, duration_id]
+    ] + [energy_id, duration_id, dpm_source]
     valid_source_ids = [x for x in all_source_ids if isinstance(x, str)]
     if len(valid_source_ids) != len(set(valid_source_ids)):
         issues.add("duplicated_source_entity")
