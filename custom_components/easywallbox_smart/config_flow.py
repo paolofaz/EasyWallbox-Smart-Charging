@@ -27,6 +27,8 @@ from .const import (
     CONF_TARGET_DEFAULT, CONF_CAPACITY, CONF_SUSTAINABLE, CONF_EFFICIENCY,
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, CONF_ADD_ANOTHER,
     CONF_VEHICLE_OVERRIDES, CONF_DPM_CONFIRMED,
+    CONF_INITIAL_CHARGE_KW, CONF_MAX_CHARGE_KW, CONF_SHADOW_LAB_ENABLED,
+    DEFAULT_INITIAL_CHARGE_KW, DEFAULT_MAX_CHARGE_KW,
 )
 from .validation import validate
 from .target_policy import ENTITY, FIXED, selected_mode
@@ -53,6 +55,10 @@ WALLBOX_SCHEMA = vol.Schema({
     vol.Required(CONF_CONFIRMED_LIMIT): entity("sensor"),
     vol.Required(CONF_DPM_MODEL, default=4.4): number(1.4, 20.0),
     vol.Optional(CONF_DPM_CONFIRMED): entity("sensor"),
+    vol.Required(CONF_INITIAL_CHARGE_KW, default=DEFAULT_INITIAL_CHARGE_KW):
+        number(1.4, 6., .2),
+    vol.Required(CONF_MAX_CHARGE_KW, default=DEFAULT_MAX_CHARGE_KW):
+        number(1.4, 6., .2),
 })
 
 VEHICLE_SCHEMA = vol.Schema({
@@ -113,6 +119,9 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif (user_input.get(CONF_DPM_CONFIRMED)
                   in (set(source_ids) | {user_input[CONF_EV_POWER]})):
                 errors["base"] = "duplicate_sources"
+            elif (float(user_input[CONF_INITIAL_CHARGE_KW]) >
+                  float(user_input[CONF_MAX_CHARGE_KW])):
+                errors["base"] = "invalid_power_range"
             else:
                 await self.async_set_unique_id("one_local_wallbox")
                 self._abort_if_unique_id_configured()
@@ -197,7 +206,40 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         if not validate(self.config_entry.data, self.config_entry.options).ready:
             return self.async_abort(reason="invalid_configuration")
         return self.async_show_menu(
-            step_id="init", menu_options=["sources", "choose_vehicle"],
+            step_id="init",
+            menu_options=["sources", "choose_vehicle", "shadow_lab"],
+        )
+
+    async def async_step_shadow_lab(self, user_input: dict | None = None):
+        """Configure hypothetical EV limits and opt in to a field shadow log.
+
+        Options apply after reload. No wallbox action is ever issued.
+        """
+        data, options = self.config_entry.data, self.config_entry.options
+        initial = options.get(
+            CONF_INITIAL_CHARGE_KW,
+            data.get(CONF_INITIAL_CHARGE_KW, DEFAULT_INITIAL_CHARGE_KW),
+        )
+        maximum = options.get(
+            CONF_MAX_CHARGE_KW,
+            data.get(CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW),
+        )
+        enabled = options.get(CONF_SHADOW_LAB_ENABLED, False)
+        errors = {}
+        if user_input is not None:
+            updated = {**dict(options), **dict(user_input)}
+            if validate(data, updated).ready:
+                return self.async_create_entry(data=updated)
+            errors["base"] = "invalid_power_range"
+        schema = vol.Schema({
+            vol.Required(CONF_INITIAL_CHARGE_KW, default=initial):
+                number(1.4, 6.0, .2),
+            vol.Required(CONF_MAX_CHARGE_KW, default=maximum):
+                number(1.4, 6.0, .2),
+            vol.Required(CONF_SHADOW_LAB_ENABLED, default=enabled): bool,
+        })
+        return self.async_show_form(
+            step_id="shadow_lab", data_schema=schema, errors=errors,
         )
 
     async def async_step_choose_vehicle(self, user_input: dict | None = None):
