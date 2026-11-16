@@ -67,3 +67,30 @@ Stima dei minuti con modulazione DPM teorica di almeno 0,6 kW: senza cap 643; am
 Se si applicasse letteralmente il budget bloccato della prima riduzione per un'unica sessione di 7 giorni, la fascia *medium* con soli 90 minuti di slack si esaurirebbe quasi subito e non rappresenterebbe una settimana infinita: **non equiparare il replay senza budget al comportamento automatico reale**.
 
 Nessun firmware, DPM fisico, `main` o release pubblicata modificati.
+
+
+## 16/11/2026 — Robustezza simulatore: uscita sessione e perdita Shelly
+
+**Già implementato nel ramo `stabilizzatore-m1`, SOLO SIMULAZIONE.** Conferma carico 2/3 minuti, quiete 15/10 minuti e cooldown 10 minuti **invariati**.
+
+### Uscita dal limite opzionale senza effetti elettrici fittizi
+
+- **Target raggiunto** (SOC attendibile) mentre la wallbox segnala ancora ricarica, oppure **ricarica terminata con wallbox `Charging = OFF` verificato, auto identificata e limiti ancora coerenti**: emette una singola proposta virtuale `restore` al limite originale, con motivo specifico. **Non dichiara ripristinata la wallbox** e non scrive via BLE.
+- **Carica subito esplicito** durante un cap virtuale: propone il ripristino, solo con identità/proprietà e setpoint coerenti.
+- **Pausa, Manuale, cambio veicolo, disconnessione, limite richiesto/confermato incongruente o stato di carica contraddittorio**: emette `retire` con causa di riconciliazione; **nessun ripristino automatico non autorizzato**. La vecchia sessione non trasferisce il proprio cap alla successiva.
+- Il coordinatore HA **non azzera prematuramente lo stato virtuale** quando viene osservato un distacco o cambio auto; lascia al riduttore puro la possibilità di emettere il messaggio di riconciliazione. La modalità utente Manuale/Pausa non viene mai annullata automaticamente.
+- Gli attributi del sensore **Stabilizzatore** riportano l'ultima transizione virtuale e relativo timestamp per la diagnosi, anche dopo il successivo passaggio a `inactive`. Sono *eventi di decisione* e non conferme BLE.
+
+### Mancanza prolungata dei consumi domestici
+
+- Per autorizzare una nuova riduzione tutti gli Shelly selezionati devono essere attendibili e freschi; `unknown` e `unavailable` non significano zero.
+- Un cap virtuale già attivo **non viene ripristinato alla prima lettura mancante**. La perdita interrompe il conteggio della quiete.
+- Dopo **8 minuti dall'ultima lettura domestica complessivamente attendibile** il simulatore propone un `restore` del limite opzionale con motivo `house_telemetry_timeout_restore_proposed`, **purché sessione e proprietà restino coerenti**. Il DPM fisico rimane attivo. Se le informazioni elettriche o la sessione sono ambigue, si richiede riconciliazione e non si presume una scrittura consentita.
+- Home Assistant programma una **scadenza singola** per la freschezza dei sensori, più la scadenza di recupero se Johnny è limitato; **nessun polling di controllo continuo**. Un timer che rilegge lo stesso campione non dimostra una nuova accensione.
+- Dopo il ripristino virtuale si mantiene il cooldown ordinario di 10 minuti; ulteriori riduzioni richiedono di nuovo report freschi e persistenti.
+
+### Limite esplicito prima di qualsiasi attuazione
+
+Le proposte `restore` e `retire` non costituiscono attuazione confermata. Quando e **soltanto quando** si discuterà di comandi supervisionati, serviranno un unico proprietario del limite, memorizzazione di richiesta e riscontro, riconciliazione al riavvio, gestione delle disconnessioni BLE, conferma dell'effetto e nessun retry cieco. Durante i dati incoerenti non autorizzare nuove riduzioni né dedurre un effetto elettrico.
+
+**Test:** regressioni del riduttore puro e del coordinatore HA con fake sensori, auto, limiti e timer. Nessuna prova attuale sulla wallbox reale. `main`, firmware ESPHome, automazioni legacy e DPM fisico invariati.
