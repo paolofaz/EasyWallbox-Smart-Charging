@@ -94,3 +94,37 @@ Nessun firmware, DPM fisico, `main` o release pubblicata modificati.
 Le proposte `restore` e `retire` non costituiscono attuazione confermata. Quando e **soltanto quando** si discuterà di comandi supervisionati, serviranno un unico proprietario del limite, memorizzazione di richiesta e riscontro, riconciliazione al riavvio, gestione delle disconnessioni BLE, conferma dell'effetto e nessun retry cieco. Durante i dati incoerenti non autorizzare nuove riduzioni né dedurre un effetto elettrico.
 
 **Test:** regressioni del riduttore puro e del coordinatore HA con fake sensori, auto, limiti e timer. Nessuna prova attuale sulla wallbox reale. `main`, firmware ESPHome, automazioni legacy e DPM fisico invariati.
+
+
+## 16/11/2026 — Conferma intermittente di 5 minuti e DPM=0 (simulazione)
+
+### Conferma dei carichi — implementato
+
+La via già esistente per un carico **continuo** rimane: pressione >=0,6 kW per 120 secondi in fascia ampia, pressione >=0,8 kW per 180 secondi in fascia intermedia. Si affianca una **via aggiuntiva per un carico intermittente**, uguale nelle due fasce come finestra ma selettiva nella pressione accumulata:
+
+- finestra mobile di **5 minuti**, con almeno **due accensioni distinte**, almeno **120 secondi complessivi** documentati di pressione oltre soglia, pressione integrata di almeno **2,4 kW·min in ampio** o **3,2 kW·min in intermedio**;
+- riduzione solo su **nuovo campione attualmente sopra soglia**. La memoria delle pause brevi non provoca una proposta quando il carico è spento;
+- la durata accreditata tra due letture è al massimo **150 secondi**; gap più lunghi o dati `unknown`/`unavailable` **interrompono la memoria**. Il timer interno non genera mai un nuovo campione;
+- la base di calcolo del cap usa soltanto campioni **alti**, non i valori durante le pause; applica ancora il margine 0,2/0,1 kW e arrotondamento 0,2 kW;
+- se il calcolo produrrebbe un setpoint EV inferiore a **1,4 kW**, il cap opzionale si ferma a **1,4 kW** anziché rinunciare alla limitazione. Il **DPM resta proprietario esclusivo** dell'eventuale ulteriore modulazione elettrica;
+- dopo un cap, il ciclo di memoria si chiude; ripristino 15/10 minuti, cooldown 10 minuti, target SOC, budget e tutte le verifiche restano invariati.
+
+**Evidenza offline che ha guidato la scelta (non certificazione del codice in HA):** replay controfattuale con 8.876/10.080 minuti attendibili e carica virtuale costante a 4 kW, DPM 4,4 kW, senza budget per la batteria infinita. In fascia ampia la logica storica registrava 59 cambi di cap contro 59 della variante memoria; nella fascia intermedia 61 cambi contro 63, con minuti di pressione DPM forte modellata 259 contro 250 e una differenza stimata di 0,64 kWh aggiuntivi di ricarica differita. In sette notti separate 18–08 la stessa variante con budget manteneva 7/7 target nello scenario ampio e 6/7 nello scenario intermedio, come la base senza memoria; una notte medium non è dimostrabile a causa dei dati mancanti. Le prove **sintetiche** hanno mostrato recupero di cicli 60s ON/60s OFF senza interventi sul singolo carico di 110s o oscillazioni marginali. I CSV originali e le tracce private rimangono fuori GitHub.
+
+### DPM attuale = zero — requisito emerso e guardia implementata
+
+L'utente ha precisato che **`sensor.wallbox_limit_house_power_set_dpm` va a 0 durante la pausa Start/Stop tramite DPM**, e ritorna all'ultimo valore selezionato quando la carica riparte. Possono essere confermati **4,4 kW o 4,8 kW**: non codificare un ripristino fisso a 4,4 kW, né inferire il limite elettrico dal valore di pausa.
+
+- **Implementato ora:** DPM=0 non viene usato come tetto di potenza e **non autorizza cap o riavvii**. La policy distingue `dpm_zero_paused_or_unresolved` (nessun cap) da sensore DPM mancante; se un cap virtuale era attivo e DPM passa a 0, emette `retire` e segnala `dpm_zero_requires_reconciliation`, **mai un restore cieco**.
+- L'adattatore HA, in AUTO con auto identificata ma non in carica e DPM=0, mostra **`dpm_zero_pause_origin_unverified`** anziché suggerire `start_now` in base al solo SOC. Non è in grado di distinguere chi ha imposto la pausa.
+- **Da progettare prima di ogni automazione reale:** proprietario della pausa (utente, Johnny, sconosciuto), ultimo limite positivo **confermato e attendibile** e sua persistenza/reconciliazione al riavvio. Non memorizzare arbitrariamente una vecchia misura come autorizzazione a scrivere il DPM.
+
+### Proposte di UX e controllo — NON implementate né autorizzate all'attuazione
+
+- **AUTO**: planner sceglierà avvio e limite dentro i vincoli della sessione; **MANUAL**: utente unico proprietario dei comandi wallbox; **PAUSE**: sospensione esplicita non rimossa automaticamente; **CHARGE_NOW**: precedenza al caricamento rispetto all'attesa ordinaria. Separare modo dell'utente da stato reale `WAITING / CHARGING / PAUSED / COMPLETE / UNKNOWN`.
+- **`not_before` opzionale per sessione**, per esempio auto collegata 16:00 e avvio richiesto non prima delle 18:00. Se la wallbox parte automaticamente al collegamento, la futura integrazione dovrà mettere in pausa e **confermare**: non garantisce assenza di un iniziale transitorio di carica. Se la partenza diventa irraggiungibile, **avvisare**, non anticipare l'ora senza consenso.
+- **`max_ev_kw` opzionale per sessione**, per esempio 3,8 kW; vincola ogni proposta di Johnny e il ripristino del limite EV. **Distinto** dal tetto DPM della casa e dal cap dinamico. Stimare il target con la massima potenza realistica compatibile e avvisare se non raggiungibile.
+- **Dashboard Lovelace condizionale**: vista AUTO con SOC, target, stima di arrivo, partenza, `not_before`, cap massimo, motivi e valore EV richiesto/confermato/misurato; vista MANUAL con controlli ESPHome, senza due proprietari software. Pulsanti evidenti **Carica subito / Pausa / Riprendi**, da verificare con la semantica DPM0; evitare lo STOP nativo che in precedenti prove richiedeva scollegare il cavo per ripartire. Le condizioni visive non sostituiscono i blocchi di proprietà nel backend.
+- Tutti i comandi reali restano **fuori** dalla release simulata, richiedono esplicita approvazione, test con veicolo e garanzie richiesta→BLE confermata→stato elettrico Shelly. Nessuna implementazione di avvio differito, cursori, pulsanti fisici o limiti di sessione è stata fatta in questo commit.
+
+Questi nuovi requisiti, quando approvati, devono essere riportati anche nella **fonte principale del progetto** oltre che nel diario tecnico.
