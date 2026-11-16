@@ -132,7 +132,8 @@
         "data": {
           "initial_charge_kw": "Future session initial power (kW)",
           "max_charge_kw": "Ordinary maximum and simulated EV power (kW)",
-          "shadow_lab_enabled": "Enable continuous two-band simulation and private file log"
+          "shadow_lab_enabled": "Enable continuous two-band simulation and private file log",
+          "dpm_model_kw": "DPM reference model (kW) when the sensor is 0 or unavailable"
         }
       }
     },
