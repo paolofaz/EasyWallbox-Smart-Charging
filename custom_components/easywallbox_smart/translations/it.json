@@ -16,7 +16,9 @@
           "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
           "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
           "session_duration": "Durata sessione wallbox (min, facoltativo)",
-          "dpm_confirmed": "Limite DPM confermato ESPHome (sensore kW, consigliato)"
+          "dpm_confirmed": "Limite DPM confermato ESPHome (sensore kW, consigliato)",
+          "initial_charge_kw": "Potenza iniziale EV (kW, futuro controllo)",
+          "max_charge_kw": "Potenza massima EV ordinaria (kW, simulazione)"
         }
       },
       "vehicle": {
@@ -49,7 +51,8 @@
       "duplicate_cable": "Sensore cavo già utilizzato",
       "duplicate_sources": "Seleziona sensori distinti per piano terra, piano primo e wallbox.",
       "invalid_mapping": "Configurazione incompleta o incoerente: verificare le entità e i parametri delle auto.",
-      "incomplete_counters": "Seleziona sia Energia sessione sia Durata sessione, oppure nessuno dei due."
+      "incomplete_counters": "Seleziona sia Energia sessione sia Durata sessione, oppure nessuno dei due.",
+      "invalid_power_range": "Potenza iniziale superiore al massimo ordinario."
     },
     "abort": {
       "already_configured": "Questa wallbox è già configurata"
@@ -85,7 +88,8 @@
         "title": "Che cosa vuoi modificare?",
         "menu_options": {
           "sources": "Sensori consumi e contatori sessione",
-          "choose_vehicle": "Parametri veicolo e orari"
+          "choose_vehicle": "Parametri veicolo e orari",
+          "shadow_lab": "Potenza EV e laboratorio a due scenari"
         }
       },
       "vehicle": {
@@ -121,11 +125,21 @@
           "target_entity": "Entità HA obiettivo SOC (%)",
           "target_default": "Obiettivo SOC fisso (%)"
         }
+      },
+      "shadow_lab": {
+        "title": "Prova sul campo — due Johnny virtuali",
+        "description": "Nessun comando alla wallbox. Johnny simula un'auto sempre in carica, in parallelo con margine ampio e intermedio, usando solo i consumi Shelly della casa. I file JSONL privati sono in /config/easywallbox_smart_shadow/. La potenza iniziale è riservata alle future sessioni; la simulazione continua assume la potenza massima. Se DPM=0, usa un modello esplicito marcato nei log.",
+        "data": {
+          "initial_charge_kw": "Potenza iniziale per futura sessione (kW)",
+          "max_charge_kw": "Massimo ordinario e potenza simulata (kW)",
+          "shadow_lab_enabled": "Attiva laboratorio virtuale continuativo con log locale"
+        }
       }
     },
     "error": {
       "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore",
-      "invalid_mapping": "Sorgenti ripetute, assenti o incoerenti. Controlla la selezione."
+      "invalid_mapping": "Sorgenti ripetute, assenti o incoerenti. Controlla la selezione.",
+      "invalid_power_range": "Potenza iniziale e massima non valide: passi 0,2 kW, iniziale non oltre massimo."
     },
     "abort": {
       "no_vehicles": "Nessun profilo automobile configurato",
