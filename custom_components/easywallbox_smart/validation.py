@@ -18,6 +18,8 @@ from .const import (
     CONF_TARGET_ENTITY, CONF_TARGET_DEFAULT, CONF_TARGET_MODE, CONF_CAPACITY,
     CONF_SUSTAINABLE, CONF_EFFICIENCY, CONF_VEHICLE_OVERRIDES,
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND,
+    CONF_INITIAL_CHARGE_KW, CONF_MAX_CHARGE_KW, CONF_SHADOW_LAB_ENABLED,
+    DEFAULT_INITIAL_CHARGE_KW, DEFAULT_MAX_CHARGE_KW,
 )
 from .sources import finite_number
 from .target_policy import ENTITY, FIXED, selected_mode
@@ -118,6 +120,28 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
         issues.add("duplicated_source_entity")
     if not _range(data.get(CONF_DPM_MODEL), 1.4, 20.0):
         issues.add("invalid_dpm_model")
+    initial = options.get(
+        CONF_INITIAL_CHARGE_KW,
+        data.get(CONF_INITIAL_CHARGE_KW, DEFAULT_INITIAL_CHARGE_KW),
+    )
+    maximum = options.get(
+        CONF_MAX_CHARGE_KW,
+        data.get(CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW),
+    )
+    for key, value in ((CONF_INITIAL_CHARGE_KW, initial),
+                       (CONF_MAX_CHARGE_KW, maximum)):
+        num = finite_number(value)
+        if (num is None or not 1.4 <= num <= 6.0
+                or abs(num * 5 - round(num * 5)) > 1e-5):
+            issues.add("invalid_" + key)
+    if (_range(initial, 1.4, 6.) and _range(maximum, 1.4, 6.)
+            and float(initial) > float(maximum)):
+        issues.add("initial_above_maximum")
+    enabled = options.get(
+        CONF_SHADOW_LAB_ENABLED, data.get(CONF_SHADOW_LAB_ENABLED, False)
+    )
+    if not isinstance(enabled, bool):
+        issues.add("invalid_shadow_lab_enabled")
 
     cars = data.get(CONF_VEHICLES)
     cables: set[str] = set()
