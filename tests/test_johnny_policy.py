@@ -131,14 +131,26 @@ class TestJohnnyV1(unittest.TestCase):
         state, p = step(state, 10, 1.4)
         self.assertNotEqual(p.action, "reduce")
 
-    def test_quiet_18_minutes_wide_then_restore(self):
+    def test_quiet_15_minutes_wide_then_restore(self):
         state, _ = enter()
         results = []
-        for m in range(3,22):
+        for m in range(3,19):
             state,p = step(state, m, .2)
             results.append(p)
         self.assertEqual([p.action for p in results].count("restore"), 1)
         self.assertEqual(results[-1].reason, "documented_quiet")
+        self.assertEqual(state.mode, "NORMAL")
+
+    def test_medium_10_minute_quiet_window(self):
+        state, _ = enter(departure=4)
+        state, p = step(state, 3, 1.4, departure=4)
+        self.assertEqual(p.action, "reduce")
+        actions = []
+        for m in range(4, 15):
+            state, p = step(state, m, .2, departure=4)
+            actions.append(p.action)
+        self.assertEqual(actions.count("restore"), 1)
+        self.assertEqual(actions[-1], "restore")
         self.assertEqual(state.mode, "NORMAL")
 
     def test_short_thermostat_off_cycles_do_not_oscillate(self):
