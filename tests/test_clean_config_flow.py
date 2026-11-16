@@ -230,6 +230,36 @@ class TestCleanConfigFlow(unittest.TestCase):
         self.assertEqual(updated["type"], "create_entry")
         self.assertTrue(self.module.validate(old, updated["data"]).ready)
 
+    def test_shadow_opt_in_and_ev_limits_are_editable_on_existing_entry(self):
+        flow = self.module.EasyWallboxSmartConfigFlow()
+        asyncio.run(flow.async_step_user(entity_data()))
+        asyncio.run(flow.async_step_vehicle(
+            car("Fiat", "binary_sensor.fiat", "sensor.fiat_soc")
+        ))
+        data = asyncio.run(flow.async_step_target(
+            {"target_entity": "number.fiat_target"}))["data"]
+        opts = self.module.EasyWallboxSmartOptionsFlow()
+        opts.config_entry = types.SimpleNamespace(data=data, options={})
+        menu = asyncio.run(opts.async_step_init())
+        self.assertIn("shadow_lab", menu["menu_options"])
+        form = asyncio.run(opts.async_step_shadow_lab())
+        self.assertEqual(form["step_id"], "shadow_lab")
+        invalid = asyncio.run(opts.async_step_shadow_lab({
+            "initial_charge_kw": 4.0, "max_charge_kw": 3.6,
+            "shadow_lab_enabled": True,
+        }))
+        self.assertEqual(invalid["errors"]["base"], "invalid_power_range")
+        result = asyncio.run(opts.async_step_shadow_lab({
+            "initial_charge_kw": 3.6, "max_charge_kw": 3.8,
+            "shadow_lab_enabled": True,
+        }))
+        self.assertEqual(result["type"], "create_entry")
+        self.assertTrue(result["data"]["shadow_lab_enabled"])
+        self.assertEqual(result["data"]["max_charge_kw"], 3.8)
+        self.assertTrue(self.module.validate(data, result["data"]).ready)
+        self.assertEqual(data["initial_charge_kw"], 3.6)
+        self.assertEqual(data["max_charge_kw"], 4.)
+
     def test_fixed_target_mode_stores_only_fixed_value(self):
         flow = self.module.EasyWallboxSmartConfigFlow()
         asyncio.run(flow.async_step_user(entity_data()))
