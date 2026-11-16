@@ -48,6 +48,8 @@ class JohnnyState:
     cap_started_at: datetime | None = None
     last_at: datetime | None = None
     last_sample_at: datetime | None = None
+    # Time of the last genuinely trusted household report, never an HA timer.
+    last_good_house_at: datetime | None = None
     # Last 3 minutes of independent household reports, for a robust high
     # percentile. No smoothing of the DPM itself or frequent write proposals.
     recent_loads: tuple[tuple[datetime, float], ...] = ()
@@ -67,6 +69,11 @@ def _proposal(state, action, reason, p, due=None):
         state.spent_kwh_upper_bound, p.slack_minutes,
         due,
     )
+
+
+# The missing-data timeout is longer than one Shelly reporting gap; it is
+# evaluated from the last trusted report, NOT from the first timer callback.
+HOUSE_LOSS_RESTORE_MINUTES = 8
 
 
 def _restored(st, now, cooldown_minutes):
@@ -94,10 +101,14 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     p = plan(now, session, cfg)
     band = margin_band(p)
     st = previous or _initial(session.session_id, now)
-    if st.session_id != session.session_id:
-        st = _initial(session.session_id, now)
     if st.last_at is not None and now < st.last_at:
         return _proposal(st, "insufficient_data", "non_monotonic_clock", p)
+    if st.session_id != session.session_id:
+        # A cap proposed to an old EV session never belongs to a new one.
+        if st.mode == "LIMITED":
+            return _proposal(_initial(session.session_id, now), "retire",
+                             "session_changed_requires_reconciliation", p)
+        st = _initial(session.session_id, now)
 
     if st.mode == "LIMITED" and st.last_at is not None:
         cost_kw = max(0.0, (st.original_kw or 0) - (st.cap_kw or 0))
@@ -105,13 +116,46 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
                      + cost_kw * (now - st.last_at).total_seconds() / 3600)
     st = replace(st, last_at=now)
 
+    trustworthy_limit = (
+        not limits.manual_owner
+        and _valid(limits.requested_kw, positive=True)
+        and _valid(limits.confirmed_kw, positive=True)
+        and _valid(limits.dpm_kw, positive=True)
+    )
+    same_limit_owner = (
+        trustworthy_limit and st.mode == "LIMITED"
+        and abs(limits.requested_kw - st.baseline_requested_kw) <= .11
+        and abs(limits.confirmed_kw - st.baseline_confirmed_kw) <= .11
+        and abs(limits.dpm_kw - st.baseline_dpm_kw) <= .11
+    )
+
+    if st.mode == "LIMITED":
+        # Explicit user modes, ambiguity and a new/unknown connection must
+        # NEVER produce an automatic restore proposal for an old virtual cap.
+        if (session.mode not in ("AUTO", "CHARGE_NOW")
+                or not session.vehicle_id or session.vehicle_ambiguous):
+            return _proposal(_initial(session.session_id, now), "retire",
+                             "virtual_cap_requires_reconciliation", p)
+        if not session.charging or session.mode == "CHARGE_NOW":
+            if (not same_limit_owner or
+                    (not session.charging and
+                     session.wallbox_reports_charging is not False)):
+                return _proposal(_initial(session.session_id, now), "retire",
+                                 "end_or_intent_unverified_requires_reconciliation", p)
+            # A virtual cap is not an applied BLE setting. This is an
+            # explicit *proposal*, with original limit and reason visible.
+            restored = _restored(st, now, cfg.cooldown_minutes)
+            why = ("charge_now_restore_proposed" if session.mode == "CHARGE_NOW"
+                   else "target_reached_restore_proposed" if p.reason == "target_reached"
+                   else "charging_stopped_restore_proposed")
+            return _proposal(restored, "restore", why, p)
+
     if (session.mode != "AUTO" or not session.charging or
             not session.vehicle_id or session.vehicle_ambiguous):
         return _proposal(_initial(session.session_id, now), "inactive",
                          "not_auto_or_no_confirmed_charge", p)
 
-    if (limits.manual_owner or not _valid(limits.requested_kw, positive=True)
-            or not _valid(limits.confirmed_kw, positive=True)):
+    if not trustworthy_limit:
         if st.mode == "LIMITED":
             return _proposal(_initial(session.session_id, now), "retire",
                              "ownership_or_limits_lost", p)
@@ -145,6 +189,9 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     # sample must carry its own time, as the HA adapter already does.
     if not good_report:
         value = None
+    elif (st.last_good_house_at is None
+          or observed > st.last_good_house_at):
+        st = replace(st, last_good_house_at=observed)
 
     # Pressure on the *physical DPM* before our optional virtual cap.
     pressure = max(0., value + limits.confirmed_kw - dpm) if value is not None else None
@@ -158,8 +205,21 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
                              "session_budget_exhausted", p)
 
         if pressure is None:
+            # Missing telemetry is not a quiet house. After a sustained
+            # outage, release ONLY the virtual optional cap; the physical
+            # DPM keeps protecting the circuit. In later control phases an
+            # executor will still need ownership + BLE confirmation.
+            if (st.last_good_house_at is not None
+                    and now - st.last_good_house_at >= timedelta(
+                        minutes=HOUSE_LOSS_RESTORE_MINUTES
+                    )):
+                return _proposal(_restored(st, now, cfg.cooldown_minutes),
+                                 "restore", "house_telemetry_timeout_restore_proposed", p)
+            due = (st.last_good_house_at + timedelta(
+                minutes=HOUSE_LOSS_RESTORE_MINUTES
+            ) if st.last_good_house_at is not None else None)
             return _proposal(replace(st, quiet_since=None), "insufficient_data",
-                             "house_data_not_trusted", p)
+                             "house_data_not_trusted", p, due)
 
         # The house is quiet only when the original EV limit would create
         # almost no DPM pressure. Small thermostat breaks are not enough.
