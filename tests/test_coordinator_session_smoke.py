@@ -462,6 +462,18 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertEqual(c.state.last_transition_reason,
                          "charging_stopped_restore_proposed")
 
+    def test_hass_stale_telemetry_prevents_false_charge_end_restore(self):
+        h, c = self.setup(charging=True)
+        c.choose_mode("AUTO")
+        self._seed_virtual_limit(c)
+        self.setstate(h, "binary_sensor.wallbox_charging", "off")
+        self.setstate(h, "binary_sensor.fresh", "off")
+        self.setstate(h, "sensor.ev", "0", "W")
+        c.refresh()
+        self.assertEqual(c.proposal.action, "retire")
+        self.assertEqual(c.proposal.reason,
+                         "end_or_intent_unverified_requires_reconciliation")
+
     def test_hass_target_reached_cleans_virtual_cap(self):
         h, c = self.setup(charging=True)
         c.choose_mode("AUTO")
