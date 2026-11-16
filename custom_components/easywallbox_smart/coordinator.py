@@ -28,7 +28,7 @@ from .core import (
 from .sources import finite_number, next_departure, on, power_kw
 from .rate_estimator import RateState, RateEstimate, estimate
 from .target_policy import resolved_target, selected_mode
-from .johnny_policy import JohnnyState, evaluate, margin_band
+from .johnny_policy import JohnnyState, evaluate, margin_band, HOUSE_LOSS_RESTORE_MINUTES
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
 SHELLY_REPORT_AGE = timedelta(minutes=3)
@@ -297,6 +297,27 @@ class SimulationCoordinator:
                         choices.append(
                             now + timedelta(hours=budget_left / (original - cap))
                         )
+            # The Shelly must not look fresh forever if it stops sending
+            # events. Re-evaluate once the trusted report actually expires.
+            # While LIMITED, also enforce Johnny's bounded missing-data
+            # recovery even without a new Home Assistant event.
+            for entity_id in self.house_sources:
+                source = self._raw(entity_id)
+                if source is None:
+                    continue
+                reported = getattr(source, "last_reported", None) or source.last_updated
+                if reported is None:
+                    continue
+                expires = reported + SHELLY_REPORT_AGE + timedelta(seconds=1)
+                if expires > now:
+                    choices.append(expires)
+            if (self.state and self.state.mode == "LIMITED"
+                    and self.state.last_good_house_at is not None):
+                recovery = self.state.last_good_house_at + timedelta(
+                    minutes=HOUSE_LOSS_RESTORE_MINUTES, seconds=1
+                )
+                if recovery > now:
+                    choices.append(recovery)
             if (proposal.slack_minutes is not None
                     and proposal.slack_minutes > self.policy.min_slack_minutes):
                 choices.append(
