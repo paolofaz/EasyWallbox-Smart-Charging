@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Household meters and wallbox telemetry",
-        "description": "SIMULATION ONLY: no wallbox commands. Household power sensors are summed; EV Shelly is separate. Select both session counters to allow a 30-minute charging average.",
+        "description": "SIMULATION ONLY. House sensors exclude the EV Shelly. Prefer the ESPHome-confirmed DPM limit for Johnny. No device commands.",
         "data": {
           "ev_power": "Wallbox dedicated meter (real EV power)",
           "wallbox_connected": "Wallbox cable connected",
@@ -12,10 +12,11 @@
           "telemetry_fresh": "ESPHome BLE telemetry fresh",
           "requested_limit": "Charge power requested (number, kW)",
           "confirmed_limit": "Power set confirmed (sensor, kW)",
-          "dpm_model_kw": "DPM model total power (kW) — simulation assumption",
+          "dpm_model_kw": "Fallback simulation DPM limit (kW) — only when no DPM sensor is selected",
           "house_power_sources": "House consumption — select one or more sensors to sum",
           "session_energy": "Wallbox Session Energy (kWh, optional)",
-          "session_duration": "Wallbox Session Duration (min, optional)"
+          "session_duration": "Wallbox Session Duration (min, optional)",
+          "dpm_confirmed": "ESPHome confirmed DPM limit (kW sensor, recommended)"
         }
       },
       "vehicle": {
@@ -105,11 +106,12 @@
       },
       "sources": {
         "title": "Household power and wallbox session",
-        "description": "Choose one or more household power sensors to sum. The EV Shelly remains separate. Session counters are optional but must be paired.",
+        "description": "Choose household sensors excluding EV and, if available, the wallbox-confirmed DPM limit. If the selected DPM sensor is unavailable Johnny never guesses a replacement.",
         "data": {
           "house_power_sources": "House consumption — select one or more sensors to sum",
           "session_energy": "Wallbox Session Energy (kWh, optional)",
-          "session_duration": "Wallbox Session Duration (min, optional)"
+          "session_duration": "Wallbox Session Duration (min, optional)",
+          "dpm_confirmed": "ESPHome confirmed DPM limit (kW sensor, recommended)"
         }
       },
       "target": {
