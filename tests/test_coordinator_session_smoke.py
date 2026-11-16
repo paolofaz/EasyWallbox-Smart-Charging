@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import types
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import TestCase, main
@@ -608,6 +609,61 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertEqual(len(active), 1)
         expected = now + timedelta(minutes=4, seconds=1)
         self.assertLess(abs((active[0] - expected).total_seconds()), 20)
+
+    def test_opt_in_shadow_runs_unplugged_and_logs_private_jsonl(self):
+        import asyncio
+        import json
+        with tempfile.TemporaryDirectory() as root:
+            async def run():
+                h, entry = fixture(connected=False, charging=False)
+                entry.options = {
+                    "shadow_lab_enabled": True,
+                    "initial_charge_kw": 3.6,
+                    "max_charge_kw": 4.0,
+                }
+                h.config.path = lambda folder: str(Path(root) / folder)
+                h.async_add_executor_job = (
+                    lambda fn, *args: asyncio.to_thread(fn, *args)
+                )
+                entry.async_create_background_task = (
+                    lambda hass, coro, name: asyncio.create_task(coro, name=name)
+                )
+                c = self.Implementation(h, entry)
+                c.start()
+                self.assertFalse(c.session.charging)
+                self.assertIsNotNone(c._house_unsub)
+                self.assertEqual(set(c.shadow_decisions), {"wide", "medium"})
+                self.assertTrue(all(
+                    prop.simulation_only for prop in c.shadow_decisions.values()
+                ))
+                await asyncio.sleep(.05)
+                self.assertEqual(c.shadow_log_status, "ok")
+                logdir = Path(root) / "easywallbox_smart_shadow"
+                files = list(logdir.glob("shadow_*.jsonl"))
+                self.assertEqual(len(files), 1)
+                records = [json.loads(x) for x in files[0].read_text().splitlines()]
+                self.assertTrue(records)
+                first = records[0]
+                self.assertIn("wide", first)
+                self.assertIn("medium", first)
+                self.assertEqual(first["model"],
+                                 "continuous_two_band_no_real_vehicle")
+                self.assertNotIn("vehicle_id", first)
+                self.assertNotIn("soc", first)
+                self.assertNotIn("password", first)
+                await c.async_close()
+                self.assertIsNone(c._house_unsub)
+            asyncio.run(run())
+
+    def test_shadow_disabled_does_not_subscribe_to_house_unplugged(self):
+        h, entry = fixture(connected=False, charging=False)
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertFalse(c.shadow_enabled)
+        self.assertIsNone(c._house_unsub)
+        self.assertEqual(c.shadow_decisions, {})
+        self.assertEqual(c.shadow_log_status, "disabled")
 
     def test_select_entity_changes_only_virtual_mode(self):
         import asyncio
