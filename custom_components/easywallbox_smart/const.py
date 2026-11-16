@@ -14,6 +14,7 @@ CONF_TELEMETRY_FRESH = "telemetry_fresh"
 CONF_REQUESTED_LIMIT = "requested_limit"
 CONF_CONFIRMED_LIMIT = "confirmed_limit"
 CONF_DPM_MODEL = "dpm_model_kw"
+CONF_DPM_CONFIRMED = "dpm_confirmed"  # optional read-only ESPHome sensor
 CONF_VEHICLES = "vehicles"
 CONF_VEHICLE_OVERRIDES = "vehicle_overrides"
 CONF_NAME = "name"
