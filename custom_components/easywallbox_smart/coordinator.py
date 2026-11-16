@@ -56,7 +56,9 @@ class SimulationCoordinator:
             CONF_HOUSE_SOURCES,
             [self.config.get(CONF_DOWNSTAIRS), self.config.get(CONF_UPSTAIRS)],
         )
-        self.policy = Config(dpm_model_kw=float(self.config[CONF_DPM_MODEL]))
+        self.policy = Config(dpm_model_kw=float(entry.options.get(
+            CONF_DPM_MODEL, self.config[CONF_DPM_MODEL]
+        )))
         self.state: JohnnyState | None = None
         self.proposal: Proposal | None = None
         self.planning = None
