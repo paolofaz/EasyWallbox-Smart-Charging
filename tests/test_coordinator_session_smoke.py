@@ -394,6 +394,46 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.addCleanup(c.close)
         self.assertIsNone(c.session.target_soc)
 
+    def test_confirmed_dpm_sensor_used_instead_of_manual_model(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["dpm_confirmed"] = "sensor.dpm_confirmed"
+        entry.data["dpm_model_kw"] = 4.3
+        h.states["sensor.dpm_confirmed"] = FakeState("4.4", "kW")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.dpm_limit_source, "sensor")
+        self.assertAlmostEqual(c.dpm_limit_kw, 4.4)
+        self.assertTrue(any(
+            "sensor.dpm_confirmed" in tag["entities"]
+            for tag in h.listeners if tag["active"]
+        ))
+        h.states["sensor.dpm_confirmed"] = FakeState("unavailable", "kW")
+        c.refresh()
+        self.assertIsNone(c.dpm_limit_kw)
+        self.assertEqual(c.proposal.action, "inactive" if
+                         c.control.mode == "RECONCILE" else c.proposal.action)
+
+    def test_old_entry_without_dpm_entity_uses_explicit_model_only(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["dpm_model_kw"] = 4.3
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.dpm_limit_source, "simulation_model")
+        self.assertAlmostEqual(c.dpm_limit_kw, 4.3)
+
+    def test_dpm_sensor_can_be_configured_in_options_without_device_write(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.options = {"dpm_confirmed": "sensor.new_dpm"}
+        h.states["sensor.new_dpm"] = FakeState("4.4", "kW")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        self.assertEqual(c.dpm_limit_source, "sensor")
+        self.assertEqual(c.dpm_limit_kw, 4.4)
+        self.assertEqual(c.dpm_pressure_kw, max(0.0, 2.25 + 4. - 4.4))
+
     def test_select_entity_changes_only_virtual_mode(self):
         import asyncio
         _, coordinator = self.setup()
