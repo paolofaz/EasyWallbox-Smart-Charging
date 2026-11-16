@@ -231,6 +231,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             data.get(CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW),
         )
         enabled = options.get(CONF_SHADOW_LAB_ENABLED, False)
+        model = options.get(CONF_DPM_MODEL, data.get(CONF_DPM_MODEL, 4.4))
         errors = {}
         if user_input is not None:
             updated = {**dict(options), **dict(user_input)}
@@ -242,6 +243,8 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
                 number(1.4, 6.0, .2),
             vol.Required(CONF_MAX_CHARGE_KW, default=maximum):
                 number(1.4, 6.0, .2),
+            vol.Required(CONF_DPM_MODEL, default=model):
+                number(1.4, 20.0, .1),
             vol.Required(CONF_SHADOW_LAB_ENABLED, default=enabled): bool,
         })
         return self.async_show_form(
