@@ -118,7 +118,9 @@ def validate(data: Mapping | None, options: Mapping | None = None) -> Validation
     valid_source_ids = [x for x in all_source_ids if isinstance(x, str)]
     if len(valid_source_ids) != len(set(valid_source_ids)):
         issues.add("duplicated_source_entity")
-    if not _range(data.get(CONF_DPM_MODEL), 1.4, 20.0):
+    if not _range(
+        options.get(CONF_DPM_MODEL, data.get(CONF_DPM_MODEL)), 1.4, 20.0
+    ):
         issues.add("invalid_dpm_model")
     initial = options.get(
         CONF_INITIAL_CHARGE_KW,
