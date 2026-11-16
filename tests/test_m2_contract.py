@@ -24,7 +24,7 @@ class TestM2Contract(unittest.TestCase):
         self.assertIn("self.advice.next_check_at", coordinator)
         self.assertIn("self.session.soc_at", coordinator)
         self.assertIn("EV_REPORT_AGE", coordinator)
-        self.assertIn("_observe_house_only_in_charge(self.session.charging)", coordinator)
+        self.assertIn("self.session.charging or self.shadow_enabled", coordinator)
         self.assertNotIn("async_track_time_interval", coordinator)
 
     def test_canonical_english_strings_and_translations(self):
