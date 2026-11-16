@@ -31,3 +31,11 @@ CONF_DEPARTURE_WEEKDAY = "departure_weekday"
 CONF_DEPARTURE_WEEKEND = "departure_weekend"
 CONF_ADD_ANOTHER = "add_another"
 SIMULATION_LABEL = "SIMULAZIONE — NESSUN COMANDO"
+
+# Options for upcoming supervised sessions (currently advisory/config only).
+CONF_INITIAL_CHARGE_KW = "initial_charge_kw"
+CONF_MAX_CHARGE_KW = "max_charge_kw"
+DEFAULT_INITIAL_CHARGE_KW = 3.6
+DEFAULT_MAX_CHARGE_KW = 4.0
+# Explicit opt-in to an always-charging, two-band field shadow simulation.
+CONF_SHADOW_LAB_ENABLED = "shadow_lab_enabled"
