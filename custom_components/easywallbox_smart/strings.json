@@ -16,7 +16,9 @@
           "house_power_sources": "House consumption — select one or more sensors to sum",
           "session_energy": "Wallbox Session Energy (kWh, optional)",
           "session_duration": "Wallbox Session Duration (min, optional)",
-          "dpm_confirmed": "ESPHome confirmed DPM limit (kW sensor, recommended)"
+          "dpm_confirmed": "ESPHome confirmed DPM limit (kW sensor, recommended)",
+          "initial_charge_kw": "Initial EV power (kW, future control)",
+          "max_charge_kw": "Ordinary EV maximum (kW, simulation)"
         }
       },
       "vehicle": {
@@ -49,7 +51,8 @@
       "duplicate_cable": "Cable sensor already used",
       "duplicate_sources": "Choose distinct sensors for downstairs, upstairs and EV power.",
       "invalid_mapping": "Incomplete or inconsistent configuration: review entities and vehicle parameters.",
-      "incomplete_counters": "Choose both Session Energy and Session Duration, or neither."
+      "incomplete_counters": "Choose both Session Energy and Session Duration, or neither.",
+      "invalid_power_range": "Initial EV power is greater than the ordinary maximum."
     },
     "abort": {
       "already_configured": "This wallbox is already configured"
@@ -85,7 +88,8 @@
         "title": "What would you like to edit?",
         "menu_options": {
           "sources": "Power meters and session counters",
-          "choose_vehicle": "Vehicle target and departure times"
+          "choose_vehicle": "Vehicle target and departure times",
+          "shadow_lab": "EV power and dual-scenario field lab"
         }
       },
       "vehicle": {
@@ -121,11 +125,21 @@
           "target_entity": "HA target SOC entity (%)",
           "target_default": "Fixed target SOC (%)"
         }
+      },
+      "shadow_lab": {
+        "title": "Field trial — two virtual Johnny scenarios",
+        "description": "No wallbox commands. Two always-charging synthetic EVs (wide and medium margin) observe only household Shelly sensors. Private JSONL files are written under /config/easywallbox_smart_shadow/. Initial power is reserved for future sessions; the continuous trial assumes maximum EV power. DPM=0 uses an explicitly labeled test model.",
+        "data": {
+          "initial_charge_kw": "Future session initial power (kW)",
+          "max_charge_kw": "Ordinary maximum and simulated EV power (kW)",
+          "shadow_lab_enabled": "Enable continuous two-band simulation and private file log"
+        }
       }
     },
     "error": {
       "invalid_clock": "Use 24-hour HH:MM format",
-      "invalid_mapping": "Missing, repeated or inconsistent sources. Check your selection."
+      "invalid_mapping": "Missing, repeated or inconsistent sources. Check your selection.",
+      "invalid_power_range": "Invalid power limits: use 0.2-kW steps and initial no higher than maximum."
     },
     "abort": {
       "no_vehicles": "No vehicle profiles configured",
