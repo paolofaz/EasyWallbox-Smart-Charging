@@ -37,4 +37,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
     coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if coordinator is not None:
-        coordinator.close()
+        await coordinator.async_close()
