@@ -26,7 +26,7 @@ from .const import (
     CONF_TARGET_MODE,
     CONF_TARGET_DEFAULT, CONF_CAPACITY, CONF_SUSTAINABLE, CONF_EFFICIENCY,
     CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, CONF_ADD_ANOTHER,
-    CONF_VEHICLE_OVERRIDES,
+    CONF_VEHICLE_OVERRIDES, CONF_DPM_CONFIRMED,
 )
 from .validation import validate
 from .target_policy import ENTITY, FIXED, selected_mode
@@ -51,7 +51,8 @@ WALLBOX_SCHEMA = vol.Schema({
     vol.Required(CONF_TELEMETRY_FRESH): entity("binary_sensor"),
     vol.Required(CONF_REQUESTED_LIMIT): entity("number"),
     vol.Required(CONF_CONFIRMED_LIMIT): entity("sensor"),
-    vol.Required(CONF_DPM_MODEL, default=4.3): number(1.4, 20.0),
+    vol.Required(CONF_DPM_MODEL, default=4.4): number(1.4, 20.0),
+    vol.Optional(CONF_DPM_CONFIRMED): entity("sensor"),
 })
 
 VEHICLE_SCHEMA = vol.Schema({
@@ -109,6 +110,9 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "duplicate_sources"
             elif (CONF_SESSION_ENERGY in user_input) != (CONF_SESSION_DURATION in user_input):
                 errors["base"] = "incomplete_counters"
+            elif (user_input.get(CONF_DPM_CONFIRMED)
+                  in (set(source_ids) | {user_input[CONF_EV_POWER]})):
+                errors["base"] = "duplicate_sources"
             else:
                 await self.async_set_unique_id("one_local_wallbox")
                 self._abort_if_unique_id_configured()
@@ -226,6 +230,9 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             CONF_SESSION_DURATION: options.get(
                 CONF_SESSION_DURATION, data.get(CONF_SESSION_DURATION)
             ),
+            CONF_DPM_CONFIRMED: options.get(
+                CONF_DPM_CONFIRMED, data.get(CONF_DPM_CONFIRMED)
+            ),
         }
         errors = {}
         if user_input is not None:
@@ -234,6 +241,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             # Both counters can be removed, without inheriting stale data.
             updated[CONF_SESSION_ENERGY] = user_input.get(CONF_SESSION_ENERGY)
             updated[CONF_SESSION_DURATION] = user_input.get(CONF_SESSION_DURATION)
+            updated[CONF_DPM_CONFIRMED] = user_input.get(CONF_DPM_CONFIRMED)
             check = validate(data, updated)
             if check.ready:
                 return self.async_create_entry(data=updated)
@@ -242,7 +250,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             vol.Required(CONF_HOUSE_SOURCES, default=initial[CONF_HOUSE_SOURCES]):
                 entity("sensor", multiple=True),
         }
-        for key in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION):
+        for key in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION, CONF_DPM_CONFIRMED):
             marker = (vol.Optional(key, default=initial[key])
                       if initial[key] is not None else vol.Optional(key))
             schema[marker] = entity("sensor")
