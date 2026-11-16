@@ -35,7 +35,11 @@ simulazione utilizza quello: ad esempio 4,4 o 4,8 kW. Quando il DPM
 diventa **0** per effetto dello Start-Stop, lo scenario virtuale
 continua usando **l'ultimo valore positivo visto in questa esecuzione**,
 se presente, oppure il **modello DPM esplicitamente configurato**
-nell'integrazione. Nel JSONL il campo `dpm_model_source` chiarisce
+nell'integrazione. Il **DPM di riferimento** è modificabile nelle
+stesse Opzioni del laboratorio, ad esempio **4,8 kW** quando l'ultimo
+limite reale era 4,8 kW ma il valore corrente è 0 dopo un riavvio.
+**È soltanto un'ipotesi del test, non una scrittura alla wallbox.**
+Nel JSONL il campo `dpm_model_source` chiarisce
 se la soglia era reale, ricordata o ipotetica. Il DPM fisico a zero
 **non provoca alcuno Start**, e la prova non pretende di sapere chi
 abbia messo in pausa la wallbox.
@@ -56,7 +60,9 @@ abbia messo in pausa la wallbox.
    **è spento per default**.
 6. In **Impostazioni → Dispositivi e servizi → EasyWallbox Smart Charging →
    Configura / Opzioni → Potenza EV e laboratorio a due scenari** impostare
-   potenza iniziale, massimo ordinario e abilitare **Laboratorio virtuale**.
+   potenza iniziale, massimo ordinario, **DPM di riferimento**
+   (ad esempio 4,8 kW se è il limite abituale) e abilitare
+   **Laboratorio virtuale**.
    Il salvataggio delle Opzioni ricarica l'integrazione.
 
 Non serve modificare il firmware ESPHome, il DPM o `configuration.yaml`.
