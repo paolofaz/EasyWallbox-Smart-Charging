@@ -408,11 +408,12 @@ class TestCoordinatorSessionSmoke(TestCase):
             "sensor.dpm_confirmed" in tag["entities"]
             for tag in h.listeners if tag["active"]
         ))
+        c.choose_mode("AUTO")
         h.states["sensor.dpm_confirmed"] = FakeState("unavailable", "kW")
         c.refresh()
         self.assertIsNone(c.dpm_limit_kw)
-        self.assertEqual(c.proposal.action, "inactive" if
-                         c.control.mode == "RECONCILE" else c.proposal.action)
+        self.assertEqual(c.proposal.action, "insufficient_data")
+        self.assertEqual(c.proposal.reason, "dpm_limit_unavailable")
 
     def test_old_entry_without_dpm_entity_uses_explicit_model_only(self):
         h, entry = fixture(connected=True, charging=True)
