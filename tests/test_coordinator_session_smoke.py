@@ -646,6 +646,9 @@ class TestCoordinatorSessionSmoke(TestCase):
                 first = records[0]
                 self.assertIn("wide", first)
                 self.assertIn("medium", first)
+                self.assertTrue(first["virtual_state_reset_on_this_row"])
+                self.assertTrue(first["shadow_run_started_local"])
+                self.assertTrue(first["house_report_local"])
                 self.assertEqual(first["model"],
                                  "continuous_two_band_no_real_vehicle")
                 self.assertNotIn("vehicle_id", first)
