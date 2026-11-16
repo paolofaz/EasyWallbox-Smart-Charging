@@ -145,12 +145,13 @@ class SimulationCoordinator:
                 self._session_seq += 1
             self._vehicle_id = None
             self._active_departure = None
-            self.state = None
+            # Keep last virtual state until evaluate() can mark a cap
+            # from the old EV session for reconciliation. Never inherit it.
         elif identity is not None and identity != self._vehicle_id:
             self._session_seq += 1
             self._vehicle_id = identity
             self._active_departure = None
-            self.state = None
+            # The pure policy fences the old cap on the session-ID change.
         # UNKNOWN is NOT a confirmed unplug: preserve manual/paused intent.
 
         if selected:
