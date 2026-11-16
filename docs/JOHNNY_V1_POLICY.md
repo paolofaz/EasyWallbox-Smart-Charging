@@ -17,8 +17,8 @@ La preferenza è leggere il limite DPM da `Limit house power set -DPM-` già esp
 
 | Fascia da SOC, target e partenza | Condizione per proporre riduzione | Ripristino per quiete | Budget conservativo della sessione |
 |---|---|---|---|
-| **Ampio**, slack oltre 120 minuti | Pressione DPM >=0,6 kW per >=120 secondi, con letture **distinte** | 18 min di pressione <=0,4 kW | 25% dell'energia equivalente allo slack stimato |
-| **Intermedio**, slack oltre 45 e fino a 120 min | Pressione >=0,8 kW per >=180 secondi, letture distinte | 8 min di pressione <=0,4 kW | 10% dell'energia equivalente allo slack |
+| **Ampio**, slack oltre 120 minuti | Pressione DPM >=0,6 kW per >=120 secondi, con letture **distinte** | 15 min di pressione <=0,4 kW | 25% dell'energia equivalente allo slack stimato |
+| **Intermedio**, slack oltre 45 e fino a 120 min | Pressione >=0,8 kW per >=180 secondi, letture distinte | 10 min di pressione <=0,4 kW | 10% dell'energia equivalente allo slack |
 | **Urgente**, slack <=45 min, target non raggiungibile o dati ignoti | Nessuna nuova limitazione opzionale | Ripristina cap virtuale posseduto se necessario | Nessun nuovo budget |
 
 Parametri e durate **sono scelte iniziali della simulazione**, non tarature hardware validate. Il budget è fissato al primo intervento della sessione e non viene ricaricato artificialmente ai cicli successivi. È contabilizzato come **limite superiore** `(limite_originale − cap) × tempo`, anche durante letture mancanti; la perdita EV reale può essere inferiore perché il DPM avrebbe già limitato la potenza.
@@ -30,7 +30,7 @@ Sorgente consumo domestico: somma di 1..N Shelly di casa **escludendo** lo Shell
 ## Evidenze considerate, non risultati di un nuovo collaudo
 
 - Studio delle 7 sere 7–13/11: soglie fisse precedenti con quiete 15–20 minuti hanno ridotto il numero di cambi virtuali rispetto a quiete di 10, ma possono consumare budget troppo presto. Era una logica differente: **non** è un replay numerico di Johnny v1.
-- Dati del 15/11: 125 campioni del piano superiore tra 20:30 e 22:57, piano inferiore stimato 200 W costanti su indicazione dell'utente; ultimo phon compreso. Il replay del laboratorio aveva mostrato che una soglia fissa casa1,5 kW poteva non intercettare la modulazione DPM del phon, mentre una soglia dinamica si adattava al setpoint dell'auto. Il 75° percentile, i 18 minuti di quiete e il budget scelti **non sono stati ancora collaudati nella casa reale**.
+- Dati del 15/11: 125 campioni del piano superiore tra 20:30 e 22:57, piano inferiore stimato 200 W costanti su indicazione dell'utente; ultimo phon compreso. Il replay del laboratorio aveva mostrato che una soglia fissa casa1,5 kW poteva non intercettare la modulazione DPM del phon, mentre una soglia dinamica si adattava al setpoint dell'auto. Il 75° percentile, i 15/10 minuti di quiete e il budget scelti **non sono stati ancora collaudati nella casa reale**.
 - Esperimento ipotetico DPM con 5 secondi di ritardo: nessun controllore lento può garantire l'assenza del primo picco imprevisto; la scelta del cap stabile può influenzare picchi successivi, **non sostituire il DPM**.
 - Le tracce domestiche originali sono PRIVATE e non sono state committate su GitHub.
 
@@ -48,3 +48,22 @@ Sorgente consumo domestico: somma di 1..N Shelly di casa **escludendo** lo Shell
 Nella prima ricarica ordinaria, confrontare timestamp e proposte di Johnny con consumo domestico, potenza effettivamente misurata dallo Shelly EV, limite DPM e SOC; segnare `reduce`, `restore`, `hold`, fascia, costo stimato. Non forzare carichi né Stop/Start. Se il limite DPM non è attendibile, restare in simulazione senza nuove riduzioni.
 
 Nessuna modifica a firmware ESPHome o alle automazioni Fiat. Branch `stabilizzatore-m1` e manifest `0.2.0b1` non pubblicato; `main` e Marketplace `0.1.0` restano invariati. Il rollback dalla futura versione di test sarà possibile mantenendo la release pubblicata 0.1.0 come riferimento. La migrazione reale a controllo supervisionato richiederà discussione, test hardware e autorizzazione esplicita.
+
+## Replay continuo sette giorni (9–15 novembre 2026) — aggiornamento 16/11
+
+Ricevuti due nuovi CSV HA (`sensor.assorbimento_sotto` e `sensor.assorbimento_sopra`), **non caricati su GitHub**. Sono 168 ore di calendario, di cui 8.876/10.080 minuti con entrambi gli Shelly attendibili se si consente una validità del dato di 180 secondi (**88,1%**). Righe aggregate iniziali e valori `unknown`/`unavailable` non vengono trattati come potenza istantanea zero.
+
+Laboratorio di una **sola sessione EV ipotetica** a 4 kW, DPM 4,4 kW, stati non resettati a mezzanotte e fasce *wide*/*medium* mantenute artificialmente costanti. Per soddisfare l'assunzione di «batteria infinita», nel **solo laboratorio** è stato escluso il budget di energia sacrificabile; questa è un'analisi di sensibilità della macchina a stati, non una sessione realistico/SOC del planner. I valori riportati sono stime su minuti campionati, DPM ideale senza ritardo, non attività reale del DPM.
+
+| Fascia | Quiete originale | Cambi virtuali originali | Extra kWh originali | Quiete scelta | Cambi nuovi | Extra kWh nuovi |
+| --- | --- | ---: | ---: | --- | ---: | ---: |
+| Ampio, conferma 120s | 18 min | 53 | 48,10 | **15 min** | 59 | **38,37** |
+| Intermedio, conferma 180s | 8 min | 62 | 16,39 | **10 min** | 61 | **21,26** |
+
+Stima dei minuti con modulazione DPM teorica di almeno 0,6 kW: senza cap 643; ampio 18 min: 196, ampio 15 min: 173; intermedio 8 min: 293, intermedio 10 min: 258. Il numero dei cambi **non** equivale a scritture BLE, perché l'integrazione è solo simulazione.
+
+**Scelta per Johnny v1:** aggiornare unicamente quiete **ampio da 18 a 15 min**, **intermedio da 8 a 10 min**; mantenere conferma 120/180s e cooldown 10min, senza introdurre fasce orarie o gradini. La sensibilità all'età massima dei dati (120s/150s/180s) è elevata; se il cap resta attivo durante telemetria mancante, l'energia teoricamente sacrificata può crescere molto. Prima del controllo reale richiede una specifica politica di sicurezza per dati assenti/obsoleti e monitoraggio in HA reale.
+
+Se si applicasse letteralmente il budget bloccato della prima riduzione per un'unica sessione di 7 giorni, la fascia *medium* con soli 90 minuti di slack si esaurirebbe quasi subito e non rappresenterebbe una settimana infinita: **non equiparare il replay senza budget al comportamento automatico reale**.
+
+Nessun firmware, DPM fisico, `main` o release pubblicata modificati.
