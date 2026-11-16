@@ -401,6 +401,14 @@ class SimulationCoordinator:
             else HouseSnapshot(None, None, "inactive")
         )
         limits = self._limits()
+        # DPM=0 is the wallbox pause method, NOT a 0 kW household ceiling
+        # and never permission for an automatic BLE resume. We currently
+        # cannot know whether a pause was initiated by the user or planner.
+        if (self.session.vehicle_id and self.session.mode == "AUTO"
+                and limits.dpm_kw == 0 and not self.session.charging):
+            self.advice = DepartureAdvice(
+                "insufficient_data", "dpm_zero_pause_origin_unverified"
+            )
         self.dpm_limit_kw = limits.dpm_kw
         house_kw = supervising_house.kw
         self.dpm_pressure_kw = (
@@ -417,6 +425,8 @@ class SimulationCoordinator:
             if self.control and self.control.requires_confirmation
             else "connection_unavailable_or_ambiguous"
             if self.control and self.control.phase == "UNKNOWN"
+            else "dpm_zero_pause_origin_unverified"
+            if self.session.vehicle_id and limits.dpm_kw == 0
             else self.planning.reason
             if self.planning.reason != "flexible"
             else "house_data_not_trusted" if house.kw is None
