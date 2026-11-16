@@ -99,8 +99,11 @@ ripristini, durata, frequenza e carichi intermittenti.
 
 Lo stato della simulazione è **solo in RAM**: un riavvio riparte
 con due Johnny non limitati, e i nuovi record vengono accodati al file
-del giorno. Annotare gli orari dei riavvii perché il confronto dei
-cambi attraverso il riavvio non rappresenta una singola sessione continua.
+del giorno. Il campo `shadow_run_started_local` identifica ogni esecuzione
+del processo, `virtual_state_reset_on_this_row=true` marca la prima
+valutazione della nuova esecuzione, e `house_report_local` indica il
+timestamp del campione domestico utilizzato. Il confronto dei cambi
+attraverso un riavvio non rappresenta una singola sessione continua.
 Il logger non pretende di ripristinare il precedente limite virtuale.
 
 ### Disattivazione e ritorno alla versione stabile
