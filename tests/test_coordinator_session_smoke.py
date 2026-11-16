@@ -435,6 +435,80 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertEqual(c.dpm_limit_kw, 4.4)
         self.assertEqual(c.dpm_pressure_kw, max(0.0, 2.25 + 4. - 4.4))
 
+    def _seed_virtual_limit(self, coordinator):
+        from dataclasses import replace
+        self.assertIsNotNone(coordinator.state)
+        self.assertIsNotNone(coordinator.session.vehicle_id)
+        coordinator.state = replace(
+            coordinator.state, mode="LIMITED", cap_kw=2.8,
+            original_kw=4.0, baseline_requested_kw=4.0,
+            baseline_confirmed_kw=4.0,
+            baseline_dpm_kw=coordinator.dpm_limit_kw,
+            locked_budget_kwh=5.0,
+        )
+
+    def test_hass_confirmed_charge_stop_records_virtual_restore(self):
+        h, c = self.setup(charging=True)
+        c.choose_mode("AUTO")
+        self._seed_virtual_limit(c)
+        self.setstate(h, "binary_sensor.wallbox_charging", "off")
+        self.setstate(h, "sensor.ev", "0", "W")
+        c.refresh()
+        self.assertEqual((c.proposal.action, c.proposal.reason),
+                         ("restore", "charging_stopped_restore_proposed"))
+        self.assertEqual(c.state.last_transition_reason, c.proposal.reason)
+        c.refresh()
+        self.assertEqual(c.proposal.action, "inactive")
+        self.assertEqual(c.state.last_transition_reason,
+                         "charging_stopped_restore_proposed")
+
+    def test_hass_target_reached_cleans_virtual_cap(self):
+        h, c = self.setup(charging=True)
+        c.choose_mode("AUTO")
+        self._seed_virtual_limit(c)
+        self.setstate(h, "sensor.kia_soc", "80", "%")
+        c.refresh()
+        self.assertEqual((c.proposal.action, c.proposal.reason),
+                         ("restore", "target_reached_restore_proposed"))
+
+    def test_hass_ev_meter_zero_but_wallbox_charging_needs_reconciliation(self):
+        h, c = self.setup(charging=True)
+        c.choose_mode("AUTO")
+        self._seed_virtual_limit(c)
+        self.setstate(h, "sensor.ev", "0", "W")
+        c.refresh()
+        self.assertEqual(c.proposal.action, "retire")
+        self.assertEqual(
+            c.proposal.reason,
+            "end_or_intent_unverified_requires_reconciliation",
+        )
+
+    def test_hass_confirmed_unplug_does_not_lose_old_virtual_cap(self):
+        h, c = self.setup(charging=True)
+        c.choose_mode("AUTO")
+        self._seed_virtual_limit(c)
+        self.setstate(h, "binary_sensor.kia_cable", "off")
+        self.setstate(h, "binary_sensor.wallbox_connected", "off")
+        self.setstate(h, "binary_sensor.wallbox_charging", "off")
+        self.setstate(h, "sensor.ev", "0", "W")
+        c.refresh()
+        self.assertEqual(c.proposal.action, "retire")
+        self.assertEqual(c.proposal.reason,
+                         "session_changed_requires_reconciliation")
+        self.assertIsNone(c.state.cap_kw)
+
+    def test_hass_vehicle_swap_does_not_restore_previous_ev_cap(self):
+        h, c = self.setup(charging=True)
+        c.choose_mode("AUTO")
+        self._seed_virtual_limit(c)
+        self.setstate(h, "binary_sensor.kia_cable", "off")
+        self.setstate(h, "binary_sensor.fiat_cable", "on")
+        c.refresh()
+        self.assertEqual(c.proposal.action, "retire")
+        self.assertEqual(c.proposal.reason,
+                         "session_changed_requires_reconciliation")
+        self.assertEqual(c.session.vehicle_id, "binary_sensor.fiat_cable")
+
     def test_shelly_last_reported_expiry_has_a_timer_without_polling(self):
         h, entry = fixture(connected=True, charging=True)
         h.states["sensor.downstairs"] = FakeState("100", "W")
