@@ -217,6 +217,7 @@ class SimulationCoordinator:
             ac_efficiency=(float(selected[CONF_EFFICIENCY]) if selected else None),
             sustainable_kw=self.rate.kw if selected else None,
             wallbox_reports_charging=self._on(self.config[CONF_WALLBOX_CHARGING]),
+            wallbox_telemetry_fresh=self._on(self.config[CONF_TELEMETRY_FRESH]),
         )
 
     def _house(self) -> HouseSnapshot:
