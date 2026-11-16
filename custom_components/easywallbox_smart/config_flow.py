@@ -119,13 +119,19 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif (user_input.get(CONF_DPM_CONFIRMED)
                   in (set(source_ids) | {user_input[CONF_EV_POWER]})):
                 errors["base"] = "duplicate_sources"
-            elif (float(user_input[CONF_INITIAL_CHARGE_KW]) >
-                  float(user_input[CONF_MAX_CHARGE_KW])):
+            elif (float(user_input.get(
+                    CONF_INITIAL_CHARGE_KW, DEFAULT_INITIAL_CHARGE_KW)) >
+                  float(user_input.get(
+                      CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW))):
                 errors["base"] = "invalid_power_range"
             else:
                 await self.async_set_unique_id("one_local_wallbox")
                 self._abort_if_unique_id_configured()
-                self._wallbox = dict(user_input)
+                self._wallbox = {
+                    CONF_INITIAL_CHARGE_KW: DEFAULT_INITIAL_CHARGE_KW,
+                    CONF_MAX_CHARGE_KW: DEFAULT_MAX_CHARGE_KW,
+                    **dict(user_input),
+                }
                 return await self.async_step_vehicle()
         return self.async_show_form(
             step_id="user", data_schema=WALLBOX_SCHEMA, errors=errors
