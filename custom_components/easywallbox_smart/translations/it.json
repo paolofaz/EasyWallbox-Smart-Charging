@@ -132,7 +132,8 @@
         "data": {
           "initial_charge_kw": "Potenza iniziale per futura sessione (kW)",
           "max_charge_kw": "Massimo ordinario e potenza simulata (kW)",
-          "shadow_lab_enabled": "Attiva laboratorio virtuale continuativo con log locale"
+          "shadow_lab_enabled": "Attiva laboratorio virtuale continuativo con log locale",
+          "dpm_model_kw": "DPM di riferimento (kW) quando il sensore è a 0 o non disponibile"
         }
       }
     },
