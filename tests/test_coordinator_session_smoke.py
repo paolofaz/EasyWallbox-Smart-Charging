@@ -415,6 +415,47 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.assertEqual(c.proposal.action, "insufficient_data")
         self.assertEqual(c.proposal.reason, "dpm_limit_unavailable")
 
+    def test_dpm_zero_is_unowned_pause_not_auto_restart(self):
+        h, entry = fixture(connected=True, charging=False)
+        entry.data["dpm_confirmed"] = "sensor.dpm_confirmed"
+        h.states["sensor.dpm_confirmed"] = FakeState("0", "kW")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        c.choose_mode("AUTO")
+        self.assertEqual(c.dpm_limit_kw, 0.0)
+        self.assertEqual(c.advice.action, "insufficient_data")
+        self.assertEqual(c.advice.reason, "dpm_zero_pause_origin_unverified")
+        self.assertEqual(c.quality, "dpm_zero_pause_origin_unverified")
+        self.assertNotIn(c.proposal.action, ("reduce", "restore"))
+        self.assertTrue(c.proposal.simulation_only)
+
+    def test_dpm_zero_does_not_override_manual_or_pause_intent(self):
+        for mode in ("MANUAL", "PAUSE"):
+            with self.subTest(mode=mode):
+                h, entry = fixture(connected=True, charging=False)
+                entry.data["dpm_confirmed"] = "sensor.dpm_confirmed"
+                h.states["sensor.dpm_confirmed"] = FakeState("0", "kW")
+                c = self.Implementation(h, entry)
+                c.start()
+                self.addCleanup(c.close)
+                c.choose_mode(mode)
+                self.assertEqual(c.advice.action, mode.lower()
+                                 if mode == "MANUAL" else "paused")
+                self.assertEqual(c.control.mode, mode)
+
+    def test_positive_dpm_sensor_is_used_as_set_not_forced_to_4_4(self):
+        h, entry = fixture(connected=True, charging=True)
+        entry.data["dpm_confirmed"] = "sensor.dpm_confirmed"
+        h.states["sensor.dpm_confirmed"] = FakeState("4.8", "kW")
+        c = self.Implementation(h, entry)
+        c.start()
+        self.addCleanup(c.close)
+        c.choose_mode("AUTO")
+        self.assertAlmostEqual(c.dpm_limit_kw, 4.8)
+        self.assertEqual(c.dpm_limit_source, "sensor")
+        self.assertAlmostEqual(c.dpm_pressure_kw, max(0.0, 2.25+4.0-4.8))
+
     def test_old_entry_without_dpm_entity_uses_explicit_model_only(self):
         h, entry = fixture(connected=True, charging=True)
         entry.data["dpm_model_kw"] = 4.3
