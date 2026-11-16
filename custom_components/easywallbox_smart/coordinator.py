@@ -71,6 +71,10 @@ class SimulationCoordinator:
         self._charging = False
         self._fingerprint = None
         self.quality = "initializing"
+        self.margin_band = "unknown"
+        self.dpm_limit_kw: float | None = None
+        self.dpm_pressure_kw: float | None = None
+        self.dpm_limit_source = "sensor" if self.config.get(CONF_DPM_CONFIRMED) else "simulation_model"
         self.last_evaluation: datetime | None = None
 
     def _raw(self, entity_id: str | None):
@@ -345,6 +349,7 @@ class SimulationCoordinator:
             self.control.phase if self.control else None,
             self.control.reason if self.control else None,
             margin_band(p),
+            self.dpm_limit_kw,
             self.rate.source,
             (round(self.rate.kw * 2) / 2 if self.rate.kw is not None else None),
             self.quality,
@@ -356,6 +361,7 @@ class SimulationCoordinator:
         self.session = self._make_session(now)
         self._observe_house_only_in_charge(self.session.charging)
         self.planning = plan(now, self.session, self.policy)
+        self.margin_band = margin_band(self.planning)
         # In WAITING, read one snapshot when relevant; subscribe to Shelly
         # changes only if electrical charging is actually confirmed.
         house = (
@@ -371,8 +377,16 @@ class SimulationCoordinator:
             house if self.session.charging
             else HouseSnapshot(None, None, "inactive")
         )
+        limits = self._limits()
+        self.dpm_limit_kw = limits.dpm_kw
+        house_kw = supervising_house.kw
+        self.dpm_pressure_kw = (
+            max(0.0, house_kw + limits.confirmed_kw - limits.dpm_kw)
+            if house_kw is not None and limits.confirmed_kw is not None
+            and limits.dpm_kw is not None else None
+        )
         self.state, self.proposal = evaluate(
-            now, self.session, supervising_house, self._limits(),
+            now, self.session, supervising_house, limits,
             self.state, self.policy,
         )
         self.quality = (
