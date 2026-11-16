@@ -47,8 +47,9 @@ nel log. **Nessun comando reale** e nessun SOC reale usato.
 
 Le Opzioni permettono anche una **potenza iniziale EV** (default 3,6 kW):
 è un parametro per una futura sessione automatica, **non una rampa attiva**
-nel laboratorio. Ogni nuovo report Shelly e ogni transizione significativa
-sono registrati in JSONL giornalieri, nella cartella HA privata
+nel laboratorio. Johnny esamina tutti i report Shelly in memoria; il laboratorio registra
+un riepilogo ogni 60 secondi con min/max/media/numero campioni e subito
+ogni transizione significativa in JSONL giornalieri, nella cartella HA privata
 `/config/easywallbox_smart_shadow/` (massimo 2 MB/giorno).
 Due sensori aggiuntivi read-only mostrano gli stati wide/medium e
 lo stato del log. Il budget SOC è disattivato **solo** nei due scenari
