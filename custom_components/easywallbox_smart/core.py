@@ -45,6 +45,8 @@ class HouseSnapshot:
     # "sources_kw" replaces the old fixed downstairs/upstairs layout.
     # Positional fields are retained for compatibility with pure-core tests.
     sources_kw: tuple[float | None, ...] | None = None
+    # Latest composite source report (for distinct-sample verification).
+    observed_at: datetime | None = None
 
     @property
     def kw(self) -> float | None:
@@ -61,6 +63,8 @@ class LimitSnapshot:
     requested_kw: float | None
     confirmed_kw: float | None
     manual_owner: bool = False
+    # Read-only DPM limit observed via ESPHome, or explicit simulation model.
+    dpm_kw: float | None = None
 
 
 @dataclass(frozen=True)
