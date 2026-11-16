@@ -372,6 +372,95 @@ class TestJohnnyV1(unittest.TestCase):
         state, p = step(state, 20, 1.4)
         self.assertNotEqual(p.action, "reduce")
 
+    def test_rolling_cyclic_house_load_is_detected_both_bands(self):
+        # 1 minute ON / 1 minute OFF is invisible to the old 2/3-minute
+        # continuous detector, but must be visible in a five-minute window.
+        for departure in (8, 4):
+            with self.subTest(departure=departure):
+                st = None
+                actions = []
+                for m, kw in enumerate((2.4, .2, 2.4, .2, 2.4)):
+                    st, p = step(st, m, kw, departure=departure)
+                    actions.append(p.action)
+                self.assertEqual(actions, ["hold", "hold", "hold", "hold", "reduce"])
+                self.assertEqual(st.mode, "LIMITED")
+                self.assertLess(st.cap_kw, 4.)
+
+    def test_rolling_memory_requires_two_bursts_not_one_110_second_peak(self):
+        # True timestamps: exactly 110 seconds of one busy event.
+        st = None
+        for seconds, kw in ((0, 3.), (55, 3.), (110, .2),
+                            (170, .2), (230, .2)):
+            moment = T + timedelta(seconds=seconds)
+            ses = replace(car(0), soc_at=T)
+            st, p = jp.evaluate(moment, ses,
+                core.HouseSnapshot(None, None, "ok",
+                                   sources_kw=(kw,), observed_at=moment),
+                limits(), st, core.Config(dpm_model_kw=4.4))
+            self.assertNotEqual(p.action, "reduce")
+
+    def test_rolling_memory_rejects_marginal_oscillation(self):
+        st = None
+        for m in range(16):
+            st, p = step(st, m, 1.05 if m % 2 == 0 else .2)
+            self.assertNotEqual(p.action, "reduce")
+        self.assertEqual(st.mode, "NORMAL")
+
+    def test_repeated_timer_with_same_source_timestamp_never_counts_as_burst(self):
+        st = None
+        for m in range(5):
+            st, p = step(st, m, 2.4, observed=T)
+        self.assertEqual(st.mode, "NORMAL")
+        self.assertEqual(len(st.entry_burst_starts), 1)
+        self.assertEqual(len(st.entry_busy_intervals), 0)
+
+    def test_missing_gap_does_not_credit_unseen_high_load(self):
+        st = None
+        for m, kw in ((0, 2.4), (1, .2), (5, 2.4),
+                      (6, .2), (7, 2.4)):
+            st, p = step(st, m, kw)
+            self.assertNotEqual(p.action, "reduce")
+
+    def test_high_house_consumption_caps_to_minimum_ev_not_below(self):
+        for dep in (8, 4):
+            with self.subTest(departure=dep):
+                st = None
+                result = None
+                for m in range(4):
+                    st, result = step(st, m, 3., departure=dep)
+                self.assertEqual(result.action, "reduce")
+                self.assertEqual(st.cap_kw, 1.4)
+
+    def test_dpm_zero_is_pause_not_an_energy_limit_and_never_starts(self):
+        st = None
+        for m in range(5):
+            st, p = step(st, m, 3., dpm=0)
+            self.assertEqual(p.action, "insufficient_data")
+            self.assertEqual(p.reason, "dpm_zero_paused_or_unresolved")
+        self.assertEqual(st.mode, "NORMAL")
+        self.assertNotIn("start", p.action)
+
+    def test_dpm_zero_during_virtual_cap_requires_reconciliation(self):
+        st, _ = enter()
+        st, p = step(st, 3, 3.0, dpm=0)
+        self.assertEqual((p.action, p.reason),
+                         ("retire", "dpm_zero_requires_reconciliation"))
+        self.assertIsNone(p.proposed_cap_kw)
+        self.assertTrue(p.simulation_only)
+
+    def test_rolling_memory_is_erased_after_restore_and_cooldown(self):
+        st = None
+        for m, kw in enumerate((2.4, .2, 2.4, .2, 2.4)):
+            st, p = step(st, m, kw)
+        self.assertEqual(p.action, "reduce")
+        # User has plenty of slack, and house remains quiet for 15 minutes.
+        for m in range(5, 21):
+            st, p = step(st, m, .2)
+        self.assertEqual(p.action, "restore")
+        self.assertFalse(st.entry_burst_starts)
+        st, p = step(st, 21, 2.4)
+        self.assertEqual(p.reason, "cooldown")
+
     def test_not_an_actuator(self):
         source=(COMP/"johnny_policy.py").read_text()
         for forbidden in ("homeassistant", "async_call(", "bleak", "mqtt",
