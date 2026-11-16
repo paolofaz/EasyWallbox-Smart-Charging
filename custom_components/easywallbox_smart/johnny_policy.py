@@ -158,7 +158,13 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
 
     if (session.mode != "AUTO" or not session.charging or
             not session.vehicle_id or session.vehicle_ambiguous):
-        return _proposal(_initial(session.session_id, now), "inactive",
+        # In simulation the limit was never applied, but preserve the
+        # explanation of its last virtual release while the session stays
+        # identified. A new session discards the history.
+        idle = replace(_initial(session.session_id, now),
+                       last_transition_reason=st.last_transition_reason,
+                       last_transition_at=st.last_transition_at)
+        return _proposal(idle, "inactive",
                          "not_auto_or_no_confirmed_charge", p)
 
     if not trustworthy_limit:
