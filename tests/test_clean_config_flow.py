@@ -246,16 +246,19 @@ class TestCleanConfigFlow(unittest.TestCase):
         self.assertEqual(form["step_id"], "shadow_lab")
         invalid = asyncio.run(opts.async_step_shadow_lab({
             "initial_charge_kw": 4.0, "max_charge_kw": 3.6,
+            "dpm_model_kw": 4.8,
             "shadow_lab_enabled": True,
         }))
         self.assertEqual(invalid["errors"]["base"], "invalid_power_range")
         result = asyncio.run(opts.async_step_shadow_lab({
             "initial_charge_kw": 3.6, "max_charge_kw": 3.8,
+            "dpm_model_kw": 4.8,
             "shadow_lab_enabled": True,
         }))
         self.assertEqual(result["type"], "create_entry")
         self.assertTrue(result["data"]["shadow_lab_enabled"])
         self.assertEqual(result["data"]["max_charge_kw"], 3.8)
+        self.assertEqual(result["data"]["dpm_model_kw"], 4.8)
         self.assertTrue(self.module.validate(data, result["data"]).ready)
         self.assertEqual(data["initial_charge_kw"], 3.6)
         self.assertEqual(data["max_charge_kw"], 4.)
