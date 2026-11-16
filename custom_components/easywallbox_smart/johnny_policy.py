@@ -168,7 +168,7 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
                              "house_episode_continues", p)
         start = st.quiet_since or now
         st = replace(st, quiet_since=start)
-        quiet_minutes = 18 if band == "wide" else 8
+        quiet_minutes = 15 if band == "wide" else 10
         due = start + timedelta(minutes=quiet_minutes)
         if now >= due:
             return _proposal(_restored(st, now, 10), "restore",
@@ -229,7 +229,7 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     fraction = .25 if band == "wide" else .10
     budget = max(0., p.slack_minutes / 60 * session.sustainable_kw * fraction)
     locked = st.locked_budget_kwh if st.locked_budget_kwh is not None else budget
-    minimum_episode = 18 if band == "wide" else 8
+    minimum_episode = 15 if band == "wide" else 10
     cost_bound = (limits.confirmed_kw - cap) * minimum_episode / 60
     if st.spent_kwh_upper_bound + cost_bound > locked:
         return _proposal(replace(st, candidate_since=None, last_evidence_at=None),
