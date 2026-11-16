@@ -11,12 +11,17 @@ KINDS = {
     "session": "Sessione",
     "plan": "Pianificatore",
     "stabilizer": "Stabilizzatore",
+    "shadow_wide": "Johnny test — margine ampio",
+    "shadow_medium": "Johnny test — margine intermedio",
 }
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([SimulationSensor(coordinator, entry, kind) for kind in KINDS])
+    kinds = ("session", "plan", "stabilizer")
+    if coordinator.shadow_enabled:
+        kinds += ("shadow_wide", "shadow_medium")
+    async_add_entities([SimulationSensor(coordinator, entry, kind) for kind in kinds])
 
 
 class SimulationSensor(SensorEntity):
@@ -51,6 +56,10 @@ class SimulationSensor(SensorEntity):
         d = self.coordinator.proposal
         if not s or not p or not d:
             return "inizializzazione"
+        if self.kind.startswith("shadow_"):
+            band = self.kind.removeprefix("shadow_")
+            state = self.coordinator.shadow_states.get(band)
+            return state.mode.lower() if state else "inizializzazione"
         if self.kind == "session":
             control = self.coordinator.control
             if control and control.phase == "UNKNOWN":
@@ -77,6 +86,36 @@ class SimulationSensor(SensorEntity):
         d = self.coordinator.proposal
         attrs = {"simulation_only": True, "warning": SIMULATION_LABEL}
         if not s or not p or not d:
+            return attrs
+        if self.kind.startswith("shadow_"):
+            band = self.kind.removeprefix("shadow_")
+            shadow = self.coordinator.shadow_decisions.get(band)
+            state = self.coordinator.shadow_states.get(band)
+            attrs.update(
+                hypothetical_ev_always_charging=True,
+                real_wallbox_commands=0,
+                shadow_budget_disabled=True,
+                configured_initial_kw=self.coordinator.initial_charge_kw,
+                hypothetical_ev_max_kw=self.coordinator.max_charge_kw,
+                dpm_reference_source=self.coordinator.shadow_dpm_source,
+                shadow_log_file=self.coordinator.shadow_log_file,
+                shadow_log_status=self.coordinator.shadow_log_status,
+                shadow_logged_rows=self.coordinator.shadow_logged_rows,
+            )
+            if shadow and state:
+                attrs.update(
+                    action=shadow.action, reason=shadow.reason,
+                    cap_proposed_kw=shadow.proposed_cap_kw,
+                    last_virtual_transition_reason=state.last_transition_reason,
+                    last_virtual_transition_at=(
+                        state.last_transition_at.isoformat()
+                        if state.last_transition_at else None
+                    ),
+                    last_trusted_house_report=(
+                        state.last_good_house_at.isoformat()
+                        if state.last_good_house_at else None
+                    ),
+                )
             return attrs
         if self.kind == "session":
             control = self.coordinator.control
