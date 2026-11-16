@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Consumi domestici e telemetria wallbox",
-        "description": "SIMULAZIONE: nessun comando alla wallbox. I sensori domestici sono sommati; lo Shelly wallbox è separato. Per stimare una media dopo 30 minuti, seleziona entrambi i contatori di sessione.",
+        "description": "SOLO SIMULAZIONE. Somma i sensori domestici senza EV e seleziona lo Shelly wallbox separato. Per Johnny è consigliato il sensore ESPHome del limite DPM confermato. Nessun comando reale.",
         "data": {
           "ev_power": "Potenza reale wallbox — Shelly dedicato",
           "wallbox_connected": "Cavo collegato alla wallbox",
@@ -12,10 +12,11 @@
           "telemetry_fresh": "Telemetria BLE ESPHome aggiornata",
           "requested_limit": "Charge power richiesto (number, kW)",
           "confirmed_limit": "Power set confermato (sensor, kW)",
-          "dpm_model_kw": "Totale DPM modello (kW) — ipotesi di simulazione",
+          "dpm_model_kw": "Limite DPM simulato (kW) — usato solo senza un sensore DPM selezionato",
           "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
           "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
-          "session_duration": "Durata sessione wallbox (min, facoltativo)"
+          "session_duration": "Durata sessione wallbox (min, facoltativo)",
+          "dpm_confirmed": "Limite DPM confermato ESPHome (sensore kW, consigliato)"
         }
       },
       "vehicle": {
@@ -105,11 +106,12 @@
       },
       "sources": {
         "title": "Consumi domestici e sessione wallbox",
-        "description": "Seleziona uno o più sensori di consumo domestico: saranno sommati. Lo Shelly wallbox resta separato. Entrambi i contatori sono facoltativi ma vanno selezionati insieme.",
+        "description": "Scegli i sensori casa senza wallbox e, se disponibile, il limite DPM confermato dalla wallbox. Con un sensore DPM selezionato ma non disponibile Johnny non inventa un limite sostitutivo.",
         "data": {
           "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
           "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
-          "session_duration": "Durata sessione wallbox (min, facoltativo)"
+          "session_duration": "Durata sessione wallbox (min, facoltativo)",
+          "dpm_confirmed": "Limite DPM confermato ESPHome (sensore kW, consigliato)"
         }
       },
       "target": {
