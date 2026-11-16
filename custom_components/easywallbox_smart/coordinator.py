@@ -17,20 +17,21 @@ from .const import (
     CONF_TARGET_DEFAULT, CONF_TARGET_ENTITY, CONF_TELEMETRY_FRESH, CONF_UPSTAIRS,
     CONF_VEHICLES, CONF_WALLBOX_CHARGING, CONF_WALLBOX_CONNECTED,
     CONF_VEHICLE_OVERRIDES, CONF_HOUSE_SOURCES,
-    CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
+    CONF_SESSION_ENERGY, CONF_SESSION_DURATION, CONF_DPM_CONFIRMED,
 )
 from .departure_policy import DepartureAdvice, advise_departure
 from .session_policy import SessionControl, observe, user_select_mode
 from .core import (
     Config, CoreState, HouseSnapshot, LimitSnapshot, Proposal,
-    SessionSnapshot, evaluate, plan,
+    SessionSnapshot, plan,
 )
 from .sources import finite_number, next_departure, on, power_kw
 from .rate_estimator import RateState, RateEstimate, estimate
 from .target_policy import resolved_target, selected_mode
+from .johnny_policy import JohnnyState, evaluate, margin_band
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
-SHELLY_REPORT_AGE = timedelta(minutes=20)
+SHELLY_REPORT_AGE = timedelta(minutes=3)
 EV_REPORT_AGE = timedelta(minutes=5)
 COUNTER_REPORT_AGE = timedelta(minutes=5)
 
@@ -44,7 +45,7 @@ class SimulationCoordinator:
         self.config = dict(entry.data)
         # Saved 0.1.0 config entries remain usable: options can update the
         # meter list and counters without editing .storage or reinstalling.
-        for field in (CONF_HOUSE_SOURCES, CONF_SESSION_ENERGY, CONF_SESSION_DURATION):
+        for field in (CONF_HOUSE_SOURCES, CONF_SESSION_ENERGY, CONF_SESSION_DURATION, CONF_DPM_CONFIRMED):
             if field in entry.options:
                 self.config[field] = entry.options[field]
         self.house_sources = self.config.get(
@@ -52,7 +53,7 @@ class SimulationCoordinator:
             [self.config.get(CONF_DOWNSTAIRS), self.config.get(CONF_UPSTAIRS)],
         )
         self.policy = Config(dpm_model_kw=float(self.config[CONF_DPM_MODEL]))
-        self.state: CoreState | None = None
+        self.state: JohnnyState | None = None
         self.proposal: Proposal | None = None
         self.planning = None
         self.advice: DepartureAdvice | None = None
@@ -214,15 +215,37 @@ class SimulationCoordinator:
         )
 
     def _house(self) -> HouseSnapshot:
-        sources = tuple(self._power(entity_id, SHELLY_REPORT_AGE)
-                        for entity_id in self.house_sources)
-        quality = "ok" if sources and all(v is not None for v in sources) else "unavailable_or_stale"
-        return HouseSnapshot(None, None, quality, sources_kw=sources)
+        """Composite Shelly snapshot; timer callbacks cannot forge a new report."""
+        sources = []
+        timestamps = []
+        for entity_id in self.house_sources:
+            source = self._raw(entity_id)
+            sources.append(self._power(entity_id, SHELLY_REPORT_AGE))
+            if source is not None:
+                timestamp = (
+                    getattr(source, "last_reported", None) or source.last_updated
+                )
+                if timestamp is not None:
+                    timestamps.append(timestamp)
+        trusted = (bool(sources) and len(timestamps) == len(sources)
+                   and all(v is not None for v in sources))
+        return HouseSnapshot(
+            None, None, "ok" if trusted else "unavailable_or_stale",
+            sources_kw=tuple(sources),
+            observed_at=max(timestamps) if trusted else None,
+        )
 
     def _limits(self) -> LimitSnapshot:
+        """Use the observed DPM value if configured; never silently fall back."""
+        dpm_entity = self.config.get(CONF_DPM_CONFIRMED)
+        dpm_kw = (
+            self._power(dpm_entity, COUNTER_REPORT_AGE) if dpm_entity
+            else self.policy.dpm_model_kw  # explicit simulation model only
+        )
         return LimitSnapshot(
             self._power(self.config[CONF_REQUESTED_LIMIT]),
-            self._power(self.config[CONF_CONFIRMED_LIMIT]),
+            self._power(self.config[CONF_CONFIRMED_LIMIT], COUNTER_REPORT_AGE),
+            dpm_kw=dpm_kw,
         )
 
     def _observe_house_only_in_charge(self, charging: bool) -> None:
@@ -263,7 +286,7 @@ class SimulationCoordinator:
                 cap, original = self.state.cap_kw, self.state.original_kw
                 if cap is not None and original is not None and original > cap:
                     budget_left = (
-                        self.planning.discretionary_budget_kwh
+                        (self.state.locked_budget_kwh or 0)
                         - self.state.spent_kwh_upper_bound
                     )
                     if budget_left > 0:
@@ -321,7 +344,8 @@ class SimulationCoordinator:
             self.control.mode if self.control else None,
             self.control.phase if self.control else None,
             self.control.reason if self.control else None,
-            self.rate.source, 
+            margin_band(p),
+            self.rate.source,
             (round(self.rate.kw * 2) / 2 if self.rate.kw is not None else None),
             self.quality,
         )
@@ -391,6 +415,8 @@ class SimulationCoordinator:
             CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_EV_POWER,
         )
         entities = [self.config[key] for key in keys]
+        if self.config.get(CONF_DPM_CONFIRMED):
+            entities.append(self.config[CONF_DPM_CONFIRMED])
         entities.extend(
             self.config[key] for key in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION)
             if self.config.get(key)
