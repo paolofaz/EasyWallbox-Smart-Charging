@@ -56,6 +56,13 @@ class JohnnyState:
     # Last 3 minutes of independent household reports, for a robust high
     # percentile. No smoothing of the DPM itself or frequent write proposals.
     recent_loads: tuple[tuple[datetime, float], ...] = ()
+    # Rolling entry memory: only intervals bounded by fresh independent
+    # source reports, never assumed power during a missing-data gap.
+    entry_last_at: datetime | None = None
+    entry_last_busy: bool = False
+    entry_last_pressure_kw: float = 0.0
+    entry_busy_intervals: tuple[tuple[datetime, datetime, float], ...] = ()
+    entry_burst_starts: tuple[datetime, ...] = ()
     spent_kwh_upper_bound: float = 0.0
     locked_budget_kwh: float | None = None
 
@@ -80,6 +87,10 @@ def _proposal(state, action, reason, p, due=None):
 # The missing-data timeout is longer than one Shelly reporting gap; it is
 # evaluated from the last trusted report, NOT from the first timer callback.
 HOUSE_LOSS_RESTORE_MINUTES = 8
+ENTRY_MEMORY_MINUTES = 5
+ENTRY_SAMPLE_GAP_SECONDS = 150
+ENTRY_BUSY_SECONDS = 120
+ENTRY_PRESSURE_AREA = {"wide": 2.4, "medium": 3.2}  # kW × min
 
 
 def _restored(st, now, cooldown_minutes):
@@ -90,7 +101,68 @@ def _restored(st, now, cooldown_minutes):
         cap_started_at=None,
         cooldown_until=now + timedelta(minutes=cooldown_minutes),
         recent_loads=(),
+        entry_last_at=None, entry_last_busy=False,
+        entry_last_pressure_kw=0.0,
+        entry_busy_intervals=(), entry_burst_starts=(),
     )
+
+
+def _clear_entry_memory(st: JohnnyState) -> JohnnyState:
+    return replace(st, entry_last_at=None, entry_last_busy=False,
+                   entry_last_pressure_kw=0.0,
+                   entry_busy_intervals=(), entry_burst_starts=(),
+                   candidate_since=None, last_evidence_at=None,
+                   recent_loads=())
+
+
+def _observe_entry_memory(st: JohnnyState, at: datetime,
+                          pressure: float, trigger: float,
+                          house_kw: float) -> tuple[JohnnyState, bool]:
+    """Count only independent reports and bounded observed intervals.
+
+    Previous busy power is assigned only between consecutive fresh reports
+    <=150s apart. With missing input, the memory is reset, not extrapolated.
+    """
+    if st.entry_last_at is not None and at <= st.entry_last_at:
+        return st, False
+    cutoff = at - timedelta(minutes=ENTRY_MEMORY_MINUTES)
+    intervals = list(st.entry_busy_intervals)
+    bursts = list(st.entry_burst_starts)
+    preceding = st.entry_last_at
+    gap = (at-preceding).total_seconds() if preceding is not None else None
+    if gap is not None and gap > ENTRY_SAMPLE_GAP_SECONDS:
+        intervals, bursts = [], []
+    elif gap is not None and st.entry_last_busy:
+        intervals.append((preceding, at, st.entry_last_pressure_kw))
+    intervals = [(max(a, cutoff), z, p) for a, z, p in intervals
+                 if z > cutoff]
+    bursts = [t for t in bursts if t >= cutoff]
+    busy = pressure >= trigger
+    if busy and (not st.entry_last_busy or gap is None
+                 or gap > ENTRY_SAMPLE_GAP_SECONDS):
+        bursts.append(at)
+    high = tuple((t, v) for t, v in st.recent_loads
+                 if timedelta(0) <= at-t <= timedelta(minutes=3))
+    if busy:
+        high += ((at, house_kw),)
+    return replace(st, entry_last_at=at, entry_last_busy=busy,
+                   entry_last_pressure_kw=pressure,
+                   entry_busy_intervals=tuple(intervals),
+                   entry_burst_starts=tuple(bursts),
+                   recent_loads=high), True
+
+
+def _entry_memory_ready(st: JohnnyState, at: datetime, band: str) -> bool:
+    cutoff = at - timedelta(minutes=ENTRY_MEMORY_MINUTES)
+    seconds = 0.0
+    pressure_area = 0.0
+    for start, end, pressure in st.entry_busy_intervals:
+        elapsed = max(0.0, (end-max(start, cutoff)).total_seconds())
+        seconds += elapsed
+        pressure_area += pressure * elapsed / 60.0
+    bursts = sum(x >= cutoff for x in st.entry_burst_starts)
+    return (st.entry_last_busy and seconds >= ENTRY_BUSY_SECONDS
+            and bursts >= 2 and pressure_area >= ENTRY_PRESSURE_AREA[band])
 
 
 def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
@@ -261,48 +333,49 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
         return _proposal(replace(st, candidate_since=None, last_evidence_at=None),
                          "hold", "no_safe_charge_margin", p)
     if pressure is None:
-        return _proposal(replace(st, candidate_since=None, last_evidence_at=None),
+        return _proposal(_clear_entry_memory(st),
                          "insufficient_data", "house_data_not_trusted", p)
     if st.cooldown_until is not None and now < st.cooldown_until:
-        return _proposal(replace(st, candidate_since=None, last_evidence_at=None),
+        return _proposal(_clear_entry_memory(st),
                          "hold", "cooldown", p, st.cooldown_until)
 
     trigger = .6 if band == "wide" else .8
     confirm_secs = 120 if band == "wide" else 180
-    if pressure < trigger:
-        return _proposal(replace(st, candidate_since=None, last_evidence_at=None,
-                                 recent_loads=()), "hold",
-                         "dpm_pressure_not_significant", p)
+    st, distinct = _observe_entry_memory(st, observed, pressure, trigger, value)
+    busy = pressure >= trigger
 
-    # Prune old samples; an HA timer evaluating the same Shelly report must
-    # NOT add another point of evidence.
-    recent = tuple((t,v) for t,v in st.recent_loads
-                   if timedelta(0) <= observed-t <= timedelta(minutes=3))
-    distinct = st.last_evidence_at is None or observed > st.last_evidence_at
+    if not busy:
+        # Stop the continuous timer, not the five-minute memory.
+        st = replace(st, candidate_since=None, last_evidence_at=None)
+        return _proposal(st, "hold", "remembering_intermittent_load", p)
     if not distinct:
         return _proposal(st, "hold", "waiting_for_new_house_sample", p)
-    if (st.candidate_since is None or st.last_evidence_at is None
-            or observed-st.last_evidence_at > timedelta(seconds=150)):
-        st = replace(st, candidate_since=observed, last_evidence_at=observed,
-                     recent_loads=((observed, value),))
-        return _proposal(st, "hold", "confirming_persistent_pressure", p)
-    recent = (*recent, (observed, value))
-    st = replace(st, last_evidence_at=observed, recent_loads=recent)
-    due = st.candidate_since + timedelta(seconds=confirm_secs)
-    if observed < due:
-        return _proposal(st, "hold", "confirming_persistent_pressure", p)
 
-    # Use an upper-quantile of recent confirmed loads, not just the last
-    # low point or one unrepresentative peak: modest, episode-stable cap.
-    loads = sorted(x for _,x in recent)
+    if (st.candidate_since is None or st.last_evidence_at is None
+            or observed - st.last_evidence_at > timedelta(
+                seconds=ENTRY_SAMPLE_GAP_SECONDS
+            )):
+        st = replace(st, candidate_since=observed)
+    st = replace(st, last_evidence_at=observed)
+    continuous = (st.candidate_since is not None and
+                  observed >= st.candidate_since + timedelta(seconds=confirm_secs))
+    rolling = _entry_memory_ready(st, observed, band)
+    if not (continuous or rolling):
+        return _proposal(st, "hold", "accumulating_load_evidence", p)
+
+    # Busy, genuinely new samples only; quiet/off values do not dilute cap.
+    # Retain the original 75th-percentile style for a stable single cap.
+    loads = sorted(x for _, x in st.recent_loads)
+    if not loads:
+        return _proposal(st, "hold", "no_busy_level_for_cap", p)
     basis = loads[(3*(len(loads)-1)) // 4]
     margin = .2 if band == "wide" else .1
-    cap = floor((dpm - basis - margin + 1e-9) / .2) * .2
-    cap = round(cap, 6)
-    if (cap < cfg.min_cap_kw
-            or limits.confirmed_kw - cap < cfg.minimum_useful_reduction_kw - 1e-8):
-        return _proposal(replace(st, candidate_since=None, last_evidence_at=None,
-                                 recent_loads=()), "hold",
+    raw_cap = floor((dpm - basis - margin + 1e-9) / .2) * .2
+    # A strong household load must not make Johnny give up. Cap at the
+    # *minimum useful EV setting*, leaving any further reduction to DPM.
+    cap = round(max(cfg.min_cap_kw, raw_cap), 6)
+    if limits.confirmed_kw - cap < cfg.minimum_useful_reduction_kw - 1e-8:
+        return _proposal(_clear_entry_memory(st), "hold",
                          "no_useful_cap_dpm_handles_peaks", p)
 
     # Energy upper bound: assume DPM was not limiting and lose the full
@@ -313,13 +386,16 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     minimum_episode = 15 if band == "wide" else 10
     cost_bound = (limits.confirmed_kw - cap) * minimum_episode / 60
     if st.spent_kwh_upper_bound + cost_bound > locked:
-        return _proposal(replace(st, candidate_since=None, last_evidence_at=None),
-                         "hold", "insufficient_episode_budget", p)
+        return _proposal(_clear_entry_memory(st), "hold",
+                         "insufficient_episode_budget", p)
 
     st = replace(st, mode="LIMITED", cap_kw=cap,
                  baseline_requested_kw=limits.requested_kw,
                  baseline_confirmed_kw=limits.confirmed_kw,
                  baseline_dpm_kw=dpm, locked_budget_kwh=locked,
                  candidate_since=None, last_evidence_at=None,
-                 quiet_since=None, cap_started_at=now, recent_loads=())
+                 quiet_since=None, cap_started_at=now, recent_loads=(),
+                 entry_last_at=None, entry_last_busy=False,
+                 entry_last_pressure_kw=0.0,
+                 entry_busy_intervals=(), entry_burst_starts=())
     return _proposal(st, "reduce", "dynamic_stable_episode_cap", p)
