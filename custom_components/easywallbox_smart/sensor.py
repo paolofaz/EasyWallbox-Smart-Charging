@@ -131,6 +131,13 @@ class SimulationSensor(SensorEntity):
                 cap_proposed_kw=d.proposed_cap_kw,
                 budget_kwh=round(d.budget_kwh, 2),
                 spent_upper_bound_kwh=round(d.spent_kwh_upper_bound, 2),
+                margin_band=self.coordinator.margin_band,
+                dpm_limit_kw=self.coordinator.dpm_limit_kw,
+                dpm_limit_source=self.coordinator.dpm_limit_source,
+                estimated_dpm_pressure_kw=(
+                    round(self.coordinator.dpm_pressure_kw, 2)
+                    if self.coordinator.dpm_pressure_kw is not None else None
+                ),
                 next_check=d.next_check_at.isoformat() if d.next_check_at else None,
                 note="Il limite proposto NON e stato inviato alla wallbox",
             )
