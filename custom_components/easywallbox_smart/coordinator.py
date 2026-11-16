@@ -18,6 +18,8 @@ from .const import (
     CONF_VEHICLES, CONF_WALLBOX_CHARGING, CONF_WALLBOX_CONNECTED,
     CONF_VEHICLE_OVERRIDES, CONF_HOUSE_SOURCES,
     CONF_SESSION_ENERGY, CONF_SESSION_DURATION, CONF_DPM_CONFIRMED,
+    CONF_INITIAL_CHARGE_KW, CONF_MAX_CHARGE_KW, CONF_SHADOW_LAB_ENABLED,
+    DEFAULT_INITIAL_CHARGE_KW, DEFAULT_MAX_CHARGE_KW,
 )
 from .departure_policy import DepartureAdvice, advise_departure
 from .session_policy import SessionControl, observe, user_select_mode
@@ -29,6 +31,8 @@ from .sources import finite_number, next_departure, on, power_kw
 from .rate_estimator import RateState, RateEstimate, estimate
 from .target_policy import resolved_target, selected_mode
 from .johnny_policy import JohnnyState, evaluate, margin_band, HOUSE_LOSS_RESTORE_MINUTES
+from .shadow_lab import simulate_shadow
+from .shadow_log import append_shadow_rows
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
 SHELLY_REPORT_AGE = timedelta(minutes=3)
@@ -76,6 +80,27 @@ class SimulationCoordinator:
         self.dpm_pressure_kw: float | None = None
         self.dpm_limit_source = "sensor" if self.config.get(CONF_DPM_CONFIRMED) else "simulation_model"
         self.last_evaluation: datetime | None = None
+        # A separate, deliberately unbounded fake EV session in each band.
+        # Defaults to OFF; no disk writes without explicit opt-in.
+        self.shadow_enabled = bool(entry.options.get(
+            CONF_SHADOW_LAB_ENABLED, False))
+        self.initial_charge_kw = float(entry.options.get(
+            CONF_INITIAL_CHARGE_KW, self.config.get(
+                CONF_INITIAL_CHARGE_KW, DEFAULT_INITIAL_CHARGE_KW)))
+        self.max_charge_kw = float(entry.options.get(
+            CONF_MAX_CHARGE_KW, self.config.get(
+                CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW)))
+        self.shadow_states = {}
+        self.shadow_decisions = {}
+        self.shadow_dpm_source = None
+        self._shadow_last_positive_dpm = None
+        self.shadow_log_status = "disabled" if not self.shadow_enabled else "starting"
+        self.shadow_log_file = None
+        self.shadow_logged_rows = 0
+        self._shadow_last_observed_at = None
+        self._shadow_last_signature = None
+        self._shadow_rows = []
+        self._shadow_flush_task = None
 
     def _raw(self, entity_id: str | None):
         return self.hass.states.get(entity_id) if entity_id else None
@@ -285,6 +310,29 @@ class SimulationCoordinator:
         if self.advice and self.advice.next_check_at and self.advice.next_check_at > now:
             choices.append(self.advice.next_check_at)
 
+        if self.shadow_enabled:
+            # The real car can be unplugged: lab timers and household
+            # subscriptions continue independently, event-driven.
+            for band in ("wide", "medium"):
+                prop = self.shadow_decisions.get(band)
+                state = self.shadow_states.get(band)
+                if prop and prop.next_check_at and prop.next_check_at > now:
+                    choices.append(prop.next_check_at)
+                if state and state.mode == "LIMITED" and state.last_good_house_at:
+                    limit = (state.last_good_house_at +
+                             timedelta(minutes=HOUSE_LOSS_RESTORE_MINUTES,
+                                       seconds=1))
+                    if limit > now:
+                        choices.append(limit)
+            for entity_id in self.house_sources:
+                src = self._raw(entity_id)
+                if src is not None:
+                    reported = getattr(src, "last_reported", None) or src.last_updated
+                    if reported is not None:
+                        due = reported + SHELLY_REPORT_AGE + timedelta(seconds=1)
+                        if due > now:
+                            choices.append(due)
+
         if self._charging:
             if proposal.next_check_at and proposal.next_check_at > now:
                 choices.append(proposal.next_check_at)
@@ -376,19 +424,29 @@ class SimulationCoordinator:
             self.rate.source,
             (round(self.rate.kw * 2) / 2 if self.rate.kw is not None else None),
             self.quality,
+            self.shadow_enabled,
+            tuple((band,
+                   self.shadow_decisions[band].action,
+                   self.shadow_decisions[band].reason,
+                   self.shadow_decisions[band].proposed_cap_kw)
+                  for band in ("wide", "medium")
+                  if band in self.shadow_decisions),
+            self.shadow_log_status,
         )
 
     @callback
     def refresh(self):
         now = datetime.now(timezone.utc)
         self.session = self._make_session(now)
-        self._observe_house_only_in_charge(self.session.charging)
+        self._observe_house_only_in_charge(
+            self.session.charging or self.shadow_enabled
+        )
         self.planning = plan(now, self.session, self.policy)
         self.margin_band = margin_band(self.planning)
         # In WAITING, read one snapshot when relevant; subscribe to Shelly
         # changes only if electrical charging is actually confirmed.
         house = (
-            self._house() if self.session.vehicle_id
+            self._house() if self.session.vehicle_id or self.shadow_enabled
             else HouseSnapshot(None, None, "inactive")
         )
         self.advice = advise_departure(
@@ -433,12 +491,98 @@ class SimulationCoordinator:
             else "ready"
         )
         self.last_evaluation = now
+        if self.shadow_enabled:
+            self._refresh_shadow(now, house, limits)
         self._schedule(now, self.proposal)
         signature = self._signature()
         if signature != self._fingerprint:
             self._fingerprint = signature
             for listener in tuple(self._listeners):
                 listener()
+
+    def _refresh_shadow(self, now: datetime, house: HouseSnapshot,
+                        limits: LimitSnapshot) -> None:
+        """Evaluate both hypothetical EVs even with the cable unplugged."""
+        if limits.dpm_kw is not None and limits.dpm_kw > 0:
+            effective_dpm = limits.dpm_kw
+            self._shadow_last_positive_dpm = effective_dpm
+            origin = ("confirmed_sensor" if self.config.get(CONF_DPM_CONFIRMED)
+                      else "configured_model")
+        elif self._shadow_last_positive_dpm is not None:
+            effective_dpm = self._shadow_last_positive_dpm
+            origin = "last_positive_confirmed_this_run"
+        else:
+            effective_dpm = self.policy.dpm_model_kw
+            origin = "explicit_model_when_paused_or_unavailable"
+        self.shadow_dpm_source = origin
+        self.shadow_states, self.shadow_decisions = simulate_shadow(
+            now, house, effective_dpm, self.max_charge_kw, self.shadow_states,
+        )
+        sample = house.observed_at if house.kw is not None else None
+        signature = tuple(
+            (band, self.shadow_decisions[band].action,
+             self.shadow_decisions[band].reason,
+             self.shadow_decisions[band].proposed_cap_kw)
+            for band in ("wide", "medium")
+        )
+        if (sample == self._shadow_last_observed_at
+                and signature == self._shadow_last_signature):
+            return
+        self._shadow_last_observed_at = sample
+        self._shadow_last_signature = signature
+        record = {
+            "time_local": now.astimezone(
+                ZoneInfo(self.hass.config.time_zone)).isoformat(timespec="seconds"),
+            "model": "continuous_two_band_no_real_vehicle",
+            "session_budget": "disabled_only_for_infinite_ev_lab",
+            "house_kw": round(house.kw, 3) if house.kw is not None else None,
+            "house_data_quality": house.quality,
+            "dpm_observed_kw": limits.dpm_kw,
+            "dpm_model_kw": round(effective_dpm, 3),
+            "dpm_model_source": origin,
+            "ev_baseline_kw": self.max_charge_kw,
+            "wide": self._shadow_summary("wide"),
+            "medium": self._shadow_summary("medium"),
+        }
+        self._shadow_rows.append(record)
+        if self._shadow_flush_task is None or self._shadow_flush_task.done():
+            self._shadow_flush_task = self.entry.async_create_background_task(
+                self.hass, self._flush_shadow(), "EasyWallbox shadow JSONL",
+            )
+
+    def _shadow_summary(self, band: str) -> dict:
+        decision = self.shadow_decisions[band]
+        state = self.shadow_states[band]
+        return {
+            "action": decision.action, "reason": decision.reason,
+            "state": state.mode, "cap_kw": decision.proposed_cap_kw,
+            "last_event": state.last_transition_reason,
+        }
+
+    async def _flush_shadow(self) -> None:
+        """One serialized disk writer, always off the HA event loop."""
+        try:
+            # A single worker drains pending rows, preserving chronological
+            # order and avoiding concurrent append operations across events.
+            while self._shadow_rows:
+                batch, self._shadow_rows = self._shadow_rows, []
+                root = self.hass.config.path("easywallbox_smart_shadow")
+                count, last_file = await self.hass.async_add_executor_job(
+                    append_shadow_rows, root, batch,
+                )
+                self.shadow_logged_rows += count
+                self.shadow_log_file = last_file
+                self.shadow_log_status = "ok"
+        except (OSError, ValueError, TypeError) as error:
+            # No unbounded backlog if the HA config volume is read-only/full.
+            self._shadow_rows.clear()
+            self.shadow_log_status = "error_" + type(error).__name__
+
+    async def async_close(self) -> None:
+        """Drain a final pending file append before integration unload."""
+        self.close()
+        if self._shadow_flush_task is not None:
+            await self._shadow_flush_task
 
     @callback
     def choose_mode(self, mode: str) -> None:
