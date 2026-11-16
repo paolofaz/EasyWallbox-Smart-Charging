@@ -214,7 +214,8 @@ class TestJohnnyV1(unittest.TestCase):
     def test_virtual_cap_is_released_when_charge_stops_and_wallbox_confirms(self):
         state, _ = enter()
         stopped = replace(car(3, charging=False),
-                          wallbox_reports_charging=False)
+                          wallbox_reports_charging=False,
+                          wallbox_telemetry_fresh=True)
         state, p = jp.evaluate(
             at(3), stopped, house(3, None, quality="unavailable"),
             limits(), state, core.Config(dpm_model_kw=4.4),
@@ -253,6 +254,25 @@ class TestJohnnyV1(unittest.TestCase):
         self.assertEqual((p.action, p.reason),
                          ("retire", "end_or_intent_unverified_requires_reconciliation"))
         self.assertIsNone(p.proposed_cap_kw)
+
+    def test_old_charging_off_without_fresh_telemetry_is_not_confirmed(self):
+        for fresh in (None, False):
+            with self.subTest(fresh=fresh):
+                state, _ = enter()
+                untrusted = replace(
+                    car(3, charging=False),
+                    wallbox_reports_charging=False,
+                    wallbox_telemetry_fresh=fresh,
+                )
+                state, p = jp.evaluate(
+                    at(3), untrusted, house(3, .2), limits(),
+                    state, core.Config(dpm_model_kw=4.4),
+                )
+                self.assertEqual(p.action, "retire")
+                self.assertEqual(
+                    p.reason,
+                    "end_or_intent_unverified_requires_reconciliation",
+                )
 
     def test_contradictory_wallbox_status_never_restores_blindly(self):
         state, _ = enter()
@@ -327,7 +347,8 @@ class TestJohnnyV1(unittest.TestCase):
             with self.subTest(limit=l):
                 state, _ = enter()
                 stopped = replace(car(3, charging=False),
-                                  wallbox_reports_charging=False)
+                                  wallbox_reports_charging=False,
+                                  wallbox_telemetry_fresh=True)
                 state, p = jp.evaluate(
                     at(3), stopped, house(3, .2), l,
                     state, core.Config(dpm_model_kw=4.4),
