@@ -616,10 +616,13 @@ class TestCoordinatorSessionSmoke(TestCase):
         with tempfile.TemporaryDirectory() as root:
             async def run():
                 h, entry = fixture(connected=False, charging=False)
+                entry.data["dpm_confirmed"] = "sensor.dpm_sensor"
+                h.states["sensor.dpm_sensor"] = FakeState("0", "kW")
                 entry.options = {
                     "shadow_lab_enabled": True,
                     "initial_charge_kw": 3.6,
                     "max_charge_kw": 4.0,
+                    "dpm_model_kw": 4.8,
                 }
                 h.config.path = lambda folder: str(Path(root) / folder)
                 h.async_add_executor_job = (
@@ -651,6 +654,10 @@ class TestCoordinatorSessionSmoke(TestCase):
                 self.assertTrue(first["house_report_local"])
                 self.assertEqual(first["model"],
                                  "continuous_two_band_no_real_vehicle")
+                self.assertEqual(first["dpm_observed_kw"], 0.)
+                self.assertEqual(first["dpm_model_kw"], 4.8)
+                self.assertEqual(first["dpm_model_source"],
+                                 "explicit_model_when_paused_or_unavailable")
                 self.assertNotIn("vehicle_id", first)
                 self.assertNotIn("soc", first)
                 self.assertNotIn("password", first)
