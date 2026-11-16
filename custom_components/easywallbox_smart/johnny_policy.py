@@ -145,7 +145,8 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
         if not session.charging or session.mode == "CHARGE_NOW":
             if (not same_limit_owner or
                     (not session.charging and
-                     session.wallbox_reports_charging is not False)):
+                     (session.wallbox_reports_charging is not False
+                      or session.wallbox_telemetry_fresh is not True))):
                 return _proposal(_initial(session.session_id, now), "retire",
                                  "end_or_intent_unverified_requires_reconciliation", p)
             # A virtual cap is not an applied BLE setting. This is an
