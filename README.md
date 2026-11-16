@@ -21,7 +21,7 @@ Il repository non è ancora incluso nel catalogo pubblico, quindi si aggiunge un
 ## Funzionamento
 
 - **Pianificatore**: legge SOC auto, target, partenza e capacità; propone quando attendere o partire. Gli orari feriali/weekend sono impostabili per auto.
-- **Johnny v1 — stabilizzatore**: legge uno o più sensori di potenza domestica, escludendo la wallbox, e stima la pressione sul DPM usando il limite auto e il limite DPM. Tre fasce di margine del planner (**ampio/intermedio/urgente**), una sola riduzione virtuale stabile per episodio, ripristino diretto dopo quiete oppure quando il target rischia, budget conservativo di energia. Niente fasce orarie, nessuna rampa di comandi.
+- **Johnny v1 — stabilizzatore**: legge i consumi domestici senza wallbox e stima la pressione sul DPM dai limiti confermati. Fasce **ampio/intermedio/urgente**; conferma 2/3 minuti per carichi continui, più memoria mobile **5 minuti** per accensioni cicliche (almeno due e almeno 2 minuti cumulativi con pressione integrata sufficiente), sempre su letture Shelly nuove. Una sola riduzione virtuale stabile per episodio, ripristino dopo quiete 15/10 minuti o necessità del target, budget conservativo. Il limite minimo EV simulato è 1,4 kW; oltre interviene il DPM. Niente fasce orarie fisse, nessuna rampa di comandi.
 - **DPM**: resta sempre attivo e gestisce autonomamente i picchi rapidi. La simulazione non sostituisce alcuna protezione elettrica.
 - **Modalità**: Automatica, Manuale, Pausa e Carica subito sono modalità di simulazione. Una Pausa nel selettore NON interrompe la ricarica reale; Carica subito NON la avvia.
 
@@ -39,7 +39,7 @@ Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettor
 
 **Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b1 si trovano nella CI del branch di sviluppo. **Non ancora collaudato** su una Home Assistant reale: Config Flow, Recorder, selettore, runtime con Shelly/ESPHome/auto e riavvio. Quindi questa è una **prima release di prova in sola simulazione**.
 
-La nuova simulazione Johnny v1 usa la **pressione dinamica sul DPM**, con conferma 2/3 minuti e quiete 15/10 minuti nelle fasce ampio/intermedio. Le vecchie soglie domestiche fisse 1,5/1,0 kW appartengono a un precedente test offline, non al supervisore collegato in Home Assistant. Tutti i parametri restano **tarature sperimentali**, non protezioni elettriche.
+La nuova simulazione Johnny v1 usa la **pressione dinamica sul DPM**, con conferma 2/3 minuti per carichi continui, memoria di 5 minuti per quelli intermittenti e quiete 15/10 minuti nelle fasce ampio/intermedio. Il DPM impostato a **zero** per la pausa non è trattato come limite elettrico e non causa mai un avvio automatico; Johnny richiede di conoscere l'origine della pausa prima di qualsiasi futuro controllo reale. Le vecchie soglie domestiche fisse 1,5/1,0 kW appartengono a un precedente test offline, non al supervisore collegato in Home Assistant. Tutti i parametri restano **tarature sperimentali**, non protezioni elettriche.
 
 Nessuna modifica a firmware ESPHome, DPM e automazioni Fiat esistenti. Non inserire PIN BLE, credenziali, token, cronologie private o cartelle `.storage` nel repository.
 
