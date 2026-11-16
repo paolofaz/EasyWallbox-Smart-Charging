@@ -27,7 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
-        coordinator.close()
+        await coordinator.async_close()
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         raise
 
