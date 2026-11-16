@@ -211,6 +211,146 @@ class TestJohnnyV1(unittest.TestCase):
         self.assertEqual(p.action,"insufficient_data")
         self.assertEqual(p.reason,"limit_unconfirmed")
 
+    def test_virtual_cap_is_released_when_charge_stops_and_wallbox_confirms(self):
+        state, _ = enter()
+        stopped = replace(car(3, charging=False),
+                          wallbox_reports_charging=False)
+        state, p = jp.evaluate(
+            at(3), stopped, house(3, None, quality="unavailable"),
+            limits(), state, core.Config(dpm_model_kw=4.4),
+        )
+        self.assertEqual((p.action, p.reason),
+                         ("restore", "charging_stopped_restore_proposed"))
+        self.assertEqual((state.mode, p.proposed_cap_kw), ("NORMAL", 4.))
+        self.assertTrue(p.simulation_only)
+        self.assertEqual(state.last_transition_reason, p.reason)
+        state, p = jp.evaluate(
+            at(4), stopped, house(4, None, quality="unavailable"),
+            limits(), state, core.Config(dpm_model_kw=4.4),
+        )
+        self.assertEqual(p.action, "inactive")
+        self.assertEqual(state.last_transition_reason,
+                         "charging_stopped_restore_proposed")
+
+    def test_target_reached_while_wallbox_still_reports_charging(self):
+        state, _ = enter()
+        state, p = step(state, 3, 1.4, soc=80)
+        self.assertEqual((p.action, p.reason),
+                         ("restore", "target_reached_restore_proposed"))
+        self.assertEqual(p.proposed_cap_kw, 4.)
+
+    def test_charge_now_releases_optional_cap_once(self):
+        state, _ = enter()
+        state, p = step(state, 3, 1.4, mode="CHARGE_NOW")
+        self.assertEqual((p.action, p.reason),
+                         ("restore", "charge_now_restore_proposed"))
+        state, p = step(state, 4, 1.4, mode="CHARGE_NOW")
+        self.assertEqual(p.action, "inactive")
+
+    def test_unverified_stopped_charge_requires_reconciliation_not_restore(self):
+        state, _ = enter()
+        state, p = step(state, 3, .2, charging=False)
+        self.assertEqual((p.action, p.reason),
+                         ("retire", "end_or_intent_unverified_requires_reconciliation"))
+        self.assertIsNone(p.proposed_cap_kw)
+
+    def test_contradictory_wallbox_status_never_restores_blindly(self):
+        state, _ = enter()
+        contradictory = replace(car(3, charging=False),
+                                wallbox_reports_charging=True)
+        state, p = jp.evaluate(
+            at(3), contradictory, house(3, .2), limits(),
+            state, core.Config(dpm_model_kw=4.4),
+        )
+        self.assertEqual(p.action, "retire")
+        self.assertIn("reconciliation", p.reason)
+
+    def test_manual_pause_and_ambiguous_vehicle_do_not_override_ownership(self):
+        for change in ("MANUAL", "PAUSE", "RECONCILE", "AMBIGUOUS"):
+            with self.subTest(change=change):
+                state, _ = enter()
+                if change == "AMBIGUOUS":
+                    session = replace(car(3), vehicle_ambiguous=True)
+                else:
+                    session = car(3, mode=change)
+                state, p = jp.evaluate(
+                    at(3), session, house(3, 1.4), limits(),
+                    state, core.Config(dpm_model_kw=4.4),
+                )
+                self.assertEqual((p.action, p.state), ("retire", "NORMAL"))
+                self.assertEqual(p.reason, "virtual_cap_requires_reconciliation")
+
+    def test_session_change_cannot_inherit_old_virtual_cap(self):
+        state, _ = enter()
+        other_car = replace(car(3), session_id="another-car",
+                            vehicle_id="other-car")
+        state, p = jp.evaluate(
+            at(3), other_car, house(3, 1.4), limits(),
+            state, core.Config(dpm_model_kw=4.4),
+        )
+        self.assertEqual(p.action, "retire")
+        self.assertEqual(p.reason, "session_changed_requires_reconciliation")
+        self.assertEqual(state.session_id, "another-car")
+        self.assertIsNone(state.cap_kw)
+
+    def test_stale_house_timeout_8_minutes_from_last_good_report(self):
+        state, _ = enter()
+        self.assertEqual(state.last_good_house_at, at(2))
+        state, p = step(state, 7, None, quality="unavailable")
+        self.assertEqual((state.mode, p.action),
+                         ("LIMITED", "insufficient_data"))
+        self.assertEqual(p.next_check_at, at(10))
+        state, p = step(state, 10, None, quality="unavailable")
+        self.assertEqual((state.mode, p.action),
+                         ("NORMAL", "restore"))
+        self.assertEqual(p.reason, "house_telemetry_timeout_restore_proposed")
+        self.assertEqual(p.proposed_cap_kw, 4.)
+        self.assertTrue(p.simulation_only)
+
+    def test_one_short_unknown_sample_does_not_cause_oscillation(self):
+        state, _ = enter()
+        state, p = step(state, 7, None, quality="unavailable")
+        self.assertEqual(p.action, "insufficient_data")
+        state, p = step(state, 8, 1.4)
+        self.assertEqual(p.action, "hold")
+        self.assertEqual(state.last_good_house_at, at(8))
+        state, p = step(state, 13, None, quality="unavailable")
+        self.assertEqual((state.mode, p.action),
+                         ("LIMITED", "insufficient_data"))
+        self.assertEqual(p.next_check_at, at(16))
+
+    def test_bad_limit_or_dpm_at_end_does_not_claim_restoration(self):
+        for l in (
+            limits(dpm=None), limits(ev=3), limits(requested=3),
+            core.LimitSnapshot(None, None, dpm_kw=4.4),
+        ):
+            with self.subTest(limit=l):
+                state, _ = enter()
+                stopped = replace(car(3, charging=False),
+                                  wallbox_reports_charging=False)
+                state, p = jp.evaluate(
+                    at(3), stopped, house(3, .2), l,
+                    state, core.Config(dpm_model_kw=4.4),
+                )
+                self.assertEqual(p.action, "retire")
+                self.assertIn("reconciliation", p.reason)
+
+    def test_loss_timeout_respects_user_manual_takeover(self):
+        state, _ = enter()
+        state, p = step(state, 12, None, quality="unavailable",
+                        mode="MANUAL")
+        self.assertEqual(p.action, "retire")
+        self.assertNotIn("timeout_restore", p.reason)
+
+    def test_house_recovery_does_not_restart_without_confirmed_new_samples(self):
+        state, _ = enter()
+        state, p = step(state, 10, None, quality="unavailable")
+        self.assertEqual(p.action, "restore")
+        state, p = step(state, 11, 1.4)
+        self.assertEqual(p.reason, "cooldown")
+        state, p = step(state, 20, 1.4)
+        self.assertNotEqual(p.action, "reduce")
+
     def test_not_an_actuator(self):
         source=(COMP/"johnny_policy.py").read_text()
         for forbidden in ("homeassistant", "async_call(", "bleak", "mqtt",
