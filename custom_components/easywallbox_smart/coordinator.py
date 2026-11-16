@@ -32,7 +32,7 @@ from .rate_estimator import RateState, RateEstimate, estimate
 from .target_policy import resolved_target, selected_mode
 from .johnny_policy import JohnnyState, evaluate, margin_band, HOUSE_LOSS_RESTORE_MINUTES
 from .shadow_lab import simulate_shadow
-from .shadow_log import append_shadow_rows
+from .shadow_log import ShadowLogSampler, append_shadow_rows
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
 SHELLY_REPORT_AGE = timedelta(minutes=3)
@@ -99,8 +99,7 @@ class SimulationCoordinator:
         self.shadow_log_status = "disabled" if not self.shadow_enabled else "starting"
         self.shadow_log_file = None
         self.shadow_logged_rows = 0
-        self._shadow_last_observed_at = None
-        self._shadow_last_signature = None
+        self._shadow_log_sampler = ShadowLogSampler(interval_seconds=60)
         self._shadow_rows = []
         self._shadow_flush_task = None
         self.shadow_run_started_at = datetime.now(timezone.utc).astimezone(
@@ -525,17 +524,15 @@ class SimulationCoordinator:
             now, house, effective_dpm, self.max_charge_kw, self.shadow_states,
         )
         sample = house.observed_at if house.kw is not None else None
-        signature = tuple(
+        # Meaningful policy transitions only. A changing 'hold' explanation
+        # is still preserved in the minute summary, not as another disk row.
+        decision_signature = tuple(
             (band, self.shadow_decisions[band].action,
-             self.shadow_decisions[band].reason,
-             self.shadow_decisions[band].proposed_cap_kw)
+             self.shadow_states[band].mode,
+             self.shadow_decisions[band].proposed_cap_kw,
+             self.shadow_states[band].last_transition_reason)
             for band in ("wide", "medium")
         )
-        if (sample == self._shadow_last_observed_at
-                and signature == self._shadow_last_signature):
-            return
-        self._shadow_last_observed_at = sample
-        self._shadow_last_signature = signature
         record = {
             "time_local": now.astimezone(
                 ZoneInfo(self.hass.config.time_zone)).isoformat(timespec="seconds"),
@@ -544,10 +541,8 @@ class SimulationCoordinator:
             "shadow_run_started_local": self.shadow_run_started_at,
             "virtual_state_reset_on_this_row": starting_new_virtual_run,
             "house_report_local": (
-                sample.astimezone(
-                    ZoneInfo(self.hass.config.time_zone)
-                ).isoformat(timespec="seconds")
-                if sample is not None else None
+                sample.astimezone(ZoneInfo(self.hass.config.time_zone))
+                .isoformat(timespec="seconds") if sample is not None else None
             ),
             "house_kw": round(house.kw, 3) if house.kw is not None else None,
             "house_data_quality": house.quality,
@@ -558,6 +553,13 @@ class SimulationCoordinator:
             "wide": self._shadow_summary("wide"),
             "medium": self._shadow_summary("medium"),
         }
+        row = self._shadow_log_sampler.observe(
+            now, sample, record, decision_signature,
+        )
+        if row is not None:
+            self._queue_shadow_row(row)
+
+    def _queue_shadow_row(self, record: dict) -> None:
         self._shadow_rows.append(record)
         if self._shadow_flush_task is None or self._shadow_flush_task.done():
             self._shadow_flush_task = self.entry.async_create_background_task(
@@ -593,10 +595,18 @@ class SimulationCoordinator:
             self.shadow_log_status = "error_" + type(error).__name__
 
     async def async_close(self) -> None:
-        """Drain a final pending file append before integration unload."""
+        """Drain a final partial minute and finish disk I/O on unload."""
         self.close()
+        if self.shadow_enabled:
+            final_at = datetime.now(timezone.utc).astimezone(
+                ZoneInfo(self.hass.config.time_zone))
+            final_row = self._shadow_log_sampler.finish(final_at)
+            if final_row is not None:
+                self._shadow_rows.append(final_row)
         if self._shadow_flush_task is not None:
             await self._shadow_flush_task
+        if self._shadow_rows:
+            await self._flush_shadow()
 
     @callback
     def choose_mode(self, mode: str) -> None:
