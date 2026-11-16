@@ -85,16 +85,28 @@ Esempio illustrativo, NON una misura reale:
 {"time_local":"2026-11-16T20:00:00+01:00","model":"continuous_two_band_no_real_vehicle","session_budget":"disabled_only_for_infinite_ev_lab","house_kw":1.8,"house_data_quality":"ok","dpm_observed_kw":0,"dpm_model_kw":4.8,"dpm_model_source":"last_positive_confirmed_this_run","ev_baseline_kw":4.0,"wide":{"action":"reduce","reason":"dynamic_stable_episode_cap","state":"LIMITED","cap_kw":2.2,"last_event":"dynamic_stable_episode_cap"},"medium":{"action":"hold","reason":"accumulating_load_evidence","state":"NORMAL","cap_kw":4.0,"last_event":null}}
 ```
 
-Il log registra ogni nuovo campione domestico attendibile e ogni cambio
-di decisione. Non esegue polling aggiuntivo: usa gli eventi degli Shelly
-e i timer necessari alla policy. Un report ripetuto con lo stesso timestamp
-**non** è una nuova conferma. Un sensore `unknown`, `unavailable` o
-vecchio non viene interpretato come zero. Il log comprende house kW,
-origine/valore DPM del modello, limite e motivo di ciascun Johnny;
+Johnny continua a elaborare **ogni aggiornamento Shelly** in memoria,
+ma il logger scrive un riepilogo ogni **60 secondi** durante periodi stabili.
+Scrive subito una riga aggiuntiva quando cambiano proposta/stato virtuali,
+qualità dei dati oppure valore/origine DPM. I nuovi campi `log_kind`
+(`start`, `periodic`, `change`, `day_rollover`, `end`) e
+`house_window` conservano **numero di report distinti, minimo, massimo,
+media, primo e ultimo timestamp** nell'intervallo. Si può così riconoscere
+un picco domestico breve senza scrivere su disco per ogni pochi watt.
+
+Non esegue polling aggiuntivo: usa eventi Shelly e timer della policy.
+Un timestamp ripetuto non è una nuova conferma né aumenta il conteggio.
+Un sensore `unknown`/`unavailable` o obsoleto non viene interpretato
+come zero e il cambio di qualità è registrato immediatamente. Il log
+comprende potenza domestica, dati DPM, stato e motivi dei due Johnny;
 **non registra** SOC reale, identità dei veicoli o credenziali.
 
-I file giornalieri sono limitati a **2 MB ciascuno**, senza cancellazione
-automatica. Se il disco non è scrivibile o il file raggiunge il limite,
+I file giornalieri restano limitati a **2 MB ciascuno**, senza
+cancellazione automatica. La nuova frequenza consente normalmente un
+test di più giornate, ma non garantisce la capienza se ci sono moltissime
+transizioni. Questi riepiloghi non sostituiscono lo storico puntuale degli
+Shelly per un replay esatto: min/max/media non conservano l'ordine dei
+singoli campioni. Se il disco non è scrivibile o il file raggiunge il limite,
 i sensori mostrano `shadow_log_status=error_OSError` (o altro errore),
 e la prova non deve essere considerata registrata correttamente.
 I log **non vengono caricati su GitHub**. Dopo alcuni giorni, si possono
