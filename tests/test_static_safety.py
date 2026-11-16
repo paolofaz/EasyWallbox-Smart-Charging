@@ -30,7 +30,10 @@ class TestM2Safety(unittest.TestCase):
 
     def test_no_high_frequency_state_reporting(self):
         text = (ROOT / "coordinator.py").read_text()
-        self.assertIn("_observe_house_only_in_charge(self.session.charging)", text)
+        self.assertIn("self.session.charging or self.shadow_enabled", text)
+        self.assertIn("signature != self._fingerprint", text)
+        self.assertIn("async_add_executor_job(", text)
+        self.assertNotIn("services.async_call(", text)
         self.assertIn("signature != self._fingerprint", text)
         self.assertNotIn("async_track_time_interval", text)
 
