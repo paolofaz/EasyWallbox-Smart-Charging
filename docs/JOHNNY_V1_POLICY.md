@@ -75,7 +75,7 @@ Nessun firmware, DPM fisico, `main` o release pubblicata modificati.
 
 ### Uscita dal limite opzionale senza effetti elettrici fittizi
 
-- **Target raggiunto** (SOC attendibile) mentre la wallbox segnala ancora ricarica, oppure **ricarica terminata con wallbox `Charging = OFF` verificato, auto identificata e limiti ancora coerenti**: emette una singola proposta virtuale `restore` al limite originale, con motivo specifico. **Non dichiara ripristinata la wallbox** e non scrive via BLE.
+- **Target raggiunto** (SOC attendibile) mentre la wallbox segnala ancora ricarica, oppure **ricarica terminata con wallbox `Charging = OFF` verificato, `Telemetry Fresh = ON`, auto identificata e limiti ancora coerenti**: emette una singola proposta virtuale `restore` al limite originale, con motivo specifico. **Non dichiara ripristinata la wallbox** e non scrive via BLE.
 - **Carica subito esplicito** durante un cap virtuale: propone il ripristino, solo con identità/proprietà e setpoint coerenti.
 - **Pausa, Manuale, cambio veicolo, disconnessione, limite richiesto/confermato incongruente o stato di carica contraddittorio**: emette `retire` con causa di riconciliazione; **nessun ripristino automatico non autorizzato**. La vecchia sessione non trasferisce il proprio cap alla successiva.
 - Il coordinatore HA **non azzera prematuramente lo stato virtuale** quando viene osservato un distacco o cambio auto; lascia al riduttore puro la possibilità di emettere il messaggio di riconciliazione. La modalità utente Manuale/Pausa non viene mai annullata automaticamente.
