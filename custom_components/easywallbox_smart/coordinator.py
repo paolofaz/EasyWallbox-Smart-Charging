@@ -101,6 +101,9 @@ class SimulationCoordinator:
         self._shadow_last_signature = None
         self._shadow_rows = []
         self._shadow_flush_task = None
+        self.shadow_run_started_at = datetime.now(timezone.utc).astimezone(
+            ZoneInfo(self.hass.config.time_zone)
+        ).isoformat(timespec="seconds")
 
     def _raw(self, entity_id: str | None):
         return self.hass.states.get(entity_id) if entity_id else None
@@ -515,6 +518,7 @@ class SimulationCoordinator:
             effective_dpm = self.policy.dpm_model_kw
             origin = "explicit_model_when_paused_or_unavailable"
         self.shadow_dpm_source = origin
+        starting_new_virtual_run = not bool(self.shadow_states)
         self.shadow_states, self.shadow_decisions = simulate_shadow(
             now, house, effective_dpm, self.max_charge_kw, self.shadow_states,
         )
@@ -535,6 +539,14 @@ class SimulationCoordinator:
                 ZoneInfo(self.hass.config.time_zone)).isoformat(timespec="seconds"),
             "model": "continuous_two_band_no_real_vehicle",
             "session_budget": "disabled_only_for_infinite_ev_lab",
+            "shadow_run_started_local": self.shadow_run_started_at,
+            "virtual_state_reset_on_this_row": starting_new_virtual_run,
+            "house_report_local": (
+                sample.astimezone(
+                    ZoneInfo(self.hass.config.time_zone)
+                ).isoformat(timespec="seconds")
+                if sample is not None else None
+            ),
             "house_kw": round(house.kw, 3) if house.kw is not None else None,
             "house_data_quality": house.quality,
             "dpm_observed_kw": limits.dpm_kw,
