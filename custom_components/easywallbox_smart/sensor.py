@@ -131,6 +131,20 @@ class SimulationSensor(SensorEntity):
                 cap_proposed_kw=d.proposed_cap_kw,
                 budget_kwh=round(d.budget_kwh, 2),
                 spent_upper_bound_kwh=round(d.spent_kwh_upper_bound, 2),
+                last_virtual_transition_reason=(
+                    self.coordinator.state.last_transition_reason
+                    if self.coordinator.state else None
+                ),
+                last_virtual_transition_at=(
+                    self.coordinator.state.last_transition_at.isoformat()
+                    if self.coordinator.state
+                    and self.coordinator.state.last_transition_at else None
+                ),
+                last_trusted_house_report=(
+                    self.coordinator.state.last_good_house_at.isoformat()
+                    if self.coordinator.state
+                    and self.coordinator.state.last_good_house_at else None
+                ),
                 margin_band=self.coordinator.margin_band,
                 dpm_limit_kw=self.coordinator.dpm_limit_kw,
                 dpm_limit_source=self.coordinator.dpm_limit_source,
