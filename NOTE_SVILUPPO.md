@@ -370,3 +370,46 @@ Per i prossimi cambi: operare nuovamente sul branch `stabilizzatore-m1`; ogni fu
 
 **Prova futura:** installare manualmente il pacchetto beta (backup della 0.1.0); attivare il laboratorio nelle Opzioni; lasciarlo registrare per più giorni e condividere solo i file `shadow_*.jsonl`. Confrontare count `reduce/restore`, durata dei cap, potenza teorica EV e pressione DPM; annotare reboot HA e tratti `house_data_quality != ok`. Prima di ogni futura fase di comando reale è necessaria autorizzazione esplicita, ownership unica e verifiche confermate. Documentazione fonte principale del progetto da aggiornare quando anche la gestione dei comandi sarà stabilita.
 
+
+
+## 2026-11-16 — Correzione volume log dual-shadow (0.2.0b2, sviluppo)
+
+**Segnalazione field test:** nei primi ~3 minuti il laboratorio ha registrato 43
+righe per consumi domestici nell'intervallo 0,53–0,61 kW, mentre wide e
+medium erano invariabilmente NORMAL/hold/4,0 kW. La frequenza dei report
+Shelly era corretta per la policy ma non utile come frequenza di scrittura:
+con 2 MB/giorno il file rischiava di saturarsi dopo poche ore.
+Il test è stato disabilitato dall'utente prima della correzione.
+
+**Correzione effettuata nel solo branch `stabilizzatore-m1`:**
+- `shadow_log.ShadowLogSampler` comprime i report in memoria. Quando non
+  ci sono eventi, scrive al massimo un riepilogo ogni 60 secondi su nuovi
+  refresh; registra subito una riga per cambi di azione/stato/cap,
+  qualità dati e valore/origine DPM; mantiene i report identici per timestamp
+  fuori dal conteggio. Nessun rallentamento dell'algoritmo Johnny.
+- Ogni riga aggiunge `log_kind` e `house_window` con numero di report,
+  minimo/massimo/media, primo/ultimo timestamp. In fase di unload viene
+  registrato l'eventuale intervallo parziale, senza I/O sull'event loop.
+  Conservati file giornalieri privati, limite 2 MB e assenza di polling.
+- Test regressione: 43 report a 4 s -> 3 righe periodiche/iniziali
+  più eventuale `end`, preservando 43 campioni nel conteggio aggregato;
+  eventi significativi e stale immediati; timestamp duplicati;
+  cambio DPM; rotazione giorno e stima volume 24 h. Non si conserva
+  l'ordine temporale esatto di tutti i campioni: per il replay puntuale
+  restano necessari i dati Shelly originali.
+- README e guida al laboratorio aggiornati. Il logger non cambia
+  le decisioni di `johnny_policy.py`, il planner o il modello DPM.
+
+**Osservazione sul primo log:** `dpm_model_kw=4.4` e
+`dpm_model_source=configured_model`: il confronto a 4,8 kW richiede
+configurare il modello corretto oppure verificare e selezionare l'entità
+ESPHome del limite DPM confermato. Con EV virtuale 4,0 kW e casa
+0,5–0,6 kW, il totale teorico 4,5–4,6 kW non supera 4,8 kW, mentre
+supererebbe 4,4 kW. Non trattare questi numeri come attuazione elettrica.
+
+**Verifiche:** GitHub Actions sul commit di test `51394eb8` superate
+(offline Python 3.12/3.13, hassfest, HACS, pacchetto dual-shadow).
+Controllare la CI della HEAD definitiva. Non ancora riprovato
+su Home Assistant reale. Nessun comando BLE, nuovo controllo della
+wallbox, modifica del firmware, del DPM o delle automazioni legacy;
+`main` e release Marketplace 0.1.0 invariati.
