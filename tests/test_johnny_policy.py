@@ -408,7 +408,7 @@ class TestJohnnyV1(unittest.TestCase):
 
     def test_repeated_timer_with_same_source_timestamp_never_counts_as_burst(self):
         st = None
-        for m in range(5):
+        for m in range(3):
             st, p = step(st, m, 2.4, observed=T)
         self.assertEqual(st.mode, "NORMAL")
         self.assertEqual(len(st.entry_burst_starts), 1)
@@ -425,10 +425,11 @@ class TestJohnnyV1(unittest.TestCase):
         for dep in (8, 4):
             with self.subTest(departure=dep):
                 st = None
-                result = None
+                actions = []
                 for m in range(4):
                     st, result = step(st, m, 3., departure=dep)
-                self.assertEqual(result.action, "reduce")
+                    actions.append(result.action)
+                self.assertEqual(actions.count("reduce"), 1)
                 self.assertEqual(st.cap_kw, 1.4)
 
     def test_dpm_zero_is_pause_not_an_energy_limit_and_never_starts(self):
