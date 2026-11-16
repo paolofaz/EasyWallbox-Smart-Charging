@@ -242,9 +242,11 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
 
     if not trustworthy_limit:
         if st.mode == "LIMITED":
-            return _proposal(_initial(session.session_id, now), "retire",
-                             "ownership_or_limits_lost", p)
-        reason = ("dpm_limit_unavailable"
+            why = ("dpm_zero_requires_reconciliation"
+                   if limits.dpm_kw == 0 else "ownership_or_limits_lost")
+            return _proposal(_initial(session.session_id, now), "retire", why, p)
+        reason = ("dpm_zero_paused_or_unresolved" if limits.dpm_kw == 0
+                  else "dpm_limit_unavailable"
                   if not _valid(limits.dpm_kw, positive=True)
                   and not limits.manual_owner
                   and _valid(limits.requested_kw, positive=True)
@@ -347,7 +349,9 @@ def evaluate(now: datetime, session: SessionSnapshot, house: HouseSnapshot,
     if not busy:
         # Stop the continuous timer, not the five-minute memory.
         st = replace(st, candidate_since=None, last_evidence_at=None)
-        return _proposal(st, "hold", "remembering_intermittent_load", p)
+        reason = ("remembering_intermittent_load"
+                  if st.entry_burst_starts else "dpm_pressure_not_significant")
+        return _proposal(st, "hold", reason, p)
     if not distinct:
         return _proposal(st, "hold", "waiting_for_new_house_sample", p)
 
