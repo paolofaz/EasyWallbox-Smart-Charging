@@ -41,6 +41,17 @@ class TestShadowLog(unittest.TestCase):
             self.assertEqual(len((Path(root) /
                 "shadow_2026-11-17.jsonl").read_text().splitlines()), 2)
 
+    def test_v2_separate_file_and_safe_prefix(self):
+        with tempfile.TemporaryDirectory() as root:
+            count, name = module.append_shadow_rows(
+                root, [entry("2026-11-19T10:00:00+01:00")], "shadow_v2")
+            self.assertEqual(count, 1)
+            self.assertEqual(name, "shadow_v2_2026-11-19.jsonl")
+            self.assertTrue((Path(root) / name).is_file())
+            with self.assertRaises(ValueError):
+                module.append_shadow_rows(
+                    root, [entry("2026-11-19T10:00:00+01:00")], "../bad")
+
     def test_empty_is_noop(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(module.append_shadow_rows(root, []), (0, ""))
