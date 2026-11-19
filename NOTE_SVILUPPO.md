@@ -413,3 +413,21 @@ Controllare la CI della HEAD definitiva. Non ancora riprovato
 su Home Assistant reale. Nessun comando BLE, nuovo controllo della
 wallbox, modifica del firmware, del DPM o delle automazioni legacy;
 `main` e release Marketplace 0.1.0 invariati.
+
+
+## 2026-11-19 — Johnny V2: terzo laboratorio virtuale in Home Assistant (0.2.0b3)
+
+**Richiesta:** dopo i log 16–19/11, una giornata di confronto dal vivo tra V1 Ampio, V1 Intermedio e un Johnny V2 sperimentale, con scrittura JSONL distinta e valutazione dei risultati il giorno seguente. Nessun comando alla wallbox. L'utente può archiviare i vecchi log **solo dopo backup**; conservare per confronto il dataset originario. Il V2 non è ancora la politica reale definitiva.
+
+**Modifiche nel solo `stabilizzatore-m1`:**
+- Nuovo `shadow_v2.py` (solo Python puro): terza macchina a stati virtuale che riutilizza la policy Ampio per il carico forte e testa un *buffer* −0,4 kW con 3 minuti di pressione modesta verificata (casa 0,5–1,1 kW, pressione ≥0,1 kW), quiete 10 minuti con casa ≤0,35 kW e cooldown 10 minuti. In Limited forte: massimo due correzioni aggiuntive −0,4 kW se la pressione residua ≥0,25 kW persiste 5 minuti, distanziate almeno 10 minuti. Minimo EV 1,4 kW. Nuovi timestamp Shelly obbligatori per conferme, dati ignoti non interpretati come 0.
+- `shadow_lab.py` genera la terza sessione EV **sintetica inesauribile** indipendente, in parallelo ai due Johnny V1 invariati. Nessuna previsione di consumi, SOC/partenza reali, nessun comando fisico.
+- `coordinator.py` aggiorna tutti e tre gli scenari sulle medesime letture Shelly, `sensor.py` mostra un terzo sensore di diagnosi, `shadow_log.py` scrive il nuovo formato **`shadow_v2_YYYY-MM-DD.jsonl`** con `wide`, `medium`, `v2`; file storici `shadow_*.jsonl` preservati. Riepiloghi ogni 60 s e transizioni immediate, max 2 MB/giorno, nessun polling veloce.
+- Versione beta aggiornata a `0.2.0b3`; workflow test/package, test V2 e guida di installazione/rollback specifica aggiornati.
+- Reboot nel laboratorio V2: reset **esplicito** (`virtual_state_reset_on_this_row`). La persistenza minima del cap **elettricamente confermato** rimane requisito futuro, non implementato in una versione senza comandi.
+
+**Sicurezza e limiti:** `main`/Marketplace 0.1.0, ESPHome, DPM reale, automazioni Fiat, Home Assistant installato e modalità manuale invariati. Nessun comando BLE e nessuna promessa di beneficio elettrico confermato. La formula di pressione resta un confronto controfattuale con DPM modello; V2 è un candidato a taratura, non una politica approvata per la produzione.
+
+**Verifiche:** test nuovi su buffer, aumento sostenuto, dati obsoleti, DPM aggiornato, log separati, nessuna attuazione; controllare GitHub Actions sulla HEAD prima di consegnare il pacchetto. **Test HA sul campo non ancora eseguito**, serviranno JSONL di oggi per calibrazione.
+
+**Problemi aperti:** valutare cap graduale e cuscinetto su DPM modello 4,4 e 4,8 kW; energia rinunciata vs modulazione DPM; singola policy operativa, budget reale SOC/partenza, ripresa dopo reboot con riconciliazione del limite effettivo, manual override e gestione dei comandi in una futura release supervisionata autorizzata.
