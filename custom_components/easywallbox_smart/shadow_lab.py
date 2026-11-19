@@ -12,6 +12,7 @@ from math import isfinite
 
 from .core import Config, HouseSnapshot, LimitSnapshot, SessionSnapshot
 from .johnny_policy import JohnnyState, evaluate
+from .shadow_v2 import V2State, V2Decision, evaluate_v2
 
 SHADOW_SLACK_MINUTES = {"wide": 180, "medium": 90}
 SHADOW_UNBOUNDED_BUDGET_KWH = 1_000_000.0
@@ -60,3 +61,29 @@ def simulate_shadow(
         states[band] = state
         proposals[band] = proposal
     return states, proposals
+
+
+def simulate_shadow_v2(
+    now: datetime, house: HouseSnapshot, dpm_kw: float, max_ev_kw: float,
+    previous: V2State | None = None,
+) -> tuple[V2State, V2Decision]:
+    """Independent, read-only third candidate with synthetic infinite EV."""
+    if (not isinstance(max_ev_kw, (int, float)) or isinstance(max_ev_kw, bool)
+            or not isfinite(max_ev_kw) or max_ev_kw < 1.4
+            or not isinstance(dpm_kw, (int, float))
+            or isinstance(dpm_kw, bool) or not isfinite(dpm_kw) or dpm_kw <= 0):
+        raise ValueError("shadow input requires a positive model and EV limit")
+    session = SessionSnapshot(
+        session_id="shadow-continuous-v2",
+        mode="AUTO", vehicle_id="synthetic-v2",
+        vehicle_ambiguous=False, charging=True,
+        soc=70., soc_at=now, target_soc=80.,
+        departure_at=now + timedelta(
+            minutes=30 + (4.0 / max_ev_kw * 60) + 180
+        ),
+        usable_capacity_kwh=36., ac_efficiency=.90,
+        sustainable_kw=max_ev_kw,
+        wallbox_reports_charging=True,
+        wallbox_telemetry_fresh=True,
+    )
+    return evaluate_v2(now, session, house, dpm_kw, max_ev_kw, previous)
