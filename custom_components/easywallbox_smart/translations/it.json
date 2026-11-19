@@ -89,7 +89,7 @@
         "menu_options": {
           "sources": "Sensori consumi e contatori sessione",
           "choose_vehicle": "Parametri veicolo e orari",
-          "shadow_lab": "Potenza EV e laboratorio a due scenari"
+          "shadow_lab": "Potenza EV e laboratorio a tre scenari"
         }
       },
       "vehicle": {
@@ -127,12 +127,12 @@
         }
       },
       "shadow_lab": {
-        "title": "Prova sul campo — due Johnny virtuali",
-        "description": "Nessun comando alla wallbox. Johnny simula un'auto sempre in carica, in parallelo con margine ampio e intermedio, usando solo i consumi Shelly della casa. I file JSONL privati sono in /config/easywallbox_smart_shadow/. La potenza iniziale è riservata alle future sessioni; la simulazione continua assume la potenza massima. Se DPM=0, usa un modello esplicito marcato nei log.",
+        "title": "Prova sul campo — confronto Johnny V1 e V2",
+        "description": "Nessun comando alla wallbox. Tre scenari virtuali indipendenti: Ampio, Intermedio e Johnny V2 (cuscinetto e rara correzione del limite). File shadow_v2_YYYY-MM-DD.jsonl sotto /config/easywallbox_smart_shadow/ con il confronto completo. La simulazione usa la potenza EV massima e marca la sorgente del DPM.",
         "data": {
           "initial_charge_kw": "Potenza iniziale per futura sessione (kW)",
           "max_charge_kw": "Massimo ordinario e potenza simulata (kW)",
-          "shadow_lab_enabled": "Attiva laboratorio virtuale continuativo con log locale",
+          "shadow_lab_enabled": "Attiva tre Johnny virtuali indipendenti e log locale",
           "dpm_model_kw": "DPM di riferimento (kW) quando il sensore è a 0 o non disponibile"
         }
       }
