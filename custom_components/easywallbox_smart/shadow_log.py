@@ -126,13 +126,16 @@ class ShadowLogSampler:
 
 
 
-def append_shadow_rows(root: str, rows: list[dict]) -> tuple[int, str]:
+def append_shadow_rows(root: str, rows: list[dict],
+                       prefix: str = "shadow") -> tuple[int, str]:
     """Write a batch, returning count and relative last filename.
 
     Caller must catch OSError and report failures. Never truncate old data.
     """
     if not rows:
         return 0, ""
+    if prefix not in ("shadow", "shadow_v2"):
+        raise ValueError("invalid log file prefix")
     folder = Path(root)
     folder.mkdir(parents=True, exist_ok=True)
     written = 0
@@ -142,7 +145,7 @@ def append_shadow_rows(root: str, rows: list[dict]) -> tuple[int, str]:
         if (len(day) != 10 or day[4] != "-" or day[7] != "-"
                 or not day.replace("-", "").isdigit()):
             raise ValueError("invalid shadow log date")
-        name = f"shadow_{day}.jsonl"
+        name = f"{prefix}_{day}.jsonl"
         path = folder / name
         text = json.dumps(row, sort_keys=True, ensure_ascii=False,
                           allow_nan=False, separators=(",", ":")) + "\n"
