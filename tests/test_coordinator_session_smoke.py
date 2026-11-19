@@ -636,6 +636,8 @@ class TestCoordinatorSessionSmoke(TestCase):
                 self.assertFalse(c.session.charging)
                 self.assertIsNotNone(c._house_unsub)
                 self.assertEqual(set(c.shadow_decisions), {"wide", "medium"})
+                self.assertIsNotNone(c.shadow_v2_state)
+                self.assertIsNotNone(c.shadow_v2_decision)
                 self.assertTrue(all(
                     prop.simulation_only for prop in c.shadow_decisions.values()
                 ))
@@ -649,11 +651,12 @@ class TestCoordinatorSessionSmoke(TestCase):
                 first = records[0]
                 self.assertIn("wide", first)
                 self.assertIn("medium", first)
+                self.assertIn("v2", first)
                 self.assertTrue(first["virtual_state_reset_on_this_row"])
                 self.assertTrue(first["shadow_run_started_local"])
                 self.assertTrue(first["house_report_local"])
                 self.assertEqual(first["model"],
-                                 "continuous_two_band_no_real_vehicle")
+                                 "continuous_three_candidate_no_real_vehicle")
                 self.assertEqual(first["dpm_observed_kw"], 0.)
                 self.assertEqual(first["dpm_model_kw"], 4.8)
                 self.assertEqual(first["dpm_model_source"],
