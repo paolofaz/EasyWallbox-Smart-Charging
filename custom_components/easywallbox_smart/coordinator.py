@@ -437,6 +437,13 @@ class SimulationCoordinator:
                    self.shadow_decisions[band].proposed_cap_kw)
                   for band in ("wide", "medium")
                   if band in self.shadow_decisions),
+            (
+                self.shadow_v2_state.mode,
+                self.shadow_v2_state.kind,
+                self.shadow_v2_decision.action,
+                self.shadow_v2_decision.proposed_cap_kw,
+                self.shadow_v2_state.last_transition_reason,
+            ) if self.shadow_v2_state and self.shadow_v2_decision else None,
             self.shadow_log_status,
         )
 
