@@ -89,7 +89,7 @@
         "menu_options": {
           "sources": "Power meters and session counters",
           "choose_vehicle": "Vehicle target and departure times",
-          "shadow_lab": "EV power and dual-scenario field lab"
+          "shadow_lab": "EV power and three-scenario field lab"
         }
       },
       "vehicle": {
@@ -127,12 +127,12 @@
         }
       },
       "shadow_lab": {
-        "title": "Field trial — two virtual Johnny scenarios",
-        "description": "No wallbox commands. Two always-charging synthetic EVs (wide and medium margin) observe only household Shelly sensors. Private JSONL files are written under /config/easywallbox_smart_shadow/. Initial power is reserved for future sessions; the continuous trial assumes maximum EV power. DPM=0 uses an explicitly labeled test model.",
+        "title": "Field trial — Johnny V1 and V2 shadow comparison",
+        "description": "No wallbox commands. Three independent synthetic EV scenarios: wide, medium, and V2 (buffer + rare downward correction). Files shadow_v2_YYYY-MM-DD.jsonl under /config/easywallbox_smart_shadow/ include all three for comparison. The continuous trial assumes maximum EV power and uses a labeled DPM test model when unavailable.",
         "data": {
           "initial_charge_kw": "Future session initial power (kW)",
           "max_charge_kw": "Ordinary maximum and simulated EV power (kW)",
-          "shadow_lab_enabled": "Enable continuous two-band simulation and private file log",
+          "shadow_lab_enabled": "Enable three independent shadow scenarios and private JSONL log",
           "dpm_model_kw": "DPM reference model (kW) when the sensor is 0 or unavailable"
         }
       }
