@@ -31,7 +31,7 @@ from .sources import finite_number, next_departure, on, power_kw
 from .rate_estimator import RateState, RateEstimate, estimate
 from .target_policy import resolved_target, selected_mode
 from .johnny_policy import JohnnyState, evaluate, margin_band, HOUSE_LOSS_RESTORE_MINUTES
-from .shadow_lab import simulate_shadow
+from .shadow_lab import simulate_shadow, simulate_shadow_v2
 from .shadow_log import ShadowLogSampler, append_shadow_rows
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
@@ -94,6 +94,8 @@ class SimulationCoordinator:
                 CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW)))
         self.shadow_states = {}
         self.shadow_decisions = {}
+        self.shadow_v2_state = None
+        self.shadow_v2_decision = None
         self.shadow_dpm_source = None
         self._shadow_last_positive_dpm = None
         self.shadow_log_status = "disabled" if not self.shadow_enabled else "starting"
@@ -523,6 +525,10 @@ class SimulationCoordinator:
         self.shadow_states, self.shadow_decisions = simulate_shadow(
             now, house, effective_dpm, self.max_charge_kw, self.shadow_states,
         )
+        self.shadow_v2_state, self.shadow_v2_decision = simulate_shadow_v2(
+            now, house, effective_dpm, self.max_charge_kw,
+            self.shadow_v2_state,
+        )
         sample = house.observed_at if house.kw is not None else None
         # Meaningful policy transitions only. A changing 'hold' explanation
         # is still preserved in the minute summary, not as another disk row.
@@ -532,11 +538,15 @@ class SimulationCoordinator:
              self.shadow_decisions[band].proposed_cap_kw,
              self.shadow_states[band].last_transition_reason)
             for band in ("wide", "medium")
-        )
+        ) + (("v2", self.shadow_v2_decision.action,
+              self.shadow_v2_state.mode,
+              self.shadow_v2_decision.proposed_cap_kw,
+              self.shadow_v2_state.kind,
+              self.shadow_v2_state.last_transition_reason),)
         record = {
             "time_local": now.astimezone(
                 ZoneInfo(self.hass.config.time_zone)).isoformat(timespec="seconds"),
-            "model": "continuous_two_band_no_real_vehicle",
+            "model": "continuous_three_candidate_no_real_vehicle", 
             "session_budget": "disabled_only_for_infinite_ev_lab",
             "shadow_run_started_local": self.shadow_run_started_at,
             "virtual_state_reset_on_this_row": starting_new_virtual_run,
@@ -552,6 +562,15 @@ class SimulationCoordinator:
             "ev_baseline_kw": self.max_charge_kw,
             "wide": self._shadow_summary("wide"),
             "medium": self._shadow_summary("medium"),
+            "v2": {
+                "action": self.shadow_v2_decision.action,
+                "reason": self.shadow_v2_decision.reason,
+                "state": self.shadow_v2_state.mode,
+                "kind": self.shadow_v2_state.kind,
+                "cap_kw": self.shadow_v2_decision.proposed_cap_kw,
+                "adjustments": self.shadow_v2_state.recheck_count,
+                "last_event": self.shadow_v2_state.last_transition_reason,
+            },
         }
         row = self._shadow_log_sampler.observe(
             now, sample, record, decision_signature,
@@ -584,7 +603,7 @@ class SimulationCoordinator:
                 batch, self._shadow_rows = self._shadow_rows, []
                 root = self.hass.config.path("easywallbox_smart_shadow")
                 count, last_file = await self.hass.async_add_executor_job(
-                    append_shadow_rows, root, batch,
+                    append_shadow_rows, root, batch, "shadow_v2",
                 )
                 self.shadow_logged_rows += count
                 self.shadow_log_file = last_file
