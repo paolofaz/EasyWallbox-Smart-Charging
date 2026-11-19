@@ -330,6 +330,13 @@ class SimulationCoordinator:
                                        seconds=1))
                     if limit > now:
                         choices.append(limit)
+            if (self.shadow_v2_state is not None
+                    and self.shadow_v2_state.mode == "LIMITED"
+                    and self.shadow_v2_state.last_good_at is not None):
+                due = (self.shadow_v2_state.last_good_at
+                       + timedelta(minutes=8, seconds=1))
+                if due > now:
+                    choices.append(due)
             for entity_id in self.house_sources:
                 src = self._raw(entity_id)
                 if src is not None:
