@@ -1,6 +1,6 @@
 # EasyWallbox Smart Charging
 
-**Sviluppo 0.2.0b2 — NON PUBBLICATO — SOLO SIMULAZIONE.** La release Marketplace attuale è **0.1.0** su `main`; le nuove funzioni non sono ancora installabili dal Marketplace.
+**Sviluppo 0.2.0b3 — NON PUBBLICATO — SOLO SIMULAZIONE.** La release Marketplace attuale è **0.1.0** su `main`; le nuove funzioni non sono ancora installabili dal Marketplace.
 
 Custom integration Python per Home Assistant che simula la pianificazione di ricarica e uno stabilizzatore lento della potenza EV. Il DPM fisico della EasyWallbox resta attivo, autonomo e responsabile di picchi e sicurezza elettrica. **La 0.1.0 non invia alcun comando reale alla wallbox o alle automobili.** I pulsanti/selettori sono consigli virtuali, non interruttori elettrici.
 
@@ -35,9 +35,12 @@ Il Config Flow crea un profilo nuovo: non è prevista la migrazione della vecchi
 
 Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettore **modalità simulata**. Le proposte `reduce`/`restore` non impostano la potenza reale. L'icona è inclusa in `custom_components/easywallbox_smart/brand/icon.png`; traduzioni IT/EN e Options Flow sono presenti.
 
-## Field test v0.2.0b2: due Johnny virtuali sempre in carica
+## Field test v0.2.0b3: confronto Johnny Ampio / Intermedio / V2
 
 Il branch `stabilizzatore-m1` contiene un laboratorio **spento di default**.
+**Nella beta 0.2.0b3** è stato aggiunto il terzo scenario *Johnny V2*: usa Ampio come logica di riconoscimento dei carichi forti e sperimenta un cuscinetto di 0,4 kW dopo tre minuti di piccola pressione continua, con possibilità di al massimo due ulteriori riduzioni da 0,4 kW distanziate almeno 10 minuti in caso di pressione forte persistente. I vecchi Ampio e Intermedio restano indipendenti e invariati per confronto. Tutte le decisioni sono **virtuali**. Ora i log giornalieri sono `shadow_v2_YYYY-MM-DD.jsonl`, con tre campi `wide`, `medium`, `v2` sincronizzati; i file storici `shadow_*.jsonl` non vengono sovrascritti. Il V2 *non* salva ancora su disco lo stato dei cap reali (che non esistono in questa beta).
+
+
 Quando abilitato nelle Opzioni, legge continuamente gli Shelly della casa,
 anche senza auto collegata, e simula **due auto inesauribili in parallelo**:
 margine ampio e margine intermedio. Usa il massimo EV ordinario
@@ -51,13 +54,13 @@ nel laboratorio. Johnny esamina tutti i report Shelly in memoria; il laboratorio
 un riepilogo ogni 60 secondi con min/max/media/numero campioni e subito
 ogni transizione significativa in JSONL giornalieri, nella cartella HA privata
 `/config/easywallbox_smart_shadow/` (massimo 2 MB/giorno).
-Due sensori aggiuntivi read-only mostrano gli stati wide/medium e
+Tre sensori aggiuntivi read-only mostrano gli stati wide/medium/V2 e
 lo stato del log. Il budget SOC è disattivato **solo** nei due scenari
 inesauribili; le altre soglie Johnny sono invariate.
 
 **Installazione manuale del pacchetto di test (NON disponibile dal Marketplace):**
-[istruzioni complete, GitHub Actions e rollback](docs/JOHNNY_SHADOW_FIELD_TEST_0_2_0B2.md).
-Il pacchetto `easywallbox-shadow-0.2.0b2` viene prodotto dalla CI
+[istruzioni complete, GitHub Actions e rollback](docs/JOHNNY_SHADOW_V2_FIELD_TEST_0_2_0B3.md).
+Il pacchetto `easywallbox-shadow-0.2.0b3` viene prodotto dalla CI
 del branch di sviluppo. Non modificare la cartella della release 0.1.0
 senza farne prima una copia di sicurezza.
 
@@ -69,6 +72,6 @@ La nuova simulazione Johnny v1 usa la **pressione dinamica sul DPM**, con confer
 
 Nessuna modifica a firmware ESPHome, DPM e automazioni Fiat esistenti. Non inserire PIN BLE, credenziali, token, cronologie private o cartelle `.storage` nel repository.
 
-**Novità sviluppo 0.2.0b2:** il target letto da un'entità HA ha priorità esclusiva quando quella modalità è scelta; se la lettura è `unknown` o `unavailable`, il planner segnala dati insufficienti senza utilizzare un vecchio target fisso. Le configurazioni 0.1.0 restano leggibili e la sorgente è modificabile dalle Opzioni. Il planner usa prima la potenza reale Shelly e, dopo almeno 30 minuti di contatori coerenti, combina potenza corrente e media energia/durata della sessione. In assenza di misure non inventa una media. La selezione dei sensori è modificabile dalle Opzioni e le configurazioni già create dalla 0.1.0 restano leggibili. Non salva uno storico di cinque sessioni. Dettagli in [Stima automatica e consumi universali](docs/STIMA_AUTOMATICA_E_CONSUMI_UNIVERSALI.md).\n\n**Johnny v1:** [Policy implementata, replay e gestione casi limite](docs/JOHNNY_V1_POLICY.md). Se la ricarica termina con telemetria coerente, propone la restituzione del limite virtuale; se cavo, proprietario o stato elettrico sono incerti segnala riconciliazione e non presume ripristini. Se uno Shelly resta inattendibile per 8 minuti dall'ultimo report domestico affidabile, propone di rilasciare il cap opzionale; i timer HA non costituiscono nuove letture. La diagnosi conserva l'ultimo evento virtuale. Il controllo elettrico reale **non è ancora implementato né collaudato**.\n\n**Approfondimenti:** [Note tecniche](NOTE_SVILUPPO.md), [Architettura M1](docs/ARCHITETTURA_M1.md), [Dashboard Lovelace](docs/LOVELACE.md), [Note release 0.1.0](docs/RELEASE_NOTES_0.1.0.md).
+**Novità sviluppo 0.2.0b2 (precedente):** il target letto da un'entità HA ha priorità esclusiva quando quella modalità è scelta; se la lettura è `unknown` o `unavailable`, il planner segnala dati insufficienti senza utilizzare un vecchio target fisso. Le configurazioni 0.1.0 restano leggibili e la sorgente è modificabile dalle Opzioni. Il planner usa prima la potenza reale Shelly e, dopo almeno 30 minuti di contatori coerenti, combina potenza corrente e media energia/durata della sessione. In assenza di misure non inventa una media. La selezione dei sensori è modificabile dalle Opzioni e le configurazioni già create dalla 0.1.0 restano leggibili. Non salva uno storico di cinque sessioni. Dettagli in [Stima automatica e consumi universali](docs/STIMA_AUTOMATICA_E_CONSUMI_UNIVERSALI.md).\n\n**Johnny v1:** [Policy implementata, replay e gestione casi limite](docs/JOHNNY_V1_POLICY.md). Se la ricarica termina con telemetria coerente, propone la restituzione del limite virtuale; se cavo, proprietario o stato elettrico sono incerti segnala riconciliazione e non presume ripristini. Se uno Shelly resta inattendibile per 8 minuti dall'ultimo report domestico affidabile, propone di rilasciare il cap opzionale; i timer HA non costituiscono nuove letture. La diagnosi conserva l'ultimo evento virtuale. Il controllo elettrico reale **non è ancora implementato né collaudato**.\n\n**Approfondimenti:** [Note tecniche](NOTE_SVILUPPO.md), [Architettura M1](docs/ARCHITETTURA_M1.md), [Dashboard Lovelace](docs/LOVELACE.md), [Note release 0.1.0](docs/RELEASE_NOTES_0.1.0.md).
 
 In caso di problemi puoi rimuovere l'entry di test da Dispositivi e servizi, disinstallare la custom integration da Marketplace e riavviare HA. Questo non cambia il DPM né le automazioni originali.
