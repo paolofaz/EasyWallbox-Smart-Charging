@@ -13,6 +13,7 @@ KINDS = {
     "stabilizer": "Stabilizzatore",
     "shadow_wide": "Johnny test — margine ampio",
     "shadow_medium": "Johnny test — margine intermedio",
+    "shadow_v2": "Johnny V2 — laboratorio", 
 }
 
 
@@ -20,7 +21,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     kinds = ("session", "plan", "stabilizer")
     if coordinator.shadow_enabled:
-        kinds += ("shadow_wide", "shadow_medium")
+        kinds += ("shadow_wide", "shadow_medium", "shadow_v2")
     async_add_entities([SimulationSensor(coordinator, entry, kind) for kind in kinds])
 
 
@@ -58,7 +59,8 @@ class SimulationSensor(SensorEntity):
             return "inizializzazione"
         if self.kind.startswith("shadow_"):
             band = self.kind.removeprefix("shadow_")
-            state = self.coordinator.shadow_states.get(band)
+            state = (self.coordinator.shadow_v2_state if band == "v2"
+                     else self.coordinator.shadow_states.get(band))
             return state.mode.lower() if state else "inizializzazione"
         if self.kind == "session":
             control = self.coordinator.control
@@ -89,8 +91,10 @@ class SimulationSensor(SensorEntity):
             return attrs
         if self.kind.startswith("shadow_"):
             band = self.kind.removeprefix("shadow_")
-            shadow = self.coordinator.shadow_decisions.get(band)
-            state = self.coordinator.shadow_states.get(band)
+            shadow = (self.coordinator.shadow_v2_decision if band == "v2"
+                      else self.coordinator.shadow_decisions.get(band))
+            state = (self.coordinator.shadow_v2_state if band == "v2"
+                     else self.coordinator.shadow_states.get(band))
             attrs.update(
                 hypothetical_ev_always_charging=True,
                 real_wallbox_commands=0,
@@ -112,9 +116,13 @@ class SimulationSensor(SensorEntity):
                         if state.last_transition_at else None
                     ),
                     last_trusted_house_report=(
-                        state.last_good_house_at.isoformat()
-                        if state.last_good_house_at else None
+                        (state.last_good_at if band == "v2" else
+                         state.last_good_house_at).isoformat()
+                        if (state.last_good_at if band == "v2" else
+                            state.last_good_house_at) else None
                     ),
+                    v2_kind=state.kind if band == "v2" else None,
+                    v2_downward_adjustments=state.recheck_count if band == "v2" else None,
                 )
             return attrs
         if self.kind == "session":
