@@ -3,6 +3,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import callback
 from homeassistant.helpers.entity import EntityCategory
 from .const import DOMAIN
+from .device import controller_device_info
 
 
 async def async_setup_entry(hass, entry, add_entities):
@@ -17,6 +18,7 @@ class RCSensor(SensorEntity):
 
     def __init__(self, controller, entry, kind):
         self.c, self.kind = controller, kind
+        self._attr_device_info = controller_device_info(entry)
         self._attr_unique_id = entry.entry_id + "_rc_" + kind
         self._attr_name = ("Stato ricarica" if kind == "state" else "Pianificazione ricarica")
         self._attr_icon = ("mdi:car-electric" if kind == "state" else "mdi:calendar-clock")
