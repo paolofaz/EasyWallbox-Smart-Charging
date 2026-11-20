@@ -341,7 +341,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.hass.states["sensor.dpm_set"].publish("0")
         self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.c.refresh()
-        self.assertEqual(self.c.reason, "dpm_zero_without_proven_johnny_lease")
+        self.assertEqual(self.c.reason, "dpm_zero_without_proven_rc_lease")
         self.assertFalse(self.c.real_enabled)
         await self.settle()
         self.assertEqual(self.hass.services.calls,[])
