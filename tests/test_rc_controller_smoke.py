@@ -323,6 +323,22 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.c._owned_limit,4.0)
         self.assertEqual(len(self.hass.services.calls),1)
 
+    async def test_external_dpm_zero_requires_reconciliation_without_start(self):
+        self.hass.states["sensor.ev"].publish("0")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.c.refresh()
+        self.assertEqual(self.c.reason, "dpm_zero_without_proven_johnny_lease")
+        self.assertFalse(self.c.real_enabled)
+        await self.settle()
+        self.assertEqual(self.hass.services.calls,[])
+
+    async def test_manual_mode_is_displayed_as_manual_not_blocked(self):
+        await self.c.async_change("mode","manual")
+        self.assertEqual(self.c.status,"Manuale")
+        self.assertFalse(self.c.real_enabled)
+
     async def test_lab_can_run_when_unplugged_without_switching(self):
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
         self.hass.states["binary_sensor.fiat"].publish("off")
