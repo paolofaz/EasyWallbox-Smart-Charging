@@ -36,6 +36,11 @@ Il Config Flow crea un profilo nuovo: non è prevista la migrazione della vecchi
 Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettore **modalità simulata**. Le proposte `reduce`/`restore` non impostano la potenza reale. L'icona è inclusa in `custom_components/easywallbox_smart/brand/icon.png`; traduzioni IT/EN e Options Flow sono presenti.
 
 
+
+## Banco prova Auto Ready — 20 novembre (solo offline)
+
+È stato aggiunto un **simulatore puro non collegato a Home Assistant** (`start_routine.py`) per verificare la futura routine Automatica/Manuale: pre-armamento DPM 0 A **una sola volta** con auto scollegata e con opzione esplicita, attesa dell'orario preferito se il planner lascia margine, avvio anticipato se richiesto dalla partenza, impostazione del massimo EV prima di un eventuale ripristino del DPM originario. Manuale, override esterno, dati incompleti, conflitti e riavvii non autorizzano comandi. Tutte le offerte sono **solo simulazioni**; non esistono servizi HA, collegamenti BLE o persistenza nuovi. Nessuna impostazione del DPM o della wallbox viene modificata. La policy Johnny V2 in simulazione mantiene le soglie attuali. [Specifica e test del banco](docs/BANCO_PROVA_AUTO_READY_2026-11-20.md).
+
 ## M4 in preparazione — controllo supervisionato, ancora disabilitato
 
 Nel solo branch di sviluppo è stato aggiunto un primo guard puro (control_guard.py), con test offline per impedire proposte di riduzione/ripristino quando mancano conferme ESPHome, qualità Shelly, DPM attivo, sessione, budget del planner o proprietà del limite. **Non è collegato al coordinatore, non esegue servizi HA, non scrive BLE e non salva dati persistenti.** Le eventuali proposte richiedono approvazione; non esiste ancora un executor reale. La beta installata resta 0.2.0b5 read-only, senza nuova release. I log finali del 20/11 devono ancora essere analizzati: le soglie V2 non sono validate per produzione. Dettagli in [M4: guard supervisionato](docs/M4_CONTROLLO_SUPERVISIONATO_GUARD.md).
