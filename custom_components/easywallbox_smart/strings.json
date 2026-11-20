@@ -1,12 +1,12 @@
 {
-  "title": "EasyWallbox Smart Charging RC",
+  "title": "EasyWallbox Smart Charging",
   "config": {
     "step": {
       "user": {
-        "title": "Wallbox, DPM, Shelly e limiti",
+        "title": "Wallbox e misure elettriche",
         "description": "Selezionare gli stati BLE confermati. Start-Stop usa DPM=0 A; il DPM fisico deve restare attivo.",
         "data": {
-          "house_power_sources": "Sensori consumi casa (senza wallbox)",
+          "house_power_sources": "Sensori potenza domestica (seleziona 1 o più, esclusa la wallbox)",
           "ev_power": "Potenza Shelly wallbox",
           "wallbox_connected": "Car Connected — wallbox",
           "wallbox_charging": "Charging — wallbox",
@@ -23,7 +23,7 @@
           "base_kw": "Potenza massima normale EV (kW)",
           "boost_kw": "Potenza massima boost EV (kW)",
           "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate",
-          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)"
+          "wallbox_refresh_button": "Pulsante ESPHome aggiorna dati BLE"
         }
       },
       "vehicle": {
@@ -34,21 +34,34 @@
           "cable": "Sensore cavo collegato",
           "soc": "Sensore SOC",
           "capacity_kwh": "Capacità utile batteria kWh",
-          "planning_rate_kw": "Velocità di ricarica prudenziale per pianificare (kW)",
+          "planning_rate_kw": "Potenza AC media prudenziale usata per stimare il tempo (kW)",
           "efficiency": "Rendimento AC",
           "departure_weekday": "Partenza feriali (HH:MM)",
           "departure_weekend": "Partenza weekend (HH:MM)",
-          "add_another": "Aggiungi un'altra auto",
+          "add_another": "Configura anche un'altra automobile",
           "vehicle_refresh_button": "Pulsante aggiorna dati auto (facoltativo)",
           "vehicle_last_update": "Timestamp ultimo aggiornamento auto (facoltativo)"
         }
       },
-      "target": {
-        "title": "Obiettivo SOC",
-        "description": "Scegliere una fonte: entità percentuale oppure limite fisso.",
+      "target_method": {
+        "title": "Come viene impostato l'obiettivo di carica?",
+        "menu_options": {
+          "target_fixed": "Percentuale fissa (es. 80%)",
+          "target_entity": "Entità Home Assistant che espone il limite SOC"
+        }
+      },
+      "target_fixed": {
+        "title": "Target SOC fisso",
+        "description": "Inserisci la percentuale alla quale vuoi terminare la ricarica. Non occorre selezionare un'entità.",
         "data": {
-          "target_entity": "Entità obiettivo SOC",
-          "target_fixed": "Obiettivo percentuale fisso"
+          "target_fixed": "Percentuale desiderata"
+        }
+      },
+      "target_entity": {
+        "title": "Target SOC da Home Assistant",
+        "description": "Seleziona il sensore o numero che rappresenta il limite di ricarica desiderato. Deve contenere una percentuale valida.",
+        "data": {
+          "target_entity": "Entità limite SOC"
         }
       }
     },
@@ -58,7 +71,6 @@
       "invalid_power": "Potenza base/boost non consentita",
       "duplicate_vehicle": "Auto o cavo già presenti",
       "invalid_clock": "Orario HH:MM non valido",
-      "choose_one_target": "Selezionare esattamente un target SOC",
       "invalid_target": "Target SOC non valido"
     },
     "abort": {
@@ -68,7 +80,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Opzioni RC",
+        "title": "Impostazioni EasyWallbox Smart Charging",
         "menu_options": {
           "wallbox": "Wallbox e limiti",
           "choose_vehicle": "Orari per auto"
