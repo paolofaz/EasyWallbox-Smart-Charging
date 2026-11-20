@@ -156,8 +156,12 @@ class RCController:
                 if state else None)
 
     def _number(self, entity, now, ttl=CAR_TTL):
-        s = self._fresh(entity, now, ttl)
-        return finite_number(s.state) if s else None
+        # SOC is telemetry and must be recent. A user-maintained input_number
+        # target is a setting and may legitimately remain unchanged for weeks.
+        s = self._fresh(entity, now, ttl) if ttl is not None else self._raw(entity)
+        if s is None or s.state in ("unknown", "unavailable", ""):
+            return None
+        return finite_number(s.state)
 
     def _status_acks(self, now, cable):
         p = self._pending
@@ -284,7 +288,7 @@ class RCController:
         target_reached = None
         if car:
             soc = self._number(car[CONF_SOC], now, CAR_TTL)
-            target = (self._number(car.get(CONF_TARGET_ENTITY), now, CAR_TTL)
+            target = (self._number(car.get(CONF_TARGET_ENTITY), now, None)
                       if car.get(CONF_TARGET_ENTITY) else car.get(CONF_TARGET_FIXED))
             self.soc, self.target_soc = soc, target
             departure = self._departure(now, car)
