@@ -39,7 +39,8 @@
           "departure_weekend": "Partenza weekend (HH:MM)",
           "add_another": "Configure another vehicle",
           "vehicle_refresh_button": "Vehicle Refresh/Update button (optional)",
-          "vehicle_last_update": "Last car data update timestamp (optional)"
+          "vehicle_last_update": "Last car data update timestamp (optional)",
+          "stop_at_target": "Stop charging at target SOC (only if the vehicle cannot stop itself)"
         }
       },
       "target_method": {
@@ -51,7 +52,7 @@
       },
       "target_fixed": {
         "title": "Fixed target SOC",
-        "description": "Set the desired charge completion percentage. No entity is needed.",
+        "description": "Target percentage. With Stop at target enabled use 80–100% in steps of 5; otherwise it is only a planning target.",
         "data": {
           "target_fixed": "Desired percentage"
         }
@@ -128,7 +129,8 @@
           "departure_weekday": "Partenza feriali (HH:MM)",
           "departure_weekend": "Partenza weekend (HH:MM)",
           "vehicle_refresh_button": "Vehicle Refresh/Update button (optional)",
-          "vehicle_last_update": "Last car data update timestamp (optional)"
+          "vehicle_last_update": "Last car data update timestamp (optional)",
+          "stop_at_target": "Stop charging at target SOC via Start-Stop"
         }
       },
       "edit_target_method": {
@@ -142,7 +144,8 @@
         "title": "Fixed target SOC",
         "data": {
           "target_fixed": "Target percentage"
-        }
+        },
+        "description": "An SOC slider entity will be created only for cars with fixed target and automatic stop enabled."
       },
       "edit_target_entity": {
         "title": "Target SOC from entity",
