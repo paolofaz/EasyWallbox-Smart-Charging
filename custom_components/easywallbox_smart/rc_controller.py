@@ -7,11 +7,9 @@ A Home Assistant service success is not a BLE acknowledgement.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta, time, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from homeassistant.core import HomeAssistant, callback
@@ -38,16 +36,6 @@ class Pending:
     next_state: State | None = None
 
 
-def _append_lab(root: str, row: dict) -> None:
-    path = Path(root)
-    path.mkdir(parents=True, exist_ok=True)
-    filename = path / ("rc_shadow_" + row["at"][:10] + ".jsonl")
-    if filename.exists() and filename.stat().st_size > 2_000_000:
-        return
-    with filename.open("a", encoding="utf-8") as fp:
-        fp.write(json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n")
-
-
 class RCController:
     """Single local controller with no blind retry and no retained action lease."""
 
@@ -60,7 +48,6 @@ class RCController:
         self.delay_enabled = False
         self.preferred_start = time(23, 0)
         self.departure_override = None
-        self.lab_enabled = False
         self.charge_now = False
         self.explicit_pause = False
         self.status = "Pronto, controllo reale disabilitato"
@@ -110,21 +97,11 @@ class RCController:
         self._refresh_task = None
         self._lock = asyncio.Lock()
         self._store = Store(hass, 1, "easywallbox_smart_rc_" + entry.entry_id)
-        self._lab_state = None
-        self._lab_urgent_state = None
-        self._lab_urgent_cap = float(self.cfg[CONF_BASE_KW])
-        self._lab_last_at = None
-        self._lab_last_logged_at = None
-        self._lab_last_logged_signature = None
-        self._lab_virtual_cap = float(self.cfg[CONF_BASE_KW])
-        self._lab_write_task = None
-        self._lab_buffer = []
 
     async def async_load(self):
         saved = await self._store.async_load() or {}
         self.mode = saved.get("mode") if saved.get("mode") in ("automatic", "manual") else "automatic"
         self.delay_enabled = bool(saved.get("delay", False))
-        self.lab_enabled = bool(saved.get("lab", False))
         # A persisted proven parking intent is not a fresh DPM readback.
         self._park_owned = saved.get("park_owned") is True
         try:
@@ -146,7 +123,6 @@ class RCController:
         await self._store.async_save({
             "mode": self.mode, "delay": self.delay_enabled,
             "park_owned": self._park_owned,
-            "lab": self.lab_enabled,
             "start": self.preferred_start.isoformat(timespec="minutes"),
             "departure": self.departure_override.isoformat()
             if self.departure_override else None,
@@ -304,7 +280,7 @@ class RCController:
     async def _request_one_shot_updates(self):
         """20 s after plug; one cloud button per selected/unknown vehicle.
 
-        The laboratory never calls this method. Failure is diagnostic only;
+        Cloud refresh is not an electrical command. Failure is diagnostic;
         there are NO blind retries and NO electrical writes.
         """
         async with self._lock:
@@ -414,7 +390,7 @@ class RCController:
         dpm = self._power(self.cfg[CONF_DPM_CONFIRMED], now, DPM_TTL)
         actual_limit = self._power(self.cfg[CONF_CONFIRMED_LIMIT], now)
         requested = self._power(self.cfg[CONF_REQUESTED_LIMIT], now)
-        house, house_at = self._house(now) if (cable is True or self.lab_enabled) else (None, None)
+        house, house_at = self._house(now) if cable is True else (None, None)
 
         self.house_kw = round(house, 3) if house is not None else None
         self.quality = "ok" if (cable is True and car and telemetry is True and
@@ -466,7 +442,7 @@ class RCController:
     def _fingerprint(self):
         # Recorder: publish only status/decision transitions, never raw 1s watts.
         return (self.status, self.reason, self.mode, self.real_enabled,
-                self.delay_enabled, self.lab_enabled,
+                self.delay_enabled,
                 self.vehicle_name, self.quality,
                 self.departure.isoformat() if self.departure else None,
                 self.target_soc, self._blocked, self._pending.kind if self._pending else None,
@@ -558,7 +534,7 @@ class RCController:
                     self._ev_idle_since = now
             else:
                 self._ev_idle_since = None
-        self._house_subscribe(cable is True or self.lab_enabled)
+        self._house_subscribe(cable is True)
         if cable is False:
             # Reset Manual to AUTO at confirmed unplug, but a session's
             # physical actuation lease is never reconstituted from guesses.
@@ -661,7 +637,6 @@ class RCController:
             else:
                 self.status, self.reason = "Da riconciliare", "charging_unverified"
         self._reschedule(now, cable is True)
-        self._lab(now, snapshot)
         if (self.real_enabled and cable is True and
                 self.mode == "automatic" and
                 self._refresh_due is not None and
@@ -936,76 +911,6 @@ class RCController:
             self.real_enabled = False
         self.refresh()
 
-    def _lab(self, now, snap):
-        if not self.lab_enabled or snap["house"] is None or snap["house_at"] is None:
-            return
-        at = snap["house_at"]
-        if self._lab_last_at and at <= self._lab_last_at:
-            return
-        self._lab_last_at = at
-        obs = Observation(
-            at=now, session_id="virtual_24h", connected=True, charging=True,
-            auto=True, trusted=True, house_kw=snap["house"], house_at=at,
-            dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]),
-            current_kw=self._lab_virtual_cap, margin_minutes=90,
-            remaining_budget_kwh=9999.,
-            max_kw=float(self.cfg[CONF_BASE_KW]),
-            boost_max_kw=float(self.cfg[CONF_BOOST_KW]),
-        )
-        self._lab_state, decision = evaluate(obs, self._lab_state)
-        if decision.action == "set_limit":
-            self._lab_virtual_cap = decision.target_kw
-
-        # Same real Shelly measurements, a second synthetic EV with little
-        # slack. The 45-minute case exercises urgent-only boost logic;
-        # it must NEVER share the policy state or authorization of a car.
-        urgent = replace(obs, session_id="virtual_24h_urgent",
-                         current_kw=self._lab_urgent_cap,
-                         margin_minutes=45, remaining_budget_kwh=0)
-        self._lab_urgent_state, urgent_decision = evaluate(
-            urgent, self._lab_urgent_state)
-        if urgent_decision.action == "set_limit":
-            self._lab_urgent_cap = urgent_decision.target_kw
-        signature = (decision.action, decision.phase, decision.reason,
-                     round(self._lab_virtual_cap, 1),
-                     urgent_decision.action, urgent_decision.phase,
-                     urgent_decision.reason, round(self._lab_urgent_cap, 1))
-        if (decision.action == "none" and
-                signature == self._lab_last_logged_signature and
-                self._lab_last_logged_at is not None and
-                at-self._lab_last_logged_at < timedelta(seconds=60)):
-            return
-        self._lab_last_logged_at = at
-        self._lab_last_logged_signature = signature
-        row = {"at": at.astimezone(ZoneInfo(self.hass.config.time_zone)).isoformat(),
-               "house_kw": round(snap["house"], 3), "dpm_assumption_kw": self.cfg[CONF_EXPECTED_DPM],
-               "ev_virtual_cap_kw": self._lab_virtual_cap, "decision": decision.action,
-               "reason": decision.reason, "phase": decision.phase,
-               "urgent_45m": {
-                   "action": urgent_decision.action,
-                   "reason": urgent_decision.reason,
-                   "phase": urgent_decision.phase,
-                   "ev_virtual_cap_kw": self._lab_urgent_cap,
-               },
-               "car": "artificial_24h", "mode": "simulation_only"}
-        self._lab_buffer.append(row)
-        if self._lab_write_task is None or self._lab_write_task.done():
-            self._lab_write_task = self.entry.async_create_background_task(
-                self.hass, self._flush_lab(), "EasyWallbox RC lab log",
-            )
-
-    async def _flush_lab(self):
-        while self._lab_buffer:
-            rows, self._lab_buffer = self._lab_buffer, []
-            for row in rows:
-                try:
-                    await self.hass.async_add_executor_job(
-                        _append_lab, self.hass.config.path("easywallbox_smart_lab"), row)
-                except (OSError, ValueError) as error:
-                    _LOGGER.warning("RC laboratory file write failed: %s", type(error).__name__)
-                    self.lab_enabled = False
-                    return
-
     def add_listener(self, cb):
         self._listeners.add(cb)
         return lambda: self._listeners.discard(cb)
@@ -1050,8 +955,6 @@ class RCController:
             self.departure_override = value
             if value is None:
                 self._active_departure = None
-        elif field == "lab":
-            self.lab_enabled = bool(value)
         elif field == "now":
             self.charge_now = True
         elif field == "pause":
@@ -1062,7 +965,7 @@ class RCController:
             self.explicit_pause = False
         else:
             raise ValueError("invalid RC control")
-        if field in ("mode", "delay", "time", "departure", "lab"):
+        if field in ("mode", "delay", "time", "departure"):
             await self._save()
         self.refresh()
 
@@ -1097,8 +1000,4 @@ class RCController:
             await self._task
         if self._refresh_task:
             await self._refresh_task
-        if self._lab_write_task:
-            await self._lab_write_task
-        if self._lab_buffer:
-            await self._flush_lab()
         self._listeners.clear()
