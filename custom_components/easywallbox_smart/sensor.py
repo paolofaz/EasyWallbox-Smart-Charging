@@ -11,9 +11,7 @@ KINDS = {
     "session": "Sessione",
     "plan": "Pianificatore",
     "stabilizer": "Stabilizzatore",
-    "shadow_wide": "Johnny test — margine ampio",
-    "shadow_medium": "Johnny test — margine intermedio",
-    "shadow_v2": "Johnny V2 — laboratorio", 
+    "shadow_v2": "Johnny V2 — laboratorio",
 }
 
 
@@ -21,7 +19,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     kinds = ("session", "plan", "stabilizer")
     if coordinator.shadow_enabled:
-        kinds += ("shadow_wide", "shadow_medium", "shadow_v2")
+        kinds += ("shadow_v2",)
     async_add_entities([SimulationSensor(coordinator, entry, kind) for kind in kinds])
 
 
@@ -57,10 +55,8 @@ class SimulationSensor(SensorEntity):
         d = self.coordinator.proposal
         if not s or not p or not d:
             return "inizializzazione"
-        if self.kind.startswith("shadow_"):
-            band = self.kind.removeprefix("shadow_")
-            state = (self.coordinator.shadow_v2_state if band == "v2"
-                     else self.coordinator.shadow_states.get(band))
+        if self.kind == "shadow_v2":
+            state = self.coordinator.shadow_v2_state
             return state.mode.lower() if state else "inizializzazione"
         if self.kind == "session":
             control = self.coordinator.control
@@ -89,19 +85,21 @@ class SimulationSensor(SensorEntity):
         attrs = {"simulation_only": True, "warning": SIMULATION_LABEL}
         if not s or not p or not d:
             return attrs
-        if self.kind.startswith("shadow_"):
-            band = self.kind.removeprefix("shadow_")
-            shadow = (self.coordinator.shadow_v2_decision if band == "v2"
-                      else self.coordinator.shadow_decisions.get(band))
-            state = (self.coordinator.shadow_v2_state if band == "v2"
-                     else self.coordinator.shadow_states.get(band))
+        if self.kind == "shadow_v2":
+            shadow = self.coordinator.shadow_v2_decision
+            state = self.coordinator.shadow_v2_state
+            trial = self.coordinator.shadow_v2_states.get("dpm46")
+            trial_decision = self.coordinator.shadow_v2_decisions.get("dpm46")
             attrs.update(
                 hypothetical_ev_always_charging=True,
                 real_wallbox_commands=0,
                 shadow_budget_disabled=True,
                 configured_initial_kw=self.coordinator.initial_charge_kw,
                 hypothetical_ev_max_kw=self.coordinator.max_charge_kw,
-                dpm_reference_source=self.coordinator.shadow_dpm_source,
+                observed_dpm_source=self.coordinator.shadow_dpm_source,
+                dpm_reference_44_kw=4.4,
+                dpm_reference_46_kw=4.6,
+                virtual_scenarios_only=True,
                 shadow_log_file=self.coordinator.shadow_log_file,
                 shadow_log_status=self.coordinator.shadow_log_status,
                 shadow_logged_rows=self.coordinator.shadow_logged_rows,
@@ -116,13 +114,17 @@ class SimulationSensor(SensorEntity):
                         if state.last_transition_at else None
                     ),
                     last_trusted_house_report=(
-                        (state.last_good_at if band == "v2" else
-                         state.last_good_house_at).isoformat()
-                        if (state.last_good_at if band == "v2" else
-                            state.last_good_house_at) else None
+                        state.last_good_at.isoformat()
+                        if state.last_good_at else None
                     ),
-                    v2_kind=state.kind if band == "v2" else None,
-                    v2_downward_adjustments=state.recheck_count if band == "v2" else None,
+                    v2_kind=state.kind,
+                    v2_downward_adjustments=state.recheck_count,
+                    model_46_state=trial.mode if trial else None,
+                    model_46_kind=trial.kind if trial else None,
+                    model_46_cap_kw=(
+                        trial_decision.proposed_cap_kw if trial_decision else None
+                    ),
+                    model_46_action=trial_decision.action if trial_decision else None,
                 )
             return attrs
         if self.kind == "session":
