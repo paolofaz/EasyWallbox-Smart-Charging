@@ -118,13 +118,13 @@ def setup(hass,*,cable=True,charging=True,soc="75",home=".1",old_limit=4.0):
              C.CONF_TARGET_FIXED:80,
              C.CONF_CAPACITY:42,C.CONF_EFFICIENCY:.9,
              C.CONF_DEPARTURE_WEEKDAY:"07:00",C.CONF_DEPARTURE_WEEKEND:"08:00",
-             "planning_rate_kw":2.4},
+             },
             {C.CONF_NAME:"Kia",C.CONF_CABLE:"binary_sensor.kia",
              C.CONF_SOC:"sensor.kia_soc",C.CONF_VEHICLE_REFRESH:"button.kia_update",
              C.CONF_TARGET_FIXED:80,
              C.CONF_CAPACITY:77,C.CONF_EFFICIENCY:.9,
              C.CONF_DEPARTURE_WEEKDAY:"07:00",C.CONF_DEPARTURE_WEEKEND:"08:00",
-             "planning_rate_kw":2.4},
+             },
         ],
     }
     values={
