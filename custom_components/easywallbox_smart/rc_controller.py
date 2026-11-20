@@ -94,6 +94,8 @@ class RCController:
         self._refresh_error = None
         self._prepared_session = None
         self._wallbox_refresh_sent = False
+        self._start_refresh_attempted = False
+        self._start_refresh_at = None
         self._power_state: State | None = None
         self._owned_limit: float | None = None
         self._dpm_lease: float | None = None
@@ -539,6 +541,8 @@ class RCController:
                 self._refresh_targets = ()
                 self._refresh_error = None
                 self._wallbox_refresh_sent = False
+                self._start_refresh_attempted = False
+                self._start_refresh_at = None
             elif self._last_cable is True:
                 self._disconnect_since = now
                 self._ev_idle_since = (now if snapshot["ev_kw"] is not None
@@ -722,8 +726,47 @@ class RCController:
                     or self.explicit_pause or self._pending is not None
                     or self._blocked or current["cable"] is not True
                     or current["car"] is None or current["charging"] is None
-                    or current["trusted"] is not True
                     or not self.cfg.get(CONF_LEGACY_DISABLED, False)):
+                return
+            if (current["dpm"] is None and self._park_owned and
+                    current["charging"] is False and
+                    self._car_update_ready(datetime.now(timezone.utc), current["car"])):
+                # A readback from the initial plug-in would be stale after
+                # a multi-hour scheduled wait. One additional BLE register
+                # read is justified precisely when starting is due.
+                now_ready = datetime.now(timezone.utc)
+                latest = (self.departure - timedelta(
+                    minutes=30 + 60 * self.remaining_kwh / max(
+                        1.4, min(float(self.cfg[CONF_BASE_KW]),
+                                 float(current["car"]["planning_rate_kw"]))))
+                    if self.departure is not None and
+                    self.remaining_kwh is not None else None)
+                if latest is None:
+                    return
+                scheduled = (self._planned_start(now_ready)
+                             if self.delay_enabled else now_ready)
+                if (self.charge_now or not self.delay_enabled or
+                        now_ready >= min(scheduled, latest)):
+                    if not self._start_refresh_attempted:
+                        self._start_refresh_attempted = True
+                        self._start_refresh_at = now_ready
+                        try:
+                            await self.hass.services.async_call(
+                                "button", "press",
+                                {"entity_id": self.cfg[CONF_WALLBOX_REFRESH]},
+                                blocking=True)
+                        except Exception as error:
+                            _LOGGER.warning("One-shot DPM refresh failed: %s",
+                                            type(error).__name__)
+                            self._blocked = "dpm_refresh_service_failed"
+                        self.refresh()
+                    elif (self._start_refresh_at is not None and
+                            now_ready-self._start_refresh_at >= ACK_TIMEOUT):
+                        self._blocked = "dpm_refresh_no_new_readback"
+                        self.status, self.reason = "Bloccata", self._blocked
+                        self._notify()
+                return
+            if current["trusted"] is not True:
                 return
             if not self._car_update_ready(datetime.now(timezone.utc), current["car"]):
                 return
