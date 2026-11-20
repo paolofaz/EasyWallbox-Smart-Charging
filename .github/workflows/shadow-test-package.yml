@@ -1,4 +1,4 @@
-name: Johnny V2 single-policy dual-DPM shadow test package
+name: Johnny V2 single-policy ampere-aware shadow test package
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
       - name: Upload opt-in field-test installation folder
         uses: actions/upload-artifact@v4
         with:
-          name: easywallbox-shadow-0.2.0b4
+          name: easywallbox-shadow-0.2.0b5
           path: dist/
           if-no-files-found: error
           retention-days: 14
