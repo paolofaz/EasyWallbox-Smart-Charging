@@ -177,7 +177,9 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             target = user_input[CONF_TARGET_FIXED]
             stop = self._pending.get(CONF_STOP_AT_TARGET, False)
-            if (80 <= float(target) <= 100 and float(target) % 5 == 0) if stop else (1 <= float(target) <= 100):
+            allowed = ((80 <= float(target) <= 100 and float(target) % 5 == 0)
+                       if stop else 1 <= float(target) <= 100)
+            if allowed:
                 return self._finish_vehicle({CONF_TARGET_FIXED: target})
             return self.async_show_form(
                 step_id="target_fixed",
