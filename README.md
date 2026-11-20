@@ -33,16 +33,34 @@ EasyWallbox Smart Charging** si configurano:
   partenza feriali e weekend, eventuale pulsante aggiornamento dati e
   timestamp dell'ultimo aggiornamento.
 
+**Dopo la configurazione puoi gestire le auto senza reinstallare:**
+`Impostazioni → Dispositivi e servizi → EasyWallbox Smart Charging →
+Configura` apre le **Opzioni**, da cui puoi **modificare tutti i campi
+di un'auto**, **aggiungere una nuova auto** o **rimuoverne una con
+conferma** (l'ultima auto non può essere rimossa). Il profilo SOC,
+la sua sorgente target, sensori, refresh, capacità, rendimento e orari
+sono tutti modificabili. Salvare le Opzioni ricarica l'integrazione
+e disabilita per sicurezza il controllo reale, da riabilitare
+soltanto dopo aver verificato la nuova configurazione.
+
 Ogni veicolo richiede una **sola fonte per il SOC obiettivo**:
 **Target fisso** (esempio 80%) oppure **Target da entità Home Assistant**
 (esempio sensore del limite impostato in auto). È una scelta guidata
 in due passaggi, non occorre compilare entrambe le opzioni.
 
-La **potenza prudenziale di pianificazione** (kW) è una stima della
-potenza media AC effettivamente disponibile per il veicolo, utilizzata
-per calcolare il tempo fino al target. **Non** è il limite elettrico
-che viene scritto nella wallbox; quello è `Charge power`. Non viene
-dedotta dalla lettura istantanea Shelly perché il DPM può limitarla.
+La **potenza disponibile per pianificare viene calcolata dall'integrazione**:
+non esiste un campo manuale "potenza AC media" o un valore fisso presunto
+di 2,4 kW. Un breve storico Shelly domestico (finestra fino a 20 minuti,
+75° percentile) permette di stimare il margine sotto il limite DPM
+positivo configurato; durante la ricarica, uno storico valido della
+potenza EV effettiva può correggere la previsione verso il basso.
+Le letture sono mantenute temporaneamente **in RAM**, non trasformate in
+nuovi sensori o scritte continuamente nel Recorder. Se mancano campioni
+affidabili, la durata stimata è **sconosciuta**: non inventiamo un valore.
+L'avvio posticipato rimane rispettato; per evitare di superare la
+partenza si usa soltanto il limite EV configurato come **massimo
+fisicamente possibile**, mai come media dichiarata. Il DPM continua
+a proteggere l'impianto.
 
 ## Comandi reali: sequenza di sicurezza
 
