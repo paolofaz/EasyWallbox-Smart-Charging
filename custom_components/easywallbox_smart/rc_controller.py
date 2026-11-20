@@ -389,11 +389,21 @@ class RCController:
         if self._timer_unsub is not None:
             self._timer_unsub()
             self._timer_unsub = None
+        due_dates = []
         if connected:
-            # Slow one-minute tick for schedule/timeout, never BLE polling.
-            due = now + timedelta(minutes=1)
+            due_dates.append(now + timedelta(minutes=1))
+        if self._pending:
+            due_dates.append(self._pending.since + ACK_TIMEOUT)
+        if self._disconnect_since is not None and not connected:
+            due_dates.append(self._disconnect_since + timedelta(seconds=30))
+        if self._refresh_due and connected and not self._refresh_issued:
+            due_dates.append(self._refresh_due)
+        if self._refresh_deadline and connected:
+            due_dates.append(self._refresh_deadline)
+        due_dates = [dt for dt in due_dates if dt > now + timedelta(milliseconds=200)]
+        if due_dates:
             self._timer_unsub = async_track_point_in_utc_time(
-                self.hass, self._on_timer, due)
+                self.hass, self._on_timer, min(due_dates))
 
     @callback
     def _on_timer(self, _time):
@@ -408,6 +418,26 @@ class RCController:
         now = datetime.now(timezone.utc)
         snapshot = self._snapshot(now)
         cable = snapshot["cable"]
+        # Only a true ON->OFF transition may arm one delayed parked command.
+        # Do not interpret startup OFF or a transient unavailable state as
+        # an unplug event.
+        if cable is not None and cable != self._last_cable:
+            if cable is True:
+                self._connect_since = now
+                self._disconnect_since = None
+                self._refresh_due = now + timedelta(seconds=20)
+                self._refresh_issued = False
+                self._refresh_requested_at = None
+                self._refresh_deadline = None
+                self._refresh_targets = ()
+                self._refresh_error = None
+                self._wallbox_refresh_sent = False
+            elif self._last_cable is True:
+                self._disconnect_since = now
+                self._refresh_due = None
+                self._refresh_deadline = None
+            self._last_cable = cable
+        self._status_acks(now, cable)
         self._house_subscribe(cable is True or self.lab_enabled)
         if cable is False:
             # A Manual/Pause/Delay override belongs to the just-finished EV
