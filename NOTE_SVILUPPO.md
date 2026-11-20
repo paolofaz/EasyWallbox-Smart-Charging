@@ -1,96 +1,55 @@
-# NOTE_SVILUPPO — ramo RC
+# Diario tecnico — EasyWallbox Smart Charging RC
 
-## 20 novembre 2026 — ricostruzione pulita
+## Stato del branch RC — 20 novembre 2026
 
-**Scopo:** una sola integrazione RC nativa HA, con controllo reale
-esplicitamente abilitabile, due modalità, avvio posticipato, override della
-partenza, Johnny RC e laboratorio H24 indipendente.
+**Un solo progetto:** custom integration nativa Home Assistant, dominio
+`easywallbox_smart`, con controllo della wallbox tramite il firmware ESPHome
+già esistente. Nessuna modifica al firmware.
 
-**Origine:** branch `stabilizzatore-m1` HEAD
-`a8c57b8d1d6b86db303779f50ea4e209404dceed`.
-Branch `RC` creato su richiesta dell'utente. `main`, altri branch
-e firmware ESPHome conservati.
+**Requisiti confermati:**
+- Uno o più sensori di consumo domestico selezionabili liberamente, e
+  uno Shelly dedicato alla wallbox, senza associazione a piani specifici.
+- Uno o più veicoli, con identificazione tramite cavo e una sola scelta
+  fra target SOC fisso e target SOC proveniente da una entità HA.
+- Potenza prudenziale per la stima dei tempi distinta dal limite EV
+  realmente comandato.
+- DPM positivo configurato per la matematica (es. 4,4 kW) distinto dal
+  valore 0 A che indica parcheggio reale.
+- Evento cavo ON→OFF, con Shelly EV sotto 30 W per 30 s: una singola
+  richiesta Start-Stop OFF, confermata da ESPHome.
+- Evento cavo OFF→ON: aggiornamento auto dopo 20 s, una sola richiesta;
+  attesa nuovi dati, calcolo SOC/partenza, verifica limite EV ordinario
+  (4,0 kW), quindi Start-Stop ON quando autorizzato.
+- Automatico/Manuale per sessione, programmazione differita, eccezione
+  partenza e Carica subito. Manuale torna Automatico allo scollegamento.
+- Stabilizzatore lento con forti, moderati, finestra 5/7 in LIMITED,
+  ripristino dopo 15 min, boost solo con ≤60 min di margine e isteresi
+  d'uscita ≥75 min. DPM sempre incaricato dei picchi rapidi.
+- Nessun controllo reale su dati obsoleti/contraddittori, nessuna
+  ripetizione cieca dei comandi, un solo esecutore elettrico.
+- Autorizzazione Controllo reale OFF dopo ogni riavvio/reload.
 
-**Regola più recente che prevale:** con cavo scollegato, nessuna scrittura
-alla wallbox. La precedente proposta AUTO_READY con DPM zero pre-connessione
-è quindi ritirata. Con cavo collegato e Charging vero soltanto EV number;
-con Charging verificato falso, soltanto Start-Stop per avvio posticipato.
-Se Charging diventa vero prima della pausa, Johnny non tenta uno stop
-tardivo. La UI spiega il limite.
+**Pulizia del codice del branch:** eliminato il vecchio laboratorio
+virtuale, le sue scritture JSONL e i relativi controlli. Eliminato
+il riferimento Johnny dalle entità e dalle etichette visibili.
+Sostituito il vecchio Config Flow per il target SOC con una scelta
+guidata fra una percentuale fissa e una entità. Eliminata la vecchia
+documentazione che suggeriva di installare file Lovelace con
+segnaposto per due piani o due auto. La dashboard autoprodotta
+resta da implementare/testare; non va dichiarata già disponibile.
 
-**Policy:** base 4,0, boost 4,2 soltanto con margine ≤60 minuti e casa
-<150 W per 15 min; >200 W esce, margine >=75 min per rientro (isteresi).
-Forti dopo 2 min, moderati su 10/12 min, ulteriore riduzione dopo
-5/7 min in LIMITED a pressione ≥250 W, con ripristino diretto dopo
-15 min documentati; conteggi riavviati dopo variazione.
+**Verifiche:** CI Python 3.12/3.13, Home Assistant hassfest,
+HACS/Marketplace, test controller e della policy. Non scambiare
+test offline per collaudo fisico del DPM e degli ACK BLE.
 
-**Comandi:** un solo dispatcher usa servizi HA di number/switch.
-Richiesta non equivale a BLE confermato, DPM0 non equivale a spegnere il
-DPM attivo. Il firmware arrotonda Power set a 0,1 kW e può mantenere
-vecchia la lettura DPM; impossibile garantire un ACK raw esatto dal solo
-pubblicato. Necessaria prova reale con comandi supervisionati e verifica
-indipendente dell'effetto; nessun retry.
+**Revisione repository:** mantenere il solo branch `RC`;
+`main`, `rifondazione-evcc`, `stabilizzatore-m1` e
+`sviluppo-test` sono obsoleti. È necessario che un amministratore
+sposti PRIMA il branch di default da `main` a `RC`, quindi elimini
+gli altri quattro branch. Il connettore GitHub attuale non espone
+quelle azioni amministrative. Le vecchie release/tag vanno gestite
+separatamente; non rimuoverle inavvertitamente dalla cronologia.
 
-**Persistenza:** preferenze UI salvate tramite Store, non campioni.
-Autorizzazione al controllo reale e lease non persistiti: dopo riavvio
-controllo reale OFF. Recorder solo su cambi semantici. Laboratorio
-scrive JSONL privati fuori dal repository e dal Recorder, solo su nuovi
-campioni e con limite dimensione.
-
-**Test ancora necessari:** prima installazione, HA 2026.11, registrazione
-entità, config/options flow e traduzioni; reale qualità/freschezza dei
-sorgenti DPM e command status, pause/resume dopo l'inserimento cavo,
-BLE offline, SOC lento, automazioni Fiat, target Kia, reboot con DPM=0,
-Manuale durante cap, override e scadenza partenza, time zone/DST.
-
-**Invarianti di sicurezza:** DPM sempre attivo, nessun comando quando
-cavo scollegato, nessuna azione a stati incerti, nessun Start/Stop durante
-Charging, nessuna doppia gestione delle stesse entità.
-
-**Nessun test automatico o parere di progetto è un collaudo elettrico.**
-
-
-## 20 novembre 2026 — RC: lifecycle e refresh confermati
-
-**Decisione utente**: abbandonato il veto assoluto ai comandi con cavo
-scollegato; unica eccezione `Start-Stop OFF` dopo transizione fisica
-ON→OFF confermata da wallbox + Shelly EV <30 W per almeno 30 s.
-Un solo tentativo, conferma DPM0 e Charge Enabled OFF. Nessuna
-azione se si trova già scollegata all'avvio HA. Il firmware ESPHome
-Start-Stop è già stato testato e non viene modificato.
-
-**Modalità**: durante Manuale, nessun comando automatico di carica.
-Alla fine sessione (cavo OFF) ritorno ad AUTO; conservazione del
-consenso al parcheggio solo se il controllo reale era stato esplicitamente
-abilitato. AUTO con cavo ON e wallbox parcheggiata verifica un solo
-veicolo, SOC, target, capacità, efficienza, programma di partenza e
-ultimo avvio sicuro; attende eventuale orario posticipato; verifica
-EV 4,0 kW prima di uno `Start-Stop ON`; controlla DPM positivo dopo
-l'effetto. In carica Johnny può scrivere soltanto il limite EV.
-
-**Refresh**: dopo 20 s di cavo ON, `button.press` dell'auto identificata,
-o entrambi se l'identità è ancora ignota, una sola richiesta senza retry.
-Sorgente `last info update` opzionale, altrimenti nuova pubblicazione
-SOC dopo la richiesta; attesa massima 120 s per nuovi dati. Se non
-arrivano, niente avvio. Il pulsante ESPHome Refresh data viene richiesto
-nel Config Flow e usato soltanto al collegamento e, se necessario,
-una seconda volta quando si deve riprendere dopo una lunga attesa.
-Il laboratorio non preme questi pulsanti.
-
-**DPM**: per i calcoli usare il limite POSITIVO configurato
-(es. 4,4 kW), mai lo zero del sensore durante la pausa. Il sensore è
-una conferma dello stato osservato. DPM Active rimane ON. Valori
-positivi divergenti o stantii sospendono scritture automatiche.
-
-**Riavvii**: stato fisico invariato. Provenienza di un DPM0 verificato
-persistita, ma dopo reload/riavvio `Controllo reale` OFF per
-autorizzazione esplicita; nessun avvio cieco. Non si tentano retry
-di alcun comando. Manuale, PAUSA gestione, SOC mancante e sorgenti
-contraddittorie sono veti.
-
-**Stato di sviluppo**: ramo `RC`; `main` e repository ESPHome
-invariati. Nuovi test simulano richiesta di parcheggio dopo quiete,
-refresh veicolo dopo 20 s, pre-arming con EV 4 kW, ACK successivi e
-nessun Start-Stop su una carica in corso.
-Test automatici e validazione manifest NON costituiscono collaudo
-elettrico. Nessun file privato o credenziale inserito su GitHub.
+**Da verificare in HA:** rimozione corretta dell'installazione
+precedente, caricamento del Config Flow RC e conferma di tutte
+le entità; test fisico solo successivamente e sotto supervisione.
