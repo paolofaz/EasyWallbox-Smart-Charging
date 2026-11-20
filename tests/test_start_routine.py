@@ -166,7 +166,14 @@ class StartRoutineBenchTest(unittest.TestCase):
     def test_dpm_zero_but_real_charging_is_inconsistent(self):
         r = bench.evaluate_bench(connected(
             dpm_confirmed_kw=0.0, arm_owner="johnny", charging=True))
-        self.assertEqual(r.reason, "charging_conflicts_with_zero_dpm")
+        self.assertEqual(r.reason, "charging_unknown_or_conflicts_with_zero_dpm")
+
+    def test_unknown_charging_does_not_allow_resume(self):
+        r = bench.evaluate_bench(connected(
+            dpm_confirmed_kw=0.0, arm_owner="johnny",
+            charging=None, ev_requested_kw=4.2, ev_confirmed_kw=4.2))
+        self.assertEqual((r.action, r.reason),
+                         ("none", "charging_unknown_or_conflicts_with_zero_dpm"))
 
     def test_invalid_ev_step_never_offered(self):
         r = bench.evaluate_bench(connected(
