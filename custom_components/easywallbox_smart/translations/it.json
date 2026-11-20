@@ -92,7 +92,7 @@
         "menu_options": {
           "sources": "Sensori consumi e contatori sessione",
           "choose_vehicle": "Parametri veicolo e orari",
-          "shadow_lab": "Potenza EV e prova Johnny V2 DPM"
+          "shadow_lab": "Potenza EV e prova Johnny V2 in ampere"
         }
       },
       "vehicle": {
@@ -130,12 +130,12 @@
         }
       },
       "shadow_lab": {
-        "title": "Prova Johnny V2 — DPM virtuale 4,4 e 4,6 kW",
-        "description": "Nessun comando reale. Un solo Johnny V2 simulato con due soglie DPM puramente virtuali (4,4 e 4,6 kW), indipendenti dal DPM della wallbox. Per questa prova imposta il massimo EV simulato a 4,2 kW. Log: shadow_v2_compare_YYYY-MM-DD.jsonl. Il DPM di riferimento qui sotto non modifica le due soglie virtuali fisse.",
+        "title": "Prova Johnny V2 — corrente BLE, solo simulazione",
+        "description": "Nessun comando reale. Un solo Johnny V2 con DPM virtuale 4,4 kW (19,1 A BLE); imposta qui sotto il massimo EV simulato a 4,2 kW (18,3 A BLE). I watt Shelly sono convertiti soltanto in corrente equivalente nominale, non in ampere misurati dal DPM. Log: shadow_v2_amps_YYYY-MM-DD.jsonl. Il modello DPM modificabile sotto non cambia la soglia fissa di questo laboratorio.",
         "data": {
           "initial_charge_kw": "Potenza iniziale per futura sessione (kW)",
           "max_charge_kw": "Massimo ordinario e potenza simulata (kW)",
-          "shadow_lab_enabled": "Attiva prova Johnny V2 a doppio DPM virtuale e log JSONL",
+          "shadow_lab_enabled": "Attiva Johnny V2 virtuale in ampere e log JSONL",
           "dpm_model_kw": "DPM di riferimento (kW) quando il sensore è a 0 o non disponibile"
         }
       }
