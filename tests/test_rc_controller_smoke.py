@@ -385,6 +385,97 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await self.settle()
         self.assertFalse(any(x[0]=="switch" for x in self.hass.services.calls))
 
+    async def test_refresh_after_twenty_seconds_only_selected_car(self):
+        await self.c.async_change("real", True)
+        self.c._refresh_due = datetime.now(timezone.utc)-timedelta(seconds=1)
+        self.c._refresh_issued = False
+        self.c.refresh()
+        await self.settle()
+        calls = [(d,serv,args["entity_id"]) for d,serv,args,_ in
+                 self.hass.services.calls]
+        self.assertIn(("button","press","button.fiat_update"),calls)
+        self.assertIn(("button","press","button.wallbox_refresh"),calls)
+        self.assertNotIn(("button","press","button.kia_update"),calls)
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(sum(d=="button" for d,_,_,_ in self.hass.services.calls),2)
+
+    async def test_refresh_both_when_vehicle_not_yet_identified(self):
+        await self.c.async_change("real", True)
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.c._refresh_due = datetime.now(timezone.utc)-timedelta(seconds=1)
+        self.c._refresh_issued = False
+        self.c.refresh()
+        await self.settle()
+        entities = [args["entity_id"] for d,serv,args,_ in
+                    self.hass.services.calls if d=="button"]
+        self.assertIn("button.fiat_update",entities)
+        self.assertIn("button.kia_update",entities)
+
+    async def test_park_prepare_resume_requires_verified_staged_responses(self):
+        # Arm once, then disconnect and park after the measured quiet period.
+        self.hass.states["number.charge_power"].publish("3.6")
+        self.hass.states["sensor.power_set"].publish("3.6")
+        await self.c.async_change("real",True)
+        await self.settle()
+        # Any pending initial number operation is outside this new session.
+        self.c._pending=None
+        self.hass.services.calls.clear()
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.c.refresh()
+        self.c._disconnect_since-=timedelta(seconds=31)
+        self.c._ev_idle_since-=timedelta(seconds=31)
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(self.hass.services.calls[0][:2],("switch","turn_off"))
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.hass.states["sensor.command_status"].publish("Verified DPM")
+        self.c.refresh()
+        await self.settle()
+        self.assertTrue(self.c._park_owned)
+        self.assertIsNone(self.c._pending)
+
+        # Next car: one refresh request, then actual new SOC evidence.
+        self.hass.states["binary_sensor.wallbox_cable"].publish("on")
+        self.hass.states["binary_sensor.fiat"].publish("on")
+        self.c.refresh()
+        self.c._refresh_due=datetime.now(timezone.utc)-timedelta(seconds=1)
+        self.c.refresh()
+        await self.settle()
+        self.assertTrue(self.c._refresh_issued)
+        self.hass.states["sensor.fiat_soc"].publish("75")
+        self.c.refresh()
+        await self.settle()
+        prepares=[x for x in self.hass.services.calls if x[0]=="number"]
+        self.assertGreaterEqual(len(prepares),1)
+        self.assertEqual(prepares[-1][2]["value"],4.0)
+        self.assertEqual(self.c._pending.kind,"prepare")
+
+        # BLE confirms charge-power register before ANY Start-Stop ON.
+        self.assertFalse(any(x[0]=="switch" and x[1]=="turn_on"
+                             for x in self.hass.services.calls))
+        self.hass.states["number.charge_power"].publish("4.0")
+        self.hass.states["sensor.power_set"].publish("4.0")
+        self.hass.states["sensor.command_status"].publish("Verified charge power")
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(self.c._pending.kind,"resume")
+        self.assertEqual(self.hass.services.calls[-1][:2],("switch","turn_on"))
+
+        self.hass.states["sensor.dpm_set"].publish("4.4")
+        self.hass.states["binary_sensor.charge_enabled"].publish("on")
+        self.hass.states["sensor.command_status"].publish("Verified DPM")
+        self.c.refresh()
+        await self.settle()
+        self.assertFalse(self.c._park_owned)
+        self.assertIsNone(self.c._pending)
+        self.assertEqual(sum(d=="switch" and svc=="turn_on"
+                             for d,svc,_,_ in self.hass.services.calls),1)
+
     async def test_lab_can_run_when_unplugged_without_switching(self):
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
         self.hass.states["binary_sensor.fiat"].publish("off")
