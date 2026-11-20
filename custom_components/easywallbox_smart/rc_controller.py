@@ -188,6 +188,11 @@ class RCController:
         p = self._pending
         if p is None:
             return
+        if p.kind == "park" and cable is not False:
+            self._blocked = "park_interrupted_or_cable_unknown"
+            self._pending = None
+            self.real_enabled = False
+            return
         if cable is not True and p.kind != "park":
             self._blocked = "pending_command_cable_lost"
             self._pending = None
@@ -203,11 +208,11 @@ class RCController:
         valid = False
         if p.kind in ("power", "prepare"):
             requested = self._power(self.cfg[CONF_REQUESTED_LIMIT], now)
-            valid = (flag == "Verified charge power" and confirmed_ev is not None
+            valid = (flag in ("Verified charge power", "Confirmed charge power") and confirmed_ev is not None
                      and requested is not None and abs(confirmed_ev-p.target) <= .11
                      and abs(requested-p.target) <= .11)
         elif p.kind in ("pause", "park"):
-            valid = (flag == "Verified DPM" and confirmed_dpm is not None
+            valid = (flag in ("Verified DPM", "Confirmed DPM") and confirmed_dpm is not None
                      and confirmed_dpm <= .06 and charge_enabled is False)
         elif p.kind == "resume":
             valid = (flag == "Verified DPM" and confirmed_dpm is not None
