@@ -470,3 +470,29 @@ wallbox, modifica del firmware, del DPM o delle automazioni legacy;
 - Aggiunti `tests/test_start_routine.py` con regressioni, e `docs/BANCO_PROVA_AUTO_READY_2026-11-20.md` con decisioni da approvare e blocchi del futuro executor.
 - Non modificati coordinatore HA, selettore Lovelace, manifest 0.2.0b5, switch fisico, firmware, main o automazioni legacy. Il codice simula un protocollo proposto: **nessuna autorizzazione al controllo reale**.
 - La verifica GitHub Actions dei nuovi test deve essere controllata sul commit finale. Prossimo passo: testare la routine su snapshot HA reali in read-only; poi definire persistenza minima, interlock e consenso prima di qualsiasi comando fisico.
+
+## Revisione Johnny e prossima beta in sola lettura
+
+**20 novembre 2026.** Revisione su `stabilizzatore-m1`, codice `4071863357aa01fae0520b952c88a1e87862c510`, manifest 0.2.0b5. Questa modifica aggiorna la documentazione. Le quattro verifiche GitHub di quel commit sono riuscite. Rieseguiti in Python 3.12 i 292 test offline, compresi i 25 di `start_routine` e i 15 di `control_guard`.
+
+### Risultato e limiti della prova
+
+Il laboratorio V2 usa un riferimento DPM fisso, una vettura sintetica e un budget illimitato. La sessione HA usa ancora `johnny_policy.evaluate`. L'estratto esteso in ampere ha due coppie riduzione/ripristino e zero correzioni. Per tutti e quattro i cambi il campo `dpm_observed_kw` è assente o nullo e l'origine è `last_positive_confirmed_this_run`. L'ultimo valore conosciuto è utile come contesto per il laboratorio. Per la sessione va mostrata la mancanza di una conferma corrente.
+
+Nel confronto storico sugli stessi intervalli, la variante con soli episodi forti ha richiesto meno cambi di limite e ha lasciato più energia teorica all'EV, a fronte di più modulazione del DPM ideale. La proposta è conservarla come confronto offline. Le soglie V2 restano quelle documentate, con ripristino forte diretto dopo 15 minuti di quiete.
+
+### Casi riprodotti che l'adattatore dovrà gestire
+
+- `evaluate_bench` può offrire `offer_park` con i cavi scollegati e `charging=True` o `None`, oppure in `CHARGE_NOW`. L'armamento richiede AUTO, opt-in, DPM attivo e dati coerenti di inattività. Mancanza di un report, conflitto o ripetizione di un tentativo devono avere un motivo esplicito.
+- Con inizio preferito futuro e ultimo avvio utile mancante, il banco può arrivare a `offer_resume`. Occorre una decisione motivata del planner per quel veicolo. Un limite virtuale più alto del limite EV osservato richiede una baseline autorizzata. Il passo ammesso da solo non verifica il massimo del dispositivo.
+- Il buffer di `evaluate_v2`, chiamato direttamente con una sessione Manuale, può ancora proporre una riduzione. Il veto di modalità, budget reale e dati deve coprire ogni proposta. Nel guard il veto di budget oggi blocca anche la restituzione di un cap posseduto. L'autorizzazione a limitare e quella a restituire un cap devono essere valutate separatamente.
+- I registri EV e DPM vengono pubblicati da ESPHome con arrotondamento a 0,1 kW. Il firmware distingue internamente gli esiti usando il valore grezzo. La sola uguaglianza in HA dei kW richiesti e letti non certifica quel valore, il proprietario o la data dell'operazione. In pausa il prossimo valore DPM memorizzato dal firmware può cambiare. Per la futura ripresa occorre poter verificare anche la destinazione prima di proporne l'esecuzione. [Parser e gestione DPM del firmware esaminato](https://github.com/paolofaz/Easywallbox---Esphome/blob/b96c757280dadabe4b083da2cffd27b6180496c6/wallbox.yaml#L254).
+
+### Primo incremento proposto e accettazione
+
+1. Comporre nel coordinatore un'osservazione di sessione con sorgenti, unità, orari e qualità verificati separatamente. Conservare la differenza tra `False` e sconosciuto. Leggere le entità selezionate dall'utente. Una sorgente mancante in una configurazione precedente produce una diagnosi e lascia caricabile l'entry.
+2. Riusare il sensore di sessione per fase osservata, proposta, motivo e origine del limite. Mostrare il blocco per DPM zero di proprietà sconosciuta. Una proposta simulata non crea proprietà sul dispositivo e non conferma `AUTO_READY`. Il confronto con un'eventuale sequenza ipotetica deve rimanere riconoscibile. Una sola intenzione utente guida banco e planner. Il selettore attuale è legato alla sessione e non è disponibile a cavo scollegato.
+3. Coprire mediante test l'ingresso dalla normale entry HA, anche al reload, orari preferito/ultimo utile, target raggiunto e cambio auto. Verificare Manuale, Pausa, Carica subito, conferma scaduta, dati discordanti e due aggiornamenti identici. Controllare sul bus di test che le chiamate di comando siano zero e che le proposte non si moltiplichino. Distinguere la conferma EV dalla ripresa DPM e dalla ricarica verificata con stato wallbox e misura EV coerente.
+4. Una sola prova osservativa su una normale sessione, dalla connessione alla partenza o allo scollegamento, con automazioni esistenti operative. Registrare le transizioni, il budget stimato e l'esito SOC con età del dato. Se una conferma manca, l'esito atteso è il blocco motivato. Prima di un controllo supervisionato serviranno identità e proprietà verificabili, arbitraggio con i controlli legacy, prova di ripresa del solo valore autorizzato, gestione dei timeout e consenso specifico.
+
+**Rollback.** Per questo commit basta il revert documentale sul branch. Per la futura beta osservativa il criterio è poter ripristinare la copia esatta della 0.2.0b5 precedente al test e riavviare HA con l'entry esistente, senza scritture verso la wallbox. Non è stato eseguito un rollback sull'installazione domestica.

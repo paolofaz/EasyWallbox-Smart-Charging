@@ -2,7 +2,7 @@
 
 **Sviluppo 0.2.0b5 — NON PUBBLICATO — SOLO SIMULAZIONE.** La release Marketplace attuale è **0.1.0** su `main`; le nuove funzioni non sono ancora installabili dal Marketplace.
 
-Custom integration Python per Home Assistant che simula la pianificazione di ricarica e uno stabilizzatore lento della potenza EV. Il DPM fisico della EasyWallbox resta attivo, autonomo e responsabile di picchi e sicurezza elettrica. **La 0.1.0 non invia alcun comando reale alla wallbox o alle automobili.** I pulsanti/selettori sono consigli virtuali, non interruttori elettrici.
+Custom integration Python per Home Assistant che simula la pianificazione di ricarica e uno stabilizzatore lento della potenza EV. Il DPM fisico della EasyWallbox modula autonomamente il carico. Le protezioni elettriche appartengono all'impianto. I selettori della 0.1.0 e della beta agiscono soltanto sulle proposte simulate.
 
 <!-- ha-marketplace:exclude-start -->
 ## Installazione
@@ -39,11 +39,13 @@ Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettor
 
 ## Banco prova Auto Ready — 20 novembre (solo offline)
 
-È stato aggiunto un **simulatore puro non collegato a Home Assistant** (`start_routine.py`) per verificare la futura routine Automatica/Manuale: pre-armamento DPM 0 A **una sola volta** con auto scollegata e con opzione esplicita, attesa dell'orario preferito se il planner lascia margine, avvio anticipato se richiesto dalla partenza, impostazione del massimo EV prima di un eventuale ripristino del DPM originario. Manuale, override esterno, dati incompleti, conflitti e riavvii non autorizzano comandi. Tutte le offerte sono **solo simulazioni**; non esistono servizi HA, collegamenti BLE o persistenza nuovi. Nessuna impostazione del DPM o della wallbox viene modificata. La policy Johnny V2 in simulazione mantiene le soglie attuali. [Specifica e test del banco](docs/BANCO_PROVA_AUTO_READY_2026-11-20.md).
+Il banco offline studia l'avvio posticipato. Con auto scollegata e opzione esplicita contempla una proposta di pausa preventiva DPM 0 A. Con auto identificata confronta inizio preferito e ultimo avvio utile. Prima di proporre il ripristino del DPM originario richiede la conferma del limite EV autorizzato per la sessione. Oggi il coordinatore HA usa Johnny V1 per la sessione e offre V2 nel laboratorio con auto virtuale. I due moduli del banco, `start_routine.py` e `control_guard.py`, sono funzioni offline. [Specifica del banco](docs/BANCO_PROVA_AUTO_READY_2026-11-20.md).
+
+**Prossimo passo proposto per Lovelace.** Un riquadro in sola lettura mostrerà fase osservata, proposta simulata, motivo ed eventuale dato mancante. Automatico e Manuale sono le due scelte principali previste. Pausa esplicita e Carica subito conservano il significato per la sessione. Un DPM trovato a zero con origine sconosciuta deve comparire come «da riconciliare». La proposta di armamento e la conferma di `AUTO_READY` sono due eventi distinti. Questa vista è da implementare e collaudare. [Criteri di accettazione e rollback](NOTE_SVILUPPO.md#revisione-johnny-e-prossima-beta-in-sola-lettura).
 
 ## M4 in preparazione — controllo supervisionato, ancora disabilitato
 
-Nel solo branch di sviluppo è stato aggiunto un primo guard puro (control_guard.py), con test offline per impedire proposte di riduzione/ripristino quando mancano conferme ESPHome, qualità Shelly, DPM attivo, sessione, budget del planner o proprietà del limite. **Non è collegato al coordinatore, non esegue servizi HA, non scrive BLE e non salva dati persistenti.** Le eventuali proposte richiedono approvazione; non esiste ancora un executor reale. La beta installata resta 0.2.0b5 read-only, senza nuova release. I log finali del 20/11 devono ancora essere analizzati: le soglie V2 non sono validate per produzione. Dettagli in [M4: guard supervisionato](docs/M4_CONTROLLO_SUPERVISIONATO_GUARD.md).
+Il guard valuta una possibile modifica del limite EV sulla base di sessione, dati ESPHome e Shelly, budget e proprietà del limite. Il passaggio al controllo reale richiede ancora prove sulla provenienza e sull'età di ogni conferma, sulla proprietà esclusiva dei comandi e sul recupero dopo riavvio. Il confronto fra i kW pubblicati da ESPHome è insufficiente per ricostruire con certezza il valore BLE originario in decimi di ampere. [Guard supervisionato](docs/M4_CONTROLLO_SUPERVISIONATO_GUARD.md).
 
 ## Field test v0.2.0b5: Johnny V2 unico, modellato sui comandi BLE in ampere
 
@@ -94,7 +96,7 @@ Il branch `main` e la release Marketplace `0.1.0` restano invariati.
 
 ## Qualità e limiti
 
-**Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b5 saranno disponibili nella CI del branch di sviluppo. Il precedente laboratorio 0.2.0b3 è stato provato in Home Assistant con log Shelly il 19–20 novembre; della nuova beta in ampere è stato verificato soltanto l'avvio 10:47–10:49 del 20 novembre; il test finale è ancora da analizzare. Tutte le proposte restano in sola simulazione.
+Sul commit di codice `4071863` sono passati 292 test offline, inclusi 25 test di avvio e 15 del guard. Tutti e quattro i workflow GitHub sono riusciti. L'estratto esteso della 0.2.0b5 contiene due episodi forti con ripristino diretto, entrambi con auto virtuale. Le misure disponibili lasciano aperti l'effetto sulla ricarica effettiva e il margine SOC alla partenza. Le soglie di 2 minuti per il carico forte e 15 minuti per il ripristino restano i riferimenti della simulazione. [Revisione di codice verificata](https://github.com/paolofaz/EasyWallbox-Smart-Charging/commit/4071863357aa01fae0520b952c88a1e87862c510).
 
 La nuova simulazione Johnny v1 usa la **pressione dinamica sul DPM**, con conferma 2/3 minuti per carichi continui, memoria di 5 minuti per quelli intermittenti e quiete 15/10 minuti nelle fasce ampio/intermedio. Il DPM impostato a **zero** per la pausa non è trattato come limite elettrico e non causa mai un avvio automatico; Johnny richiede di conoscere l'origine della pausa prima di qualsiasi futuro controllo reale. Le vecchie soglie domestiche fisse 1,5/1,0 kW appartengono a un precedente test offline, non al supervisore collegato in Home Assistant. Tutti i parametri restano **tarature sperimentali**, non protezioni elettriche.
 
