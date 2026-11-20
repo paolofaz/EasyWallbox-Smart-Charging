@@ -419,6 +419,106 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(c.real_enabled)
         await c.async_close()
 
+    def enable_soc_stop_on_fiat(self, source_timestamp=True):
+        car=self.c.cfg[const.CONF_VEHICLES][0]
+        car[const.CONF_STOP_AT_TARGET]=True
+        if source_timestamp:
+            car[const.CONF_VEHICLE_LAST_UPDATE]="sensor.fiat_update_time"
+            self.hass.states["sensor.fiat_update_time"]=FakeState(
+                datetime.now(timezone.utc).isoformat())
+        return car
+
+    async def test_opt_in_fiat_soc_stop_waits_for_car_refresh_and_ble_ack(self):
+        self.enable_soc_stop_on_fiat()
+        self.hass.states["sensor.fiat_soc"].publish("80")
+        self.c.refresh()
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertIn(("button","press"),[c[:2] for c in self.hass.services.calls])
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+
+        # A refreshed SOC and source update timestamp are both required.
+        self.hass.states["sensor.fiat_update_time"].publish(
+            datetime.now(timezone.utc).isoformat())
+        self.hass.states["sensor.fiat_soc"].publish("80")
+        self.c.refresh()
+        await self.settle()
+        stops=[c for c in self.hass.services.calls
+               if c[0]=="switch" and c[1]=="turn_off"]
+        self.assertEqual(len(stops),1)
+        self.assertEqual(self.c._pending.kind,"soc_stop")
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(len([c for c in self.hass.services.calls
+                             if c[0]=="switch"]),1)
+
+        # DPM ACK alone is not physical proof of a stopped charge.
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.hass.states["sensor.command_status"].publish("Verified DPM")
+        self.c.refresh()
+        await self.settle()
+        self.assertIsNotNone(self.c._pending)
+        self.assertFalse(self.c._soc_stop_done)
+
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.c.refresh()
+        await self.settle()
+        self.assertIsNone(self.c._pending)
+        self.assertTrue(self.c._soc_stop_done)
+        self.assertTrue(self.c._park_owned)
+        self.assertEqual(self.c.status,"Carica terminata — limite SOC raggiunto")
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(len([c for c in self.hass.services.calls
+                             if c[0]=="switch"]),1)
+
+    async def test_soc_stop_disabled_does_not_stop(self):
+        self.hass.states["sensor.fiat_soc"].publish("80")
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+
+    async def test_kia_reaches_its_own_target_without_wallbox_stop(self):
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.kia"].publish("on")
+        self.hass.states["sensor.kia_soc"].publish("80")
+        self.c.refresh()
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+
+    async def test_soc_stop_missing_confirmed_car_timestamp_never_stops(self):
+        self.enable_soc_stop_on_fiat()
+        self.hass.states["sensor.fiat_soc"].publish("80")
+        await self.c.async_change("real",True)
+        await self.settle()
+        # Timestamp intentionally not changed after update button press.
+        self.c.refresh()
+        await self.settle()
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+        self.assertFalse(self.c._soc_stop_done)
+
+    async def test_soc_stop_never_when_soc_below_near_target_threshold(self):
+        self.enable_soc_stop_on_fiat()
+        self.hass.states["sensor.fiat_soc"].publish("70")
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertFalse(any(c[0]=="button" for c in self.hass.services.calls))
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+
+    async def test_managed_soc_slider_updates_only_target_and_its_store(self):
+        car=self.enable_soc_stop_on_fiat(source_timestamp=False)
+        self.assertEqual(self.c.fixed_target(car),80)
+        await self.c.async_set_fixed_target(car[const.CONF_CABLE],90)
+        self.assertEqual(self.c.fixed_target(car),90)
+        self.assertEqual(self.c._store.content["fixed_target_overrides"][
+            car[const.CONF_CABLE]]["value"],90)
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+        with self.assertRaises(ValueError):
+            await self.c.async_set_fixed_target(car[const.CONF_CABLE],87)
+
     async def test_refresh_after_twenty_seconds_only_selected_car(self):
         await self.c.async_change("real", True)
         self.c._refresh_due = datetime.now(timezone.utc)-timedelta(seconds=1)
