@@ -83,6 +83,8 @@ class RCController:
         self._last_cable = None
         self._connect_since = None
         self._disconnect_since = None
+        self._ev_idle_since = None
+        self._park_attempted = False
         self._park_owned = False
         self._refresh_due = None
         self._refresh_issued = False
@@ -430,6 +432,8 @@ class RCController:
             if cable is True:
                 self._connect_since = now
                 self._disconnect_since = None
+                self._ev_idle_since = None
+                self._park_attempted = False
                 self._refresh_due = now + timedelta(seconds=20)
                 self._refresh_issued = False
                 self._refresh_requested_at = None
@@ -439,10 +443,19 @@ class RCController:
                 self._wallbox_refresh_sent = False
             elif self._last_cable is True:
                 self._disconnect_since = now
+                self._ev_idle_since = (now if snapshot["ev_kw"] is not None
+                                      and snapshot["ev_kw"] < .03 else None)
+                self._park_attempted = False
                 self._refresh_due = None
                 self._refresh_deadline = None
             self._last_cable = cable
         self._status_acks(now, cable)
+        if cable is False and self._disconnect_since is not None:
+            if snapshot["ev_kw"] is not None and snapshot["ev_kw"] < .03:
+                if self._ev_idle_since is None:
+                    self._ev_idle_since = now
+            else:
+                self._ev_idle_since = None
         self._house_subscribe(cable is True or self.lab_enabled)
         if cable is False:
             # Reset Manual to AUTO at confirmed unplug, but a session's
@@ -548,12 +561,51 @@ class RCController:
         self._reschedule(now, cable is True)
         self._lab(now, snapshot)
         self._notify()
+        if (self.real_enabled and cable is False and
+                self._disconnect_since is not None and
+                self._ev_idle_since is not None and
+                not self._park_attempted and not self._park_owned and
+                self._pending is None and not self._blocked and
+                now-self._disconnect_since >= timedelta(seconds=30) and
+                now-self._ev_idle_since >= timedelta(seconds=30)):
+            if self._task is None or self._task.done():
+                self._task = self.entry.async_create_background_task(
+                    self.hass, self._park_after_unplug(), "EasyWallbox RC park")
         if (self.real_enabled and cable is True and self.mode == "automatic"
                 and not self._blocked and self._pending is None):
             if self._task is None or self._task.done():
                 self._task = self.entry.async_create_background_task(
                     self.hass, self._actuate(snapshot, now), "EasyWallbox RC evaluate",
                 )
+
+    async def _park_after_unplug(self):
+        """One verified OFF transition only. This is the sole unplugged write."""
+        async with self._lock:
+            now = datetime.now(timezone.utc)
+            if (not self.real_enabled or self._park_attempted or
+                    not self.cfg.get(CONF_LEGACY_DISABLED, False) or
+                    self._pending is not None or self._blocked or
+                    self._disconnect_since is None or self._ev_idle_since is None or
+                    now-self._disconnect_since < timedelta(seconds=30) or
+                    now-self._ev_idle_since < timedelta(seconds=30)):
+                return
+            # Never trust a cached "zero watt" or an uncertain cable state.
+            if (self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now) is not False or
+                    self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL) is None or
+                    self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL) >= .03 or
+                    self._binary(self.cfg[CONF_TELEMETRY_FRESH], now) is not True or
+                    self._binary(self.cfg[CONF_DPM_ACTIVE], now) is not True or
+                    self._binary(self.cfg[CONF_WALLBOX_FAULT], now) is not False or
+                    self._binary(self.cfg[CONF_CHARGE_ENABLED], now) is not True):
+                return
+            dpm = self._power(self.cfg[CONF_DPM_CONFIRMED], now, DPM_TTL)
+            if dpm is None or abs(dpm-float(self.cfg[CONF_EXPECTED_DPM])) > .11:
+                self.status, self.reason = ("Da riconciliare",
+                                            "dpm_not_expected_before_park")
+                self._notify()
+                return
+            self._park_attempted = True
+            await self._send("park", dpm, None)
 
     async def _actuate(self, snap, now):
         async with self._lock:
