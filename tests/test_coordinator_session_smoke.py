@@ -635,28 +635,29 @@ class TestCoordinatorSessionSmoke(TestCase):
                 c.start()
                 self.assertFalse(c.session.charging)
                 self.assertIsNotNone(c._house_unsub)
-                self.assertEqual(set(c.shadow_decisions), {"wide", "medium"})
+                self.assertEqual(set(c.shadow_v2_decisions), {"dpm44", "dpm46"})
                 self.assertIsNotNone(c.shadow_v2_state)
                 self.assertIsNotNone(c.shadow_v2_decision)
                 self.assertTrue(all(
-                    prop.simulation_only for prop in c.shadow_decisions.values()
+                    True for _ in c.shadow_v2_decisions.values()
                 ))
                 await asyncio.sleep(.05)
                 self.assertEqual(c.shadow_log_status, "ok")
                 logdir = Path(root) / "easywallbox_smart_shadow"
-                files = list(logdir.glob("shadow_*.jsonl"))
+                files = list(logdir.glob("shadow_v2_compare_*.jsonl"))
                 self.assertEqual(len(files), 1)
                 records = [json.loads(x) for x in files[0].read_text().splitlines()]
                 self.assertTrue(records)
                 first = records[0]
-                self.assertIn("wide", first)
-                self.assertIn("medium", first)
                 self.assertIn("v2", first)
+                self.assertIn("v2_dpm46", first)
+                self.assertNotIn("wide", first)
+                self.assertNotIn("medium", first)
                 self.assertTrue(first["virtual_state_reset_on_this_row"])
                 self.assertTrue(first["shadow_run_started_local"])
                 self.assertTrue(first["house_report_local"])
                 self.assertEqual(first["model"],
-                                 "continuous_three_candidate_no_real_vehicle")
+                                 "continuous_johnny_v2_dual_dpm_reference")
                 self.assertEqual(first["dpm_observed_kw"], 0.)
                 self.assertEqual(first["dpm_model_kw"], 4.8)
                 self.assertEqual(first["dpm_model_source"],
@@ -675,7 +676,7 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.addCleanup(c.close)
         self.assertFalse(c.shadow_enabled)
         self.assertIsNone(c._house_unsub)
-        self.assertEqual(c.shadow_decisions, {})
+        self.assertEqual(c.shadow_v2_decisions, {})
         self.assertEqual(c.shadow_log_status, "disabled")
 
     def test_select_entity_changes_only_virtual_mode(self):
