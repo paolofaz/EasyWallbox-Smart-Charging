@@ -28,13 +28,12 @@
       },
       "vehicle": {
         "title": "Vehicle profile",
-        "description": "Fiat, Kia o altre auto. Configurare una sola entità per ogni cavo.",
+        "description": "Configure the vehicle. The sustainable charge rate is estimated automatically from measured power.",
         "data": {
           "name": "Nome auto",
           "cable": "Sensore cavo collegato",
           "soc": "Sensore SOC",
           "capacity_kwh": "Capacità utile batteria kWh",
-          "planning_rate_kw": "Conservative AC rate used to estimate duration (kW)",
           "efficiency": "Rendimento AC",
           "departure_weekday": "Partenza feriali (HH:MM)",
           "departure_weekend": "Partenza weekend (HH:MM)",
@@ -82,8 +81,10 @@
       "init": {
         "title": "EasyWallbox Smart Charging settings",
         "menu_options": {
-          "wallbox": "Wallbox e limiti",
-          "choose_vehicle": "Orari per auto"
+          "wallbox": "Wallbox, sensors and limits",
+          "choose_vehicle": "Edit an existing vehicle",
+          "add_vehicle": "Add a new vehicle",
+          "remove_vehicle": "Remove a vehicle"
         }
       },
       "wallbox": {
@@ -109,22 +110,68 @@
           "wallbox_refresh_button": "ESPHome Refresh data (optional)"
         }
       },
-      "vehicle": {
-        "title": "Departure schedule",
+      "choose_vehicle": {
+        "title": "Choose a vehicle to edit",
         "data": {
-          "departure_weekday": "Partenza feriali HH:MM",
-          "departure_weekend": "Partenza weekend HH:MM"
+          "vehicle": "Vehicle"
         }
       },
-      "choose_vehicle": {
-        "title": "Choose a vehicle",
+      "edit_vehicle": {
+        "title": "Edit vehicle details",
+        "description": "Edit sensors, capacity, efficiency, refresh sources and departure times. Choose the SOC target next.",
         "data": {
-          "vehicle": "Veicolo"
+          "name": "Nome auto",
+          "cable": "Sensore cavo collegato",
+          "soc": "Sensore SOC",
+          "capacity_kwh": "Capacità utile batteria kWh",
+          "efficiency": "Rendimento AC",
+          "departure_weekday": "Partenza feriali (HH:MM)",
+          "departure_weekend": "Partenza weekend (HH:MM)",
+          "vehicle_refresh_button": "Vehicle Refresh/Update button (optional)",
+          "vehicle_last_update": "Last car data update timestamp (optional)"
+        }
+      },
+      "edit_target_method": {
+        "title": "Choose the SOC target source",
+        "menu_options": {
+          "edit_target_fixed": "Fixed percentage",
+          "edit_target_entity": "Home Assistant entity"
+        }
+      },
+      "edit_target_fixed": {
+        "title": "Fixed target SOC",
+        "data": {
+          "target_fixed": "Target percentage"
+        }
+      },
+      "edit_target_entity": {
+        "title": "Target SOC from entity",
+        "data": {
+          "target_entity": "Target SOC entity"
+        }
+      },
+      "remove_vehicle": {
+        "title": "Select vehicle to remove",
+        "data": {
+          "vehicle": "Vehicle"
+        }
+      },
+      "confirm_remove": {
+        "title": "Confirm vehicle removal",
+        "description": "Remove the selected vehicle profile. Wallbox controls will be disabled while the integration reloads.",
+        "data": {
+          "confirm": "Confirm removal"
         }
       }
     },
     "error": {
-      "invalid_clock": "Orario non valido"
+      "invalid_clock": "Enter departure times as HH:MM",
+      "duplicate_vehicle": "Name or cable sensor already assigned to another car",
+      "invalid_vehicle": "Incomplete or invalid vehicle profile",
+      "vehicle_missing": "Vehicle no longer exists"
+    },
+    "abort": {
+      "cannot_remove_last": "Cannot remove the only configured vehicle"
     }
   }
 }
