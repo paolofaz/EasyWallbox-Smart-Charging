@@ -67,6 +67,7 @@ VEHICLE = vol.Schema({
     vol.Required(CONF_SOC): entity("sensor"),
     vol.Optional(CONF_VEHICLE_REFRESH): entity("button"),
     vol.Optional(CONF_VEHICLE_LAST_UPDATE): entity(["sensor", "datetime"]),
+    vol.Required(CONF_STOP_AT_TARGET, default=False): bool,
     vol.Required(CONF_CAPACITY): number(10, 200, .1),
     vol.Required(CONF_EFFICIENCY, default=.90): number(.5, 1, .01),
     vol.Required(CONF_DEPARTURE_WEEKDAY, default="07:00"): TextSelector(),
@@ -175,19 +176,21 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_target_fixed(self, user_input=None):
         if user_input is not None:
             target = user_input[CONF_TARGET_FIXED]
-            if 1 <= float(target) <= 100:
+            stop = self._pending.get(CONF_STOP_AT_TARGET, False)
+            if (80 <= float(target) <= 100 and float(target) % 5 == 0) if stop else (1 <= float(target) <= 100):
                 return self._finish_vehicle({CONF_TARGET_FIXED: target})
             return self.async_show_form(
                 step_id="target_fixed",
                 data_schema=vol.Schema({
                     vol.Required(CONF_TARGET_FIXED, default=80):
-                        number(1, 100, 1)}),
+                        number(80, 100, 5) if stop else number(1, 100, 1)}),
                 errors={"base": "invalid_target"},
             )
         return self.async_show_form(
             step_id="target_fixed",
             data_schema=vol.Schema({
-                vol.Required(CONF_TARGET_FIXED, default=80): number(1, 100, 1),
+                vol.Required(CONF_TARGET_FIXED, default=80):
+                    number(80, 100, 5) if self._pending.get(CONF_STOP_AT_TARGET, False) else number(1, 100, 1),
             }),
         )
 
@@ -278,6 +281,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             self._required(CONF_SOC, old, entity("sensor")),
             self._optional(CONF_VEHICLE_REFRESH, old, entity("button")),
             self._optional(CONF_VEHICLE_LAST_UPDATE, old, entity(["sensor", "datetime"])),
+            (vol.Required(CONF_STOP_AT_TARGET, default=old.get(CONF_STOP_AT_TARGET, False)), bool),
             self._required(CONF_CAPACITY, old, number(10, 200, .1)),
             self._required(CONF_EFFICIENCY, old, number(.5, 1, .01)),
             self._required(CONF_DEPARTURE_WEEKDAY, old, TextSelector()),
@@ -330,16 +334,26 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         default = old.get(CONF_TARGET_FIXED, 80)
         errors = {}
         if user_input is not None:
+            value = float(user_input[CONF_TARGET_FIXED])
+            wants_stop = self._pending_vehicle.get(CONF_STOP_AT_TARGET, False)
+            if wants_stop and (value < 80 or value > 100 or value % 5 != 0):
+                return self.async_show_form(
+                    step_id="edit_target_fixed", errors={"base": "invalid_target"},
+                    data_schema=vol.Schema({vol.Required(CONF_TARGET_FIXED, default=80):
+                                             number(80, 100, 5)}))
             result = self._finish_edit({
                 CONF_TARGET_FIXED: user_input[CONF_TARGET_FIXED]})
             if result is not None:
                 return result
             errors["base"] = getattr(self, "_edit_error", "invalid_vehicle")
+        stop = self._pending_vehicle.get(CONF_STOP_AT_TARGET, False)
+        if stop and (default < 80 or default > 100 or default % 5 != 0):
+            default = 80
         return self.async_show_form(
             step_id="edit_target_fixed", errors=errors,
             data_schema=vol.Schema({
                 vol.Required(CONF_TARGET_FIXED, default=default):
-                    number(1, 100, 1)}))
+                    number(80, 100, 5) if stop else number(1, 100, 1)}))
 
     async def async_step_edit_target_entity(self, user_input=None):
         old = getattr(self, "_previous_target", {})
