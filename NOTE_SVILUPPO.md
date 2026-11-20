@@ -100,3 +100,44 @@ senza autorizzazione di merge. Il changelog e la release devono
 essere pubblicati solo dopo qualità CI verde.
 
 **Prerelease verificata:** `v0.3.0rc3` pubblicata dal branch `RC` dopo superamento del workflow dedicato (Python 3.12/3.13, flussi auto add/edit/remove, stima energia, hassfest, HACS). Il flag GitHub `prerelease=true` è stato confermato. Controllo elettrico non ancora collaudato. `main` non è stato modificato.
+
+
+## 20 novembre 2026 — Stop SOC Fiat e dispositivo HA (sviluppo RC, NON rilasciato)
+
+**Problema sul campo**: nella scheda Entità tutte le entità mostravano
+Dispositivo = «—». Le piattaforme avevano `unique_id` ma nessuna
+`device_info`. Aggiunto un solo dispositivo logico per la config entry,
+identificato da `(easywallbox_smart, entry_id)`. I due sensori rimangono
+diagnostici; controlli di sessione su dispositivo logico. Nessuna
+modifica al device fisico ESPHome e nessun clone di entità già esistenti.
+
+**Differenza auto**: Kia interrompe a target tramite limite del veicolo;
+Fiat 500e richiede uno Stop esterno. Ora ogni profilo ha
+`stop_at_target` esplicito, **default False**, per non introdurre
+comandi sulle auto già configurate. Target fisso + Stop abilitato espone
+uno slider nativo `number` 80–100 a passi di 5, persistito con HA Store;
+target già fornito da una entità HA mantiene quella entità (nessun doppione).
+
+**Interlock**: nuovo comando distinto `soc_stop` può passare su
+`switch.turn_off` SOLO con ricarica effettiva confermata, SOC fresco
+e >= target, auto selezionata univocamente e DPM positivo corretto.
+Vicino al target l'auto può essere interrogata ogni 20 min;
+se è configurato il timestamp ultimo aggiornamento, deve essere
+realmente cambiato dopo la pressione del pulsante. L'ACK BLE
+da solo NON chiude il ciclo: richiedere anche Charging OFF e
+Shelly EV <30 W prima della conferma `soc_target_stop_verified`.
+Nessun retry su mancata conferma e nessuna ripartenza nella
+stessa connessione.
+
+**Automazione Fiat legacy**: il codice non la modifica; l'utente
+deve disattivare il vecchio comando `switch.wallbox_start_stop`
+soltanto prima del test supervisonato della nuova gestione SOC.
+Non devono operare due proprietari sullo stesso switch.
+Notifiche familiari / MQTT legacy non migrate automaticamente.
+
+**Verifiche**: test isolati di avvio, stop e mancati ACK; test
+sull'assenza dello Stop Kia e del doppione target; test statici
+sul dispositivo. Restano da superare CI completa e collaudo reale.
+
+**Distribuzione**: modifiche nel branch `RC`; nessuna nuova
+release/tag, nessuna modifica a `main` o firmware senza autorizzazione.
