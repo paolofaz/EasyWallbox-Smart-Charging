@@ -53,6 +53,7 @@ class State:
     session_id: str = ""
     phase: str = "NORMAL"
     cap_kw: float = BASE_KW
+    baseline_kw: float = BASE_KW
     kind: str = "normal"
     last_change: datetime | None = None
     last_sample: datetime | None = None
@@ -84,7 +85,8 @@ def _decision(st: State, action: str, reason: str, value=None):
 
 
 def _shift(st: State, now: datetime, cap: float, kind: str, why: str):
-    phase = "LIMITED" if cap < BASE_KW - 0.11 else ("BOOST" if cap > BASE_KW + .11 else "NORMAL")
+    phase = ("LIMITED" if cap < st.baseline_kw - .11 else
+             "BOOST" if cap > st.baseline_kw + .11 else "NORMAL")
     st = replace(st, phase=phase, kind=kind, cap_kw=cap,
                  last_change=now, quiet_since=None, strong_since=None,
                  moderate_since=None, boost_since=None,
@@ -112,7 +114,9 @@ def evaluate(o: Observation, previous: State | None = None):
     Timers may request evaluation, but never manufacture a fresh house report.
     An unexpected change of session resets all remembered budgets and loads.
     """
-    st = previous if previous and previous.session_id == o.session_id else State(session_id=o.session_id)
+    st = (previous if previous and previous.session_id == o.session_id else
+          State(session_id=o.session_id, cap_kw=o.max_kw,
+                baseline_kw=o.max_kw))
     if not (o.auto and o.connected and o.charging and o.trusted and
             valid(o.house_kw) and valid(o.dpm_kw) and o.dpm_kw >= 1.4 and
             valid(o.current_kw) and o.current_kw >= MIN_KW and
