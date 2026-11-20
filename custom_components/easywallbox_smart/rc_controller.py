@@ -58,6 +58,7 @@ class RCController:
         self.reason = "manual_enable_required_after_startup"
         self.quality = "unknown"
         self.vehicle_name = None
+        self.stop_at_target_enabled = None
         self.departure = None
         self.soc = None
         self.target_soc = None
@@ -489,6 +490,7 @@ class RCController:
                 fault is False and active is True and charging is not None
                 and house is not None and dpm is not None) else "incomplete"
         self.vehicle_name = car[CONF_NAME] if car else None
+        self.stop_at_target_enabled = bool(car.get(CONF_STOP_AT_TARGET)) if car else None
         self.soc = self.target_soc = self.margin_minutes = self.remaining_kwh = None
         self.planning_rate_kw = estimate_ac_kw(
             now=now, dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]),
@@ -537,7 +539,7 @@ class RCController:
         # Recorder: publish only status/decision transitions, never raw 1s watts.
         return (self.status, self.reason, self.mode, self.real_enabled,
                 self.delay_enabled,
-                self.vehicle_name, self.quality,
+                self.vehicle_name, self.quality, self.stop_at_target_enabled, self._soc_stop_done,
                 self.departure.isoformat() if self.departure else None,
                 self.target_soc, self._blocked, self._pending.kind if self._pending else None,
                 self._power_state.phase if self._power_state else "NORMAL",
