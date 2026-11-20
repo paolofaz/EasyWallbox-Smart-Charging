@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, time, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -94,6 +94,8 @@ class RCController:
         self._lock = asyncio.Lock()
         self._store = Store(hass, 1, "easywallbox_smart_rc_" + entry.entry_id)
         self._lab_state = None
+        self._lab_urgent_state = None
+        self._lab_urgent_cap = float(self.cfg[CONF_BASE_KW])
         self._lab_last_at = None
         self._lab_last_logged_at = None
         self._lab_last_logged_signature = None
@@ -646,8 +648,21 @@ class RCController:
         self._lab_state, decision = evaluate(obs, self._lab_state)
         if decision.action == "set_limit":
             self._lab_virtual_cap = decision.target_kw
+
+        # Same real Shelly measurements, a second synthetic EV with little
+        # slack. The 45-minute case exercises urgent-only boost logic;
+        # it must NEVER share the policy state or authorization of a car.
+        urgent = replace(obs, session_id="virtual_24h_urgent",
+                         current_kw=self._lab_urgent_cap,
+                         margin_minutes=45, remaining_budget_kwh=0)
+        self._lab_urgent_state, urgent_decision = evaluate(
+            urgent, self._lab_urgent_state)
+        if urgent_decision.action == "set_limit":
+            self._lab_urgent_cap = urgent_decision.target_kw
         signature = (decision.action, decision.phase, decision.reason,
-                     round(self._lab_virtual_cap, 1))
+                     round(self._lab_virtual_cap, 1),
+                     urgent_decision.action, urgent_decision.phase,
+                     urgent_decision.reason, round(self._lab_urgent_cap, 1))
         if (decision.action == "none" and
                 signature == self._lab_last_logged_signature and
                 self._lab_last_logged_at is not None and
@@ -659,6 +674,12 @@ class RCController:
                "house_kw": round(snap["house"], 3), "dpm_assumption_kw": self.cfg[CONF_EXPECTED_DPM],
                "ev_virtual_cap_kw": self._lab_virtual_cap, "decision": decision.action,
                "reason": decision.reason, "phase": decision.phase,
+               "urgent_45m": {
+                   "action": urgent_decision.action,
+                   "reason": urgent_decision.reason,
+                   "phase": urgent_decision.phase,
+                   "ev_virtual_cap_kw": self._lab_urgent_cap,
+               },
                "car": "artificial_24h", "mode": "simulation_only"}
         self._lab_buffer.append(row)
         if self._lab_write_task is None or self._lab_write_task.done():
