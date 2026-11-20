@@ -98,3 +98,5 @@ e collaudo elettrico supervisionato.
 **Stato repo:** sviluppo sul branch `RC`; `main` rimane invariato
 senza autorizzazione di merge. Il changelog e la release devono
 essere pubblicati solo dopo qualità CI verde.
+
+**Prerelease verificata:** `v0.3.0rc3` pubblicata dal branch `RC` dopo superamento del workflow dedicato (Python 3.12/3.13, flussi auto add/edit/remove, stima energia, hassfest, HACS). Il flag GitHub `prerelease=true` è stato confermato. Controllo elettrico non ancora collaudato. `main` non è stato modificato.
