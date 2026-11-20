@@ -11,7 +11,7 @@ async def async_setup_entry(hass, entry, add_entities):
 
 class ModeSelect(SelectEntity):
     _attr_has_entity_name = True
-    _attr_name = "Modalità Johnny"
+    _attr_name = "Modalità di ricarica"
     _attr_icon = "mdi:car-cog"
     _attr_options = ["automatic", "manual"]
     _attr_should_poll = False
