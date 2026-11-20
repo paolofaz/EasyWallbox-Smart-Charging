@@ -64,6 +64,7 @@ VEHICLE = vol.Schema({
     vol.Required(CONF_CABLE): entity("binary_sensor"),
     vol.Required(CONF_SOC): entity("sensor"),
     vol.Required(CONF_CAPACITY): number(10, 200, .1),
+    vol.Required("planning_rate_kw", default=2.4): number(1.4, 6.0, .2),
     vol.Required(CONF_EFFICIENCY, default=.90): number(.5, 1, .01),
     vol.Required(CONF_DEPARTURE_WEEKDAY, default="07:00"): TextSelector(),
     vol.Required(CONF_DEPARTURE_WEEKEND, default="08:00"): TextSelector(),
