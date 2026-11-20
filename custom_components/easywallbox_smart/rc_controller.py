@@ -233,9 +233,13 @@ class RCController:
             valid = (flag in ("Verified charge power", "Confirmed charge power") and confirmed_ev is not None
                      and requested is not None and abs(confirmed_ev-p.target) <= .11
                      and abs(requested-p.target) <= .11)
-        elif p.kind in ("pause", "park"):
+        elif p.kind in ("pause", "park", "soc_stop"):
             valid = (flag in ("Verified DPM", "Confirmed DPM") and confirmed_dpm is not None
                      and confirmed_dpm <= .06 and charge_enabled is False)
+            if p.kind == "soc_stop":
+                observed = self._binary(self.cfg[CONF_WALLBOX_CHARGING], now)
+                ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
+                valid = valid and observed is False and ev is not None and ev < .03
         elif p.kind == "resume":
             valid = (flag == "Verified DPM" and confirmed_dpm is not None
                      and abs(confirmed_dpm-p.target) <= .11 and charge_enabled is True)
@@ -248,6 +252,10 @@ class RCController:
                     self._prepared_session = self._session_id
             elif p.kind == "pause":
                 self._dpm_lease = p.target  # remembers ORIGINAL positive DPM
+            elif p.kind == "soc_stop":
+                self._soc_stop_done = True
+                self._park_owned = True
+                self._schedule_save()
             elif p.kind == "park":
                 self._park_owned = True
                 self._schedule_save()
@@ -1016,8 +1024,28 @@ class RCController:
                     self._binary(self.cfg[CONF_CHARGE_ENABLED], now) is not True):
                 return
         else:
-            if cable is not True or self._select_vehicle(now, True) is None:
+            car = self._select_vehicle(now, True)
+            if cable is not True or car is None:
                 return
+            if kind == "soc_stop":
+                if (not car.get(CONF_STOP_AT_TARGET, False) or
+                        self._soc_stop_done or
+                        self.mode != "automatic" or self.explicit_pause or
+                        not self.cfg.get(CONF_LEGACY_DISABLED, False) or
+                        observed_charging is not True or
+                        ev_kw is None or ev_kw < .10 or
+                        self._binary(self.cfg[CONF_CHARGE_ENABLED], now) is not True or
+                        not self._soc_stop_fresh(car, now) or
+                        self._number(car[CONF_SOC], now, SOC_STOP_TTL) is None):
+                    return
+                fresh_soc = self._number(car[CONF_SOC], now, SOC_STOP_TTL)
+                target = (self._number(car.get(CONF_TARGET_ENTITY), now, None)
+                          if car.get(CONF_TARGET_ENTITY) else self.fixed_target(car))
+                if target is None or fresh_soc < target:
+                    return
+                live_dpm = self._power(self.cfg[CONF_DPM_CONFIRMED], now, DPM_TTL)
+                if live_dpm is None or abs(live_dpm-float(self.cfg[CONF_EXPECTED_DPM])) > .11:
+                    return
             if (kind == "power" and observed_charging is not True) or (
                     kind in ("pause", "resume", "prepare") and
                     (observed_charging is not False or ev_kw is None or ev_kw >= .03)):
@@ -1037,7 +1065,7 @@ class RCController:
                     {"entity_id": self.cfg[CONF_REQUESTED_LIMIT], "value": target},
                     blocking=True,
                 )
-            elif kind in ("pause", "park"):
+            elif kind in ("pause", "park", "soc_stop"):
                 await self.hass.services.async_call(
                     "switch", "turn_off",
                     {"entity_id": self.cfg[CONF_START_STOP]}, blocking=True,
