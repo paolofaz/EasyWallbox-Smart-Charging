@@ -495,7 +495,7 @@ class RCController:
             # Waiting is advisory; never deliberately miss a departure.
             latest = self.departure - timedelta(
                 minutes=30 + (self.remaining_kwh / max(
-                    1.4, float(current["car"].get("planning_rate_kw", 2.4)))) * 60
+                    1.4, min(float(self.cfg[CONF_BASE_KW]), float(current["car"]["planning_rate_kw"])))) * 60
             ) if self.departure is not None and self.remaining_kwh is not None else None
             should_wait = (not self.charge_now and latest is not None and
                            latest > datetime.now(timezone.utc) and
