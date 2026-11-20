@@ -134,7 +134,7 @@ def append_shadow_rows(root: str, rows: list[dict],
     """
     if not rows:
         return 0, ""
-    if prefix not in ("shadow", "shadow_v2", "shadow_v2_compare"):
+    if prefix not in ("shadow", "shadow_v2", "shadow_v2_compare", "shadow_v2_amps"):
         raise ValueError("invalid log file prefix")
     folder = Path(root)
     folder.mkdir(parents=True, exist_ok=True)
