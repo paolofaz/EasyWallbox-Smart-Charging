@@ -68,7 +68,7 @@
         "title": "Opzioni RC",
         "menu_options": {
           "wallbox": "Wallbox e limiti",
-          "vehicle": "Orari per auto"
+          "choose_vehicle": "Orari per auto"
         }
       },
       "wallbox": {
@@ -94,7 +94,17 @@
         }
       },
       "vehicle": {
-        "title": "Orari settimanali per i veicoli"
+        "title": "Orari della partenza",
+        "data": {
+          "departure_weekday": "Partenza feriali HH:MM",
+          "departure_weekend": "Partenza weekend HH:MM"
+        }
+      },
+      "choose_vehicle": {
+        "title": "Seleziona l'auto",
+        "data": {
+          "vehicle": "Veicolo"
+        }
       }
     },
     "error": {
