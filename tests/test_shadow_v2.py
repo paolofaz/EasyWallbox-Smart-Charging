@@ -129,6 +129,43 @@ class JohnnyV2ShadowTest(unittest.TestCase):
         self.assertEqual(st.cap_kw, 4.0)
         self.assertEqual(d.reason, "dpm_reference_changed")
 
+    def test_exact_firmware_ampere_encoding_and_current_proxy(self):
+        from importlib import import_module
+        policy = import_module(PKG + ".shadow_v2")
+        self.assertEqual(policy.wallbox_raw_deciamps(4.4), 191)
+        self.assertEqual(policy.wallbox_raw_deciamps(4.2), 183)
+        self.assertEqual(policy.wallbox_raw_deciamps(4.0), 174)
+        self.assertAlmostEqual(
+            policy.pressure_proxy_amps(.5, 4.2, 4.4),
+            (.5 / .23 + 18.3 - 19.1), places=5,
+        )
+        # This is a model of active watts divided by 230 V, not
+        # a claim to measure actual CT current or power factor.
+        self.assertAlmostEqual(
+            policy.household_current_proxy_amps(.46), 2.0,
+        )
+        for invalid in (0, -1, float("nan"), float("inf"), True):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    policy.wallbox_raw_deciamps(invalid)
+
+    def test_42_kw_ev_under_44_kw_dpm_buffers_stable_half_kw_load(self):
+        st = None
+        interventions = []
+        for minute in range(6):
+            st, dec = step(st, minute, .5, dpm=4.4, ev_max=4.2)
+            if dec.action == "reduce":
+                interventions.append((minute, dec.proposed_cap_kw))
+        self.assertEqual(interventions, [(3, 3.8)])
+        self.assertEqual(st.kind, "buffer")
+
+    def test_new_buffer_candidate_does_not_flap_on_350w_house(self):
+        st = None
+        for minute in range(12):
+            st, dec = step(st, minute, .35, dpm=4.4, ev_max=4.2)
+            self.assertNotEqual(dec.action, "reduce")
+        self.assertEqual(st.kind, "normal")
+
     def test_no_physical_actuation_or_storage_code(self):
         source = (COMP / "shadow_v2.py").read_text()
         for forbidden in ("homeassistant", "async_call", "bleak",
