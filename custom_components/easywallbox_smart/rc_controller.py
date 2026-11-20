@@ -698,6 +698,9 @@ class RCController:
                 self.reason = "user_owns_wallbox"
             elif self._blocked:
                 self.status, self.reason = "Bloccata", self._blocked
+            elif self._soc_stop_done:
+                self.status = "Carica terminata — limite SOC raggiunto"
+                self.reason = "soc_target_stop_verified"
             elif snapshot["target_reached"] is True and snapshot["charging"] is not True:
                 cap = self._power_state.cap_kw if self._power_state else None
                 base = float(self.cfg[CONF_BASE_KW])
@@ -781,6 +784,73 @@ class RCController:
             self._park_attempted = True
             await self._send("park", dpm, None)
 
+    def _soc_stop_fresh(self, car, now):
+        """Require an independently recent vehicle report before a SOC stop."""
+        sensor = self._fresh(car[CONF_SOC], now, SOC_STOP_TTL)
+        if sensor is None or finite_number(sensor.state) is None:
+            return False
+        timestamp_source = car.get(CONF_VEHICLE_LAST_UPDATE)
+        if timestamp_source:
+            last = self._raw(timestamp_source)
+            try:
+                stamp = datetime.fromisoformat(last.state) if last else None
+            except (ValueError, TypeError):
+                stamp = None
+            if (stamp is None or stamp.tzinfo is None or
+                    not timedelta(0) <= now-stamp <= SOC_STOP_TTL):
+                return False
+        else:
+            stamp = self._age(sensor)
+        if self._soc_stop_refresh_at is not None and stamp < self._soc_stop_refresh_at:
+            return False
+        return True
+
+    async def _maybe_stop_at_soc(self, current, now):
+        """Only an opted-in car may stop charging, once per session.
+
+        Refresh only when near target, at most once in 20 minutes.
+        Revalidate SOC after refresh: pressing a button is not proof
+        of fresh vehicle telemetry.
+        """
+        car = current["car"]
+        if (not car.get(CONF_STOP_AT_TARGET, False)
+                or current["charging"] is not True or self._soc_stop_done):
+            return False
+        soc, target = self.soc, self.target_soc
+        if (soc is None or target is None or not 0 <= soc <= 100
+                or not 1 <= target <= 100 or soc < target-5):
+            return False
+        button = car.get(CONF_VEHICLE_REFRESH)
+        if button and (self._soc_stop_refresh_at is None or
+                       now-self._soc_stop_refresh_at >= SOC_STOP_REFRESH_INTERVAL):
+            self._soc_stop_refresh_at = now
+            try:
+                await self.hass.services.async_call(
+                    "button", "press", {"entity_id": button}, blocking=True)
+            except Exception as error:
+                _LOGGER.warning("SOC refresh failed (%s), never retry blindly",
+                                type(error).__name__)
+                self._blocked = "soc_refresh_failed_no_retry"
+                self.real_enabled = False
+                self.status, self.reason = "Bloccata", self._blocked
+                self._notify()
+            return True
+        if not self._soc_stop_fresh(car, now):
+            self.status, self.reason = ("In carica — verifica SOC",
+                                       "waiting_recent_soc_for_stop")
+            self._notify()
+            return True if soc >= target else False
+        if soc >= target:
+            if (current["dpm_normal"] is not True or
+                    current["enabled"] is not True):
+                self.status, self.reason = ("Da riconciliare",
+                                            "soc_target_dpm_not_normal")
+                self._notify()
+                return True
+            await self._send("soc_stop", 0.0, None)
+            return True
+        return False
+
     async def _actuate(self, snap, now):
         async with self._lock:
             # Recheck immediately before dispatch; an old callback is not
@@ -823,6 +893,8 @@ class RCController:
                 return
             if not self._car_update_ready(datetime.now(timezone.utc), current["car"]):
                 return
+            if self._soc_stop_done:
+                return
             if current["target_reached"] is True and current["charging"] is not True:
                 # The car already stopped. Latest user rule explicitly
                 # forbids changing the EV number while not charging.
@@ -844,6 +916,9 @@ class RCController:
                     self._blocked = "external_ev_limit_change"
                     self.status, self.reason = "Bloccata", self._blocked
                     self._notify()
+                    return
+                if await self._maybe_stop_at_soc(
+                        current, datetime.now(timezone.utc)):
                     return
                 base = float(self.cfg[CONF_BASE_KW])
                 if current["target_reached"] is True:
