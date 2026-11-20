@@ -378,10 +378,19 @@ class RCController:
         local = now.astimezone(ZoneInfo(self.hass.config.time_zone))
         if self._scheduled_at is not None:
             return self._scheduled_at
-        scheduled = datetime.combine(local.date(), self.preferred_start,
-                                     tzinfo=local.tzinfo)
-        if scheduled <= local:
-            scheduled += timedelta(days=1)
+        connected_local = (self._connect_since or now).astimezone(
+            ZoneInfo(self.hass.config.time_zone))
+        scheduled = datetime.combine(connected_local.date(),
+                                     self.preferred_start,
+                                     tzinfo=connected_local.tzinfo)
+        if scheduled <= connected_local:
+            # 22:00 -> 02:00 is tomorrow; 23:30 -> 23:00 already
+            # passed and must never defer 24 hours by accident.
+            if (connected_local.hour >= 17 and
+                    self.preferred_start.hour <= 8):
+                scheduled += timedelta(days=1)
+            else:
+                scheduled = connected_local
         self._scheduled_at = scheduled
         return scheduled
 
