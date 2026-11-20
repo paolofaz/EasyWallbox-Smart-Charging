@@ -336,18 +336,23 @@ class RCController:
                     duration_minutes = remaining / rate * 60
                     self.margin_minutes = ((departure-now).total_seconds()/60
                                            - 30 - duration_minutes)
+        # The positive configured limit is the *mathematical* DPM reference.
+        # Observed zero means parked, NOT a zero power budget for Johnny.
+        expected_dpm = float(self.cfg[CONF_EXPECTED_DPM])
+        dpm_normal = dpm is not None and abs(dpm-expected_dpm) <= .11
+        dpm_parked = dpm is not None and dpm <= .06 and enabled is False
+        dpm_owned = self._park_owned or self._dpm_lease is not None
         conditions = (cable is True and car is not None and
                       telemetry is True and active is True and fault is False and
-                      enabled is not None and dpm is not None
-                      and actual_limit is not None and requested is not None
-                      and abs(float(self.cfg[CONF_EXPECTED_DPM])-
-                              (self._dpm_lease if dpm <= .06 and self._dpm_lease is not None
-                               else dpm)) <= .11 and
+                      enabled is not None and
+                      (dpm_normal or (dpm_parked and dpm_owned)) and
+                      actual_limit is not None and requested is not None and
                       target_reached is not None and self.margin_minutes is not None)
         return dict(cable=cable, car=car, charging=charging,
                     enabled=enabled, active=active, fault=fault,
                     telemetry=telemetry, house=house, house_at=house_at,
-                    dpm=dpm, actual=actual_limit, requested=requested,
+                    dpm=dpm, dpm_normal=dpm_normal, dpm_parked=dpm_parked,
+                    actual=actual_limit, requested=requested,
                     trusted=conditions, target_reached=target_reached,
                     ev_kw=ev_kw)
 
@@ -561,7 +566,7 @@ class RCController:
                     at=datetime.now(timezone.utc), session_id=self._session_id,
                     connected=True, charging=True, auto=True, trusted=current["trusted"],
                     house_kw=current["house"], house_at=current["house_at"],
-                    dpm_kw=current["dpm"], current_kw=current["actual"],
+                    dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]), current_kw=current["actual"],
                     margin_minutes=self.margin_minutes,
                     remaining_budget_kwh=(
                         max(0.0, self.margin_minutes/60 * 2.4 * .25)
