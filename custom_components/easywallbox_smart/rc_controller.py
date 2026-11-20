@@ -95,6 +95,8 @@ class RCController:
         self._store = Store(hass, 1, "easywallbox_smart_rc_" + entry.entry_id)
         self._lab_state = None
         self._lab_last_at = None
+        self._lab_last_logged_at = None
+        self._lab_last_logged_signature = None
         self._lab_virtual_cap = float(self.cfg[CONF_BASE_KW])
         self._lab_write_task = None
         self._lab_buffer = []
@@ -597,6 +599,15 @@ class RCController:
         self._lab_state, decision = evaluate(obs, self._lab_state)
         if decision.action == "set_limit":
             self._lab_virtual_cap = decision.target_kw
+        signature = (decision.action, decision.phase, decision.reason,
+                     round(self._lab_virtual_cap, 1))
+        if (decision.action == "none" and
+                signature == self._lab_last_logged_signature and
+                self._lab_last_logged_at is not None and
+                at-self._lab_last_logged_at < timedelta(seconds=60)):
+            return
+        self._lab_last_logged_at = at
+        self._lab_last_logged_signature = signature
         row = {"at": at.astimezone(ZoneInfo(self.hass.config.time_zone)).isoformat(),
                "house_kw": round(snap["house"], 3), "dpm_assumption_kw": self.cfg[CONF_EXPECTED_DPM],
                "ev_virtual_cap_kw": self._lab_virtual_cap, "decision": decision.action,
