@@ -18,7 +18,7 @@ STRONG_PRESSURE = 0.6
 ADJUST_PRESSURE = 0.25
 MODERATE_PRESSURE = 0.1
 MAX_GAP = timedelta(seconds=150)
-WINDOW = timedelta(minutes=12)
+WINDOW = timedelta(minutes=17)
 
 
 def valid(value: float | None) -> bool:
@@ -182,16 +182,14 @@ def evaluate(o: Observation, previous: State | None = None):
                 return _shift(st, o.at, o.max_kw, "normal", "boost_slack_recovered")
         else:
             st = replace(st, boost_margin_since=None)
-        if o.house_kw > 0.2 or urgent is False and (o.margin_minutes is None):
+        if o.house_kw > 0.2:
             return _shift(st, o.at, o.max_kw, "normal", "boost_house_exceeds_200w")
         return _decision(st, "none", "boost_holding")
 
-    if urgent:
-        return _decision(st, "none", "planner_urgent_or_unknown_no_optional_cap")
     if st.cooldown_until and o.at < st.cooldown_until:
         return _decision(st, "none", "post_change_cooldown")
 
-    if pressure_baseline >= STRONG_PRESSURE:
+    if not urgent and pressure_baseline >= STRONG_PRESSURE:
         since = st.strong_since or o.house_at
         st = replace(st, strong_since=since)
         # Continuous evidence, or two bursts with >=120 observed busy seconds.
@@ -212,7 +210,7 @@ def evaluate(o: Observation, previous: State | None = None):
 
     # Moderate: 10 observed minutes over the latest 12 and still relevant now.
     moderate = .45 <= o.house_kw <= 1.1 and pressure_baseline >= MODERATE_PRESSURE
-    if moderate:
+    if not urgent and moderate:
         seconds = _seconds_covered(items, o.house_at,
                                    lambda h,p: .45 <= h <= 1.1 and
                                    max(0,h+o.max_kw-o.dpm_kw) >= MODERATE_PRESSURE, 12)
@@ -221,7 +219,9 @@ def evaluate(o: Observation, previous: State | None = None):
             if o.max_kw-target >= .39 and budget-st.spent_budget_kwh >= .1:
                 return _shift(st, o.at, target, "moderate", "moderate_ten_of_twelve")
     # Boost only when the planner is close to deadline, not when ample slack.
-    if o.margin_minutes <= 60 and o.house_kw < .15 and st.phase == "NORMAL":
+    if (o.margin_minutes is not None and isfinite(o.margin_minutes)
+            and o.margin_minutes <= 60 and o.house_kw < .15
+            and st.phase == "NORMAL"):
         if st.boost_since is None:
             st = replace(st, boost_since=o.house_at)
         if o.house_at - st.boost_since >= timedelta(minutes=15) and o.boost_max_kw > o.max_kw:
