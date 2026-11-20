@@ -54,6 +54,7 @@ WALLBOX = vol.Schema({
     vol.Required(CONF_REQUESTED_LIMIT): entity("number"),
     vol.Required(CONF_CONFIRMED_LIMIT): entity("sensor"),
     vol.Required(CONF_DPM_CONFIRMED): entity("sensor"),
+    vol.Optional(CONF_WALLBOX_REFRESH): entity("button"),
     vol.Required(CONF_EXPECTED_DPM, default=DEFAULT_DPM_KW): number(1.4, 6.0, .1),
     vol.Required(CONF_BASE_KW, default=DEFAULT_BASE_KW): number(1.4, 6.0, .2),
     vol.Required(CONF_BOOST_KW, default=DEFAULT_BOOST_KW): number(1.4, 6.0, .2),
@@ -63,6 +64,8 @@ VEHICLE = vol.Schema({
     vol.Required(CONF_NAME): TextSelector(),
     vol.Required(CONF_CABLE): entity("binary_sensor"),
     vol.Required(CONF_SOC): entity("sensor"),
+    vol.Optional(CONF_VEHICLE_REFRESH): entity("button"),
+    vol.Optional(CONF_VEHICLE_LAST_UPDATE): entity(["sensor", "datetime"]),
     vol.Required(CONF_CAPACITY): number(10, 200, .1),
     vol.Required("planning_rate_kw", default=2.4): number(1.4, 6.0, .2),
     vol.Required(CONF_EFFICIENCY, default=.90): number(.5, 1, .01),
@@ -84,6 +87,8 @@ def check_wallbox(x):
         x.get(CONF_COMMAND_STATUS), x.get(CONF_REQUESTED_LIMIT),
         x.get(CONF_CONFIRMED_LIMIT), x.get(CONF_DPM_CONFIRMED),
     ]
+    if x.get(CONF_WALLBOX_REFRESH):
+        other.append(x[CONF_WALLBOX_REFRESH])
     if len(set(other)) != len(other) or set(ids) & set(other):
         return "duplicate_entities"
     if (not power_step(x.get(CONF_BASE_KW))
@@ -196,6 +201,7 @@ class RCOptionsFlow(OptionsFlowWithReload):
             vol.Required(CONF_REQUESTED_LIMIT, default=existing[CONF_REQUESTED_LIMIT]): entity("number"),
             vol.Required(CONF_CONFIRMED_LIMIT, default=existing[CONF_CONFIRMED_LIMIT]): entity("sensor"),
             vol.Required(CONF_DPM_CONFIRMED, default=existing[CONF_DPM_CONFIRMED]): entity("sensor"),
+            vol.Optional(CONF_WALLBOX_REFRESH, default=existing.get(CONF_WALLBOX_REFRESH)): entity("button"),
             vol.Required(CONF_EXPECTED_DPM, default=existing[CONF_EXPECTED_DPM]): number(1.4, 6, .1),
             vol.Required(CONF_BASE_KW, default=existing[CONF_BASE_KW]): number(1.4, 6, .2),
             vol.Required(CONF_BOOST_KW, default=existing[CONF_BOOST_KW]): number(1.4, 6, .2),
