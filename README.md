@@ -1,178 +1,175 @@
-# EasyWallbox Smart Charging — RC 0.3.0rc1
+# EasyWallbox Smart Charging — Release Candidate
 
-Custom integration Python **nativa Home Assistant**, per Fiat 500e, Kia EV3
-o altri veicoli con sensori configurati. Il firmware ESPHome della wallbox non
-è modificato. **Non è una protezione elettrica:** il DPM fisico resta SEMPRE
-attivo e conserva il controllo rapido dei carichi e dei picchi.
+**Versione codice: 0.3.0rc1 · Home Assistant 2026.11+ · branch `RC`.**
+Custom integration nativa Python. Nessun container, script esterno o modifica
+del firmware ESPHome. Il DPM **rimane sempre attivo** e conserva il controllo
+rapido dei sovraccarichi. Johnny non è una protezione elettrica.
 
-> **Stato:** RC di sviluppo con comandi reali implementati e disabilitati di
-> default. I test Python/CI non equivalgono al collaudo sulla wallbox.
-> Non è una release verificata al 100% sul campo. Prima della prova reale
-> servono verifica delle entità, delle conferme BLE e della disattivazione
-> delle automazioni che potrebbero comandare gli stessi dispositivi.
-> `main` e il Marketplace non vengono modificati.
+**RC non collaudata sull'impianto reale.** GitHub CI, hassfest e test isolati
+controllano il codice; il primo collaudo con una vera sessione deve confermare
+la sequenza BLE, la risposta Shelly, la proprietà dei limiti e il comportamento
+dopo riavvio. La release precedente e il branch `main` restano disponibili.
 
-## Schema preciso dei comandi
+## Principio fondamentale
 
-| Situazione | Cosa può inviare Johnny |
+Johnny governa **una sola wallbox e un solo veicolo alla volta**.
+Moduli separati: planner (SOC/partenza), stabilizzatore lento Johnny,
+esecutore **unico** di comandi Home Assistant, laboratorio isolato.
+L'esecutore usa esclusivamente le entità ESPHome già esposte:
+
+- **`number` Charge power:** scrive il limite EV in kW; `sensor` Power set
+  è il riscontro del valore letto dalla wallbox.
+- **`switch` Start-Stop:** OFF scrive DPM **0 A**; ON recupera
+  l'ultimo DPM positivo tramite il firmware ESPHome. È il metodo
+  Start-Stop già provato sul firmware. **Non** spegne il DPM Active.
+- **`binary_sensor` Charge Enabled** e **`sensor` Limit house power
+  set -DPM-** verificano l'effetto della richiesta. `Command status`
+  distingue richiesto, confermato e non riuscito. **Una chiamata HA
+  riuscita non equivale a un effetto elettrico verificato**.
+
+### Ciclo di vita della ricarica
+
+| Evento/stato | Azione RC autorizzata |
 |---|---|
-| Cavo scollegato, anche in Automatico | **NULLA** a ESPHome, alla wallbox o alle auto |
-| Cavo collegato, auto identificata, carica confermata | **Solo** `number.set_value` sull'entità ESPHome **Charge power**, per il cap EV |
-| Cavo collegato, carica **confermata assente** e avvio posticipato attivo | **Solo** `switch.turn_off/on` sull'entità ESPHome **Start-Stop**, se la pausa è di Johnny |
-| Cavo collegato, non in carica, senza avvio posticipato | Nessun avvio elettrico automatico |
-| Modalità Manuale, Pausa esplicita o dati incompleti | Nessun comando automatico |
+| Prima connessione, cavo già OFF all'avvio di HA | Nessun comando; non inventare una transizione |
+| Cavo della wallbox **ON → OFF** | Dopo conferma **30 secondi** con Shelly EV **<30 W**, DPM Active e BLE affidabili: una sola richiesta `Start-Stop OFF`, se il controllo reale è stato abilitato e il DPM positivo corrisponde alla configurazione |
+| Fine sessione in Manuale | Torna **Automatico** allo scollegamento, senza interferire con la sessione manuale appena conclusa |
+| Wallbox parcheggiata | `Charge Enabled OFF` e DPM 0 A confermati; nessun altro comando finché non viene collegata un'auto |
+| Cavo **OFF → ON** | Attende 20 secondi, identifica Fiat/Kia, chiede al massimo un aggiornamento dati per auto (entrambe soltanto se non sa quale sia collegata) |
+| Dati aggiornati | Verifica SOC, target, partenza, resa, capacità e tempo residuo. Senza dati coerenti **non avvia** |
+| Avvio posticipato | Rimane a DPM 0 A finché è prudente attendere; l'ultimo inizio utile anticipa l'orario desiderato quando necessario |
+| È ora di iniziare | Verifica o imposta il limite EV a **4,0 kW**, attende conferma, quindi **una sola richiesta Start-Stop ON** e verifica il DPM positivo |
+| In carica | Solo Johnny può cambiare `number.Charge power`; **mai Start-Stop** durante la ricarica |
+| Target raggiunto | Non riavvia; alla disconnessione prepara la wallbox per la sessione successiva |
+| Dati incerti, BLE perso, risposta contraddittoria | Nessuna nuova scrittura, diagnosi e riconciliazione manuale; **mai retry ciechi** |
 
-La sequenza Start-Stop attuale nel firmware è **DPM 0 A per pausa**;
-`Start-Stop ON` recupera l'ultimo DPM positivo memorizzato dal firmware.
-**DPM Active non deve essere spento**; è un parametro diverso. Johnny non
-modifica mai l'impostazione di attivazione del DPM.
+Una richiesta `Start-Stop OFF` è consentita anche con cavo scollegato
+**esclusivamente sulla transizione ON→OFF verificata**. In tutte le altre
+condizioni a cavo scollegato Johnny non scrive nulla.
 
-`Charge power` rappresenta la richiesta numerica; `Power set` è la
-conferma da ESPHome. Lo switch Start-Stop può anticipare l'esito BLE;
-`Charge Enabled` e `Limit house power set -DPM-` sono riscontri separati.
-Per attuare una nuova decisione Johnny richiede conferma `Verified ...`
-dopo il comando, un limite coerente, una sessione valida e la proprietà
-del setpoint. Se non arriva conferma entro 3 minuti: **blocco senza retry**.
-La conferma a 0,1 kW HA non permette di recuperare il raw BLE esatto:
-va controllata sul campo prima di considerare definitiva la garanzia di ACK.
+Il comando `number.set_value` a 4,0 kW **prima** dell'avvio è
+un'eccezione intenzionale: la wallbox è parcheggiata e l'auto non sta ancora
+caricando, quindi non deve ereditare un cap ridotto dalla sessione precedente.
+Prima di `Start-Stop ON` vengono verificati tanto il limite EV
+quanto l'identità e il fabbisogno della macchina.
 
-Con `Avvio posticipato`, la pausa è permessa soltanto **dopo** che
-il cavo risulta inserito e la carica risulta assente. **Se l'auto comincia
-a caricare prima che HA possa osservarla ferma, Johnny NON la interrompe**:
-l'orario posticipato non è garantito in questa circostanza, proprio perché
-la regola «mentre carica, soltanto potenza» ha la precedenza. Senza
-un altro meccanismo autorizzato non possiamo promettere entrambe le cose.
+### Refresh auto e firmware
 
-## Planner e modalità
+Nel Config Flow, per **ciascuna auto**, configurare il relativo pulsante
+`Update data` / `Deep Refresh` e, se disponibile, l'entità che riporta
+la data reale dell'ultimo aggiornamento. **Non esistono entity_id fissati
+nel codice.** Dopo 20 secondi dalla connessione Johnny invia una sola
+`button.press` all'auto identificata; se ancora sconosciuta, una a
+Fiat e una a Kia. Attende fino a **120 secondi**, senza retry.
+**Premere un pulsante non significa ricevere dati nuovi**: il planner
+attende un timestamp originario aggiornato, oppure un nuovo report SOC
+dopo la richiesta. Il laboratorio H24 non preme i pulsanti delle auto.
 
-- **Automatico:** un solo veicolo identificato in modo certo; SOC e target
-  aggiornati, partenza feriale/weekend per singola auto, capacità utile e
-  rendimento configurati. Stima energia AC da recuperare e margine fino alla
-  partenza, compresa riserva prudenziale di 30 minuti.
-- **Manuale:** Johnny cede completamente il controllo fino a modifica
-  esplicita o scollegamento; NON ripristina neppure un DPM rimasto a zero.
-- **Pausa esplicita:** il pulsante della dashboard sospende la gestione
-  automatica; per fermare fisicamente una ricarica già attiva si usa
-  direttamente lo switch ESPHome, perché Johnny non può comandare lo switch
-  mentre è in carica.
-- **Carica subito:** salta l'attesa futura di cui Johnny possiede la pausa,
-  ma non crea un avvio se il DPM zero proviene da un intervento esterno.
-- **Avvio posticipato:** switch + ora preferita (anche oltre mezzanotte),
-  calcolata alla connessione e bloccata per la sessione; attesa solo se
-  l'ultimo avvio utile permette di rispettare il target. Una stima non è
-  una garanzia di ricarica: il DPM può ridurre la potenza.
-- **Override prossima partenza:** entità `datetime` con annullamento
-  esplicito; gli orari ordinari si impostano per ciascuna auto nel config
-  flow e si modificano dalle opzioni dell'integrazione.
-- La velocità prudenziale di pianificazione è un **dato configurabile per
-  ciascuna auto**, non derivato da un solo assorbimento istantaneo.
-  Non si promette un completamento quando i dati sono incompleti.
+Il Config Flow richiede anche il pulsante ESPHome **Refresh data**:
+legge una volta i registri BLE per avere un DPM aggiornato. Se la carica
+è rimasta posticipata per ore e il DPM letto è obsoleto, una seconda
+richiesta **soltanto al momento dell'avvio** evita di fidarsi di un
+readback vecchio. Non esiste polling BLE aggiuntivo continuo.
 
-## Stabilizzatore Johnny RC — soglie candidate
+### DPM: configurazione distinta dall'osservazione
 
-Riferimento di prova: potenza EV ordinaria **4,0 kW**; boost
-**4,2 kW**; DPM ordinario nominale **4,4 kW**. Sono limiti
-configurabili con i passi del firmware (0,2 kW). La conversione BLE
-effettiva usa ampere a 230 V: 4,2 kW visualizzati corrispondono a
-18,3 A nel comando, non esattamente a 4200 W attivi.
+Il limite nominale DPM è configurato in Home Assistant (es. **4,4 kW**).
+Johnny usa **sempre questo valore positivo per i calcoli**, anche se
+la wallbox parcheggiata segnala **0 A**. Il sensore DPM reale non è
+il parametro matematico: prova che la pausa è davvero a zero o che
+l'avvio ha ripristinato il limite positivo atteso. Se un limite
+positivo diverso viene rilevato, il controllo non lo corregge
+silenziosamente. Il firmware converte le potenze in decimi di
+ampere nominali usando 230 V: l'active power Shelly non è
+una misura della pinza DPM.
 
-| Evento | Regola RC |
+## Regole Johnny RC
+
+Valori predefiniti (modificabili nei limiti ammessi dal firmware):
+**base 4,0 kW**, **boost 4,2 kW**, **DPM 4,4 kW**, pavimento EV **1,4 kW**.
+
+| Caso | Condizione e azione |
 |---|---|
-| Forte | Pressione DPM nominale ≥0,6 kW per 2 minuti di nuovi campioni Shelly, o cicli intermittenti documentati |
-| Primo cap forte | Cap unico stimato da DPM − casa − margine 0,2 kW, arrotondato per difetto a passi 0,2; minimo 1,4 kW |
-| Moderato | Casa 450–1100 W e pressione ≥100 W-equivalenti per almeno 10 minuti osservati negli ultimi 12 → −0,4 kW |
-| Già LIMITED | Pressione residua ≥250 W per almeno 5 minuti osservati sugli ultimi 7, ancora presente → ulteriore −0,4 kW; almeno 10 minuti dall'ultimo cambiamento, massimo due correzioni |
-| Ripristino | 15 minuti **documentati** di margine per il limite originale; ritorno diretto a 4,0 kW, mai risalita a piccoli gradini |
-| Budget | Se la partenza è a rischio o il budget stimato della sessione è esaurito, non spendere altro margine con riduzioni |
-| Boost **solo urgente** | Margine prudente ≤60 minuti **e** casa sotto 150 W per 15 minuti → da 4,0 a 4,2 kW |
-| Isteresi boost | Disattivazione quando casa >200 W; se margine recuperato, solo dopo stima attendibile ≥75 minuti e quiete della stima; in caso di incertezza non iniziare un boost |
+| Forte | Pressione DPM nominale almeno **0,6 kW** per ~2 minuti di nuovi campioni Shelly; per cicli intermittenti, memoria 5 min, 2 accensioni, 120 s osservati e area ≥2,4 kW·min |
+| Primo cap forte | 75º percentile *discreto* delle letture alte negli ultimi 3 min, margine 0,2 kW, passi da 0,2 kW per difetto, minimo 1,4 |
+| Moderato | Casa 450–1100 W, pressione ≥100 W per **10 minuti osservati negli ultimi 12** → riduzione di 0,4 kW |
+| Già LIMITED | Pressione residua ≥250 W per **5 minuti osservati sugli ultimi 7**, ancora presente; nuova discesa di 0,4 kW solo dopo ≥10 min dall'ultimo cambio; massimo due correzioni |
+| Ripristino | 15 minuti **documentati** di margine sufficiente per la potenza originaria; ritorno diretto alla base, senza gradini |
+| Planner | Nessuna nuova riduzione facoltativa se il budget è esaurito o il margine di partenza è a rischio; il DPM mantiene il controllo rapido |
+| Boost urgente | **Solo** con margine prudenziale ≤60 min e casa <150 W per 15 minuti: 4,0→4,2 kW |
+| Isteresi boost | Uscita quando casa >200 W; oppure, se margine ≥75 min stabile, rientro alla base. No boost con informazioni SOC incerte |
 
-La potenza Shelly domestica è la somma dei rami della casa **senza**
-il circuito EV. Le soglie sono approssimazioni di pressione, NON la corrente
-misurata dalla pinza DPM. La policy non insegue i picchi di secondo in
-secondo: il DPM protegge l'impianto.
+I timer non creano nuove misure Shelly. I cambi fisici del cap devono
+attendere conferma ESPHome; nessun comando viene ripetuto per
+tentare di inseguire i picchi.
 
-## Configurazione grafica
+## Dashboard, opzioni e Recorder
 
-In `Impostazioni → Dispositivi e servizi → EasyWallbox Smart Charging`
-scegliere: tutti i Shelly **domestici**, Shelly EV separato, **Car Connected**,
-**Charging**, **Telemetry Fresh**, **DPM Active**, **Wallbox Fault**,
-**Charge Enabled**, **Start-Stop**, **Command status**,
-**Charge power** (number), **Power set** e
-**Limit house power set -DPM-**. Impostare potenza ordinaria, boost,
-DPM positivo atteso e profili di Fiat/Kia (cavo, SOC, target, capacità,
-rendimento, potenza prudenziale, orari feriali/weekend).
-Nessun `entity_id` di un'abitazione è hardcoded.
+Config Flow grafico: sensori Shelly **domestici** (escluso il ramo EV),
+Shelly wallbox, cavo collegato alla wallbox, Charging, Telemetry Fresh,
+DPM Active, Fault, Charge Enabled, Start-Stop, Command status,
+Charge power, Power set, DPM confermato, Refresh data, DPM
+di riferimento, base e boost, uno o più veicoli con SOC, target
+(esclusivamente entità o fisso), capacità, efficienza, potenza di
+pianificazione prudenziale e orari feriali/weekend.
 
-**Prima di abilitare il controllo reale** occorre disattivare e verificare
-le automazioni concorrenti (riduzione mattutina della potenza e limite SOC
-Fiat, se controllano le stesse risorse). Per prudenza l'utente deve
-confermare esplicitamente questa verifica nel Config Flow; un flag
-non prova da solo l'assenza di altri scrittori.
+Controlli nativi in Lovelace: **Automatico/Manuale**, **Controllo reale**,
+**Avvio posticipato**, ora desiderata, override della prossima partenza,
+**Carica subito**, pausa della *gestione* (non stop fisico della carica),
+ripresa e annullamento override, **Laboratorio H24**.
+Dashboard: [`docs/LOVELACE_RC.yaml`](docs/LOVELACE_RC.yaml).
+Dopo l'installazione sostituire i segnaposto con gli entity_id reali
+generati dal tuo Home Assistant.
 
-Il controllo reale è un interruttore apposito in Lovelace ed è **OFF
-a ogni avvio o reload di HA**. Per abilitarlo servono modalità Automatica,
-cavo realmente collegato e conferma di assenza di automazioni concorrenti.
-Manuale non lo riabilita da solo. I parametri e gli override di UI
-sono persistiti in HA Store, **non** cronologie continue.
+Due soli sensori diagnostici di RC (stato e planner) pubblicano
+**cambi di significato**, non ogni nuovo watt o countdown al secondo.
+Le misure originali restano nei rispettivi Shelly/ESPHome.
+La configurazione e le preferenze sono salvate tramite lo Store HA;
+non si scrive ogni campione nel Recorder.
 
-## Dashboard e diagnostica essenziale
+## Laboratorio H24
 
-Due sensori aggiornati **soltanto quando cambia il significato del
-risultato**, senza copiare ogni watt Shelly nel Recorder:
+Una **auto artificiale sempre collegata e sempre in carica**, completamente
+isolata dall'esecutore reale, riceve i dati domestici; confronta scenario
+ordinario e scenario urgente a 45 minuti. Produce un JSONL **privato**
+per giornata in
+`/config/easywallbox_smart_lab/rc_shadow_YYYY-MM-DD.jsonl`,
+massimo 2 MB/file, senza comandi BLE o alle auto. Non inserire cronologie
+domestiche o file `.storage` in un repository pubblico.
 
-- `Johnny RC`: stato, motivo, modalità, ultima richiesta, conferma,
-  ownership, fase e motivo di blocco.
-- `Pianificatore RC`: target, partenza, fascia margine, avvio posticipato.
-  Non pubblica un countdown al secondo.
+## Riavvii e condizioni di sicurezza
 
-Inoltre: selettore Automatica/Manuale; interruttori Controllo reale,
-Avvio posticipato e Laboratorio H24; orario di avvio; override partenza;
-pulsanti Carica subito / Pausa gestione / Riprendi / Annulla override.
+- Il riavvio HA **non cambia il DPM fisico**. Johnny osserva
+  `Charge Enabled` e il sensore di DPM; una pausa verificata di cui
+  ha salvato la provenienza può essere riconosciuta, ma **non**
+  genera un avvio cieco. L'abilitazione **Controllo reale torna OFF
+  dopo ogni riavvio o reload** e richiede un nuovo consenso utente.
+- In Manuale Johnny non invia comandi; al passaggio ON→OFF confermato
+  torna in Automatico e, se il controllo reale era abilitato,
+  può parcheggiare dopo le verifiche.
+- Alla perdita di SOC, cavo, BLE, DPM, Shelly o dopo un ACK
+  mancante, si sospendono nuove scritture e si mostra il motivo.
+- Un `Start-Stop ON` recupera l'ultimo DPM memorizzato nel
+  firmware, non forza un numero inventato; deve essere verificato
+  contro il riferimento DPM configurato.
 
-Una dashboard Lovelace senza plugin esterni è in
-[`docs/LOVELACE_RC.yaml`](docs/LOVELACE_RC.yaml). Sostituire i segnaposto
-con gli ID generati dalla propria installazione (non inventati qui).
+**Controllo reale**: interruttore OFF di default. Prima di accenderlo
+disabilitare le automazioni concorrenti che scrivono lo stesso
+`Charge power` / `Start-Stop`; il flag del Config Flow è una
+conferma dell'utente, non una verifica tecnica dell'impianto.
 
-## Laboratorio H24: separato dal controllo reale
+## Installazione RC e rollback
 
-Il laboratorio può restare attivo **anche con cavo scollegato**, ma
-**non impartisce alcun comando**. Usa i consumi Shelly osservati e
-un'auto sintetica sempre in carica per generare decisioni RC virtuali.
-Un JSONL privato al giorno viene scritto sotto
-`/config/easywallbox_smart_lab/rc_shadow_YYYY-MM-DD.jsonl`, massimo
-circa 2 MB/file. Non committare questi dati al repository pubblico.
-È una prova sui consumi, senza vero SOC/partenza, senza ACK BLE.
+Questa è una **prerelease per un primo collaudo supervisionato**.
+Prima sostituire/rimuovere la vecchia integrazione e la vecchia
+config entry: RC richiede nuove entità e non migra automaticamente
+la beta 0.2.0b5. Conservare una copia della versione precedente,
+senza modificare manualmente `.storage`.
+Non aggiornare `main` e non modificare ESPHome.
+Seguire [`docs/CHECKLIST_COLLAUDO_RC.md`](docs/CHECKLIST_COLLAUDO_RC.md)
+per prova in sola lettura, prova supervisionata e rollback.
 
-## Riavvii, guasti e recupero
-
-- Una sessione e un lease **non vengono mai recuperati automaticamente**
-  dopo reload o reboot. Il controllo reale torna OFF. Nessun retry cieco.
-- Dati `unknown`, `unavailable`, stantii, non coerenti, macchina non
-  identificata o comando non confermato → niente nuovi comandi automatici.
-- Se la wallbox resta con DPM 0 durante un guasto o una disinstallazione,
-  **non** riattivarla alla cieca: verificare il limite originale, la
-  presenza dell'auto e lo stato elettrico da ESPHome prima di intervenire
-  manualmente. Nessuna promessa di avvio senza supervisione.
-- **Limite noto da collaudare:** il firmware può non aggiornare spesso
-  il registro DPM confermato. La RC richiede letture recenti per scrivere:
-  quindi può restare intenzionalmente bloccata. Non aggiungiamo polling
-  BLE continuo per aggirare questa condizione.
-- I test automatizzati non certificano la sicurezza di linea, il
-  funzionamento delle pinze o l'effetto fisico del DPM. Il collaudo va
-  effettuato sul campo, con modalità Manuale e possibilità di rollback.
-
-## Installazione / rollback
-
-Questo branch non è `main` e **non è rilasciato sul Marketplace**.
-Non sostituire la beta 0.2.0b5 prima della verifica CI e di una
-installazione guidata. Il Config Flow RC richiede nuove entità: non migrare
-la vecchia config entry facendo supposizioni sui sensori mancanti.
-Prima di provarla, conservare la versione precedente e i suoi riferimenti.
-Per tornare indietro, disabilitare Controllo reale, ripristinare la
-versione precedente, riavviare HA e verificare manualmente DPM/ricarica.
-Non manipolare `.storage` con editor o script.
-
-Il repository firmware
-[`Easywallbox---Esphome`](https://github.com/paolofaz/Easywallbox---Esphome)
-rimane completamente separato e non modificato.
+Se pubblicata come prerelease GitHub da questo branch, l'installazione
+tramite **Impostazioni → Marketplace → repository custom**
+richiede di attivare **Pre-release** per il repository e di
+riavviare Home Assistant dopo l'installazione.
