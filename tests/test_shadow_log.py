@@ -52,6 +52,18 @@ class TestShadowLog(unittest.TestCase):
                 module.append_shadow_rows(
                     root, [entry("2026-11-19T10:00:00+01:00")], "../bad")
 
+    def test_v2_model_comparison_is_append_only(self):
+        with tempfile.TemporaryDirectory() as root:
+            a = entry("2026-11-20T10:00:00+01:00")
+            a["v2"] = {"action":"hold","cap_kw":4.2}
+            a["v2_dpm46"] = {"action":"hold","cap_kw":4.2}
+            count, name = module.append_shadow_rows(root,[a],"shadow_v2_compare")
+            self.assertEqual(count,1)
+            self.assertEqual(name,"shadow_v2_compare_2026-11-20.jsonl")
+            count, _ = module.append_shadow_rows(root,[a],"shadow_v2_compare")
+            self.assertEqual(count,1)
+            self.assertEqual(len((Path(root)/name).read_text().splitlines()),2)
+
     def test_empty_is_noop(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(module.append_shadow_rows(root, []), (0, ""))
