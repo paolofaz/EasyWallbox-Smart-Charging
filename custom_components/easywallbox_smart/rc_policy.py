@@ -1,4 +1,4 @@
-"""Johnny RC: pure, bounded and deterministic EV limit decisions.
+"""RC charging stabilizer: pure, bounded and deterministic EV limit decisions.
 
 This module is an advisory algorithm, NOT an electrical safety controller.
 It never accesses HA, BLE, storage, hardware, or services.
