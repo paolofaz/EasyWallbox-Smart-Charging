@@ -1,6 +1,6 @@
 # EasyWallbox Smart Charging
 
-**Sviluppo 0.2.0b3 — NON PUBBLICATO — SOLO SIMULAZIONE.** La release Marketplace attuale è **0.1.0** su `main`; le nuove funzioni non sono ancora installabili dal Marketplace.
+**Sviluppo 0.2.0b5 — NON PUBBLICATO — SOLO SIMULAZIONE.** La release Marketplace attuale è **0.1.0** su `main`; le nuove funzioni non sono ancora installabili dal Marketplace.
 
 Custom integration Python per Home Assistant che simula la pianificazione di ricarica e uno stabilizzatore lento della potenza EV. Il DPM fisico della EasyWallbox resta attivo, autonomo e responsabile di picchi e sicurezza elettrica. **La 0.1.0 non invia alcun comando reale alla wallbox o alle automobili.** I pulsanti/selettori sono consigli virtuali, non interruttori elettrici.
 
@@ -34,6 +34,11 @@ Il Config Flow crea un profilo nuovo: non è prevista la migrazione della vecchi
 ## Entità
 
 Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettore **modalità simulata**. Le proposte `reduce`/`restore` non impostano la potenza reale. L'icona è inclusa in `custom_components/easywallbox_smart/brand/icon.png`; traduzioni IT/EN e Options Flow sono presenti.
+
+
+## M4 in preparazione — controllo supervisionato, ancora disabilitato
+
+Nel solo branch di sviluppo è stato aggiunto un primo guard puro (control_guard.py), con test offline per impedire proposte di riduzione/ripristino quando mancano conferme ESPHome, qualità Shelly, DPM attivo, sessione, budget del planner o proprietà del limite. **Non è collegato al coordinatore, non esegue servizi HA, non scrive BLE e non salva dati persistenti.** Le eventuali proposte richiedono approvazione; non esiste ancora un executor reale. La beta installata resta 0.2.0b5 read-only, senza nuova release. I log finali del 20/11 devono ancora essere analizzati: le soglie V2 non sono validate per produzione. Dettagli in [M4: guard supervisionato](docs/M4_CONTROLLO_SUPERVISIONATO_GUARD.md).
 
 ## Field test v0.2.0b5: Johnny V2 unico, modellato sui comandi BLE in ampere
 
@@ -84,7 +89,7 @@ Il branch `main` e la release Marketplace `0.1.0` restano invariati.
 
 ## Qualità e limiti
 
-**Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b5 saranno disponibili nella CI del branch di sviluppo. Il precedente laboratorio 0.2.0b3 è stato provato in Home Assistant con log Shelly il 19–20 novembre; la nuova beta in ampere **non è ancora stata provata su Home Assistant reale**. Tutte le proposte restano in sola simulazione.
+**Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b5 saranno disponibili nella CI del branch di sviluppo. Il precedente laboratorio 0.2.0b3 è stato provato in Home Assistant con log Shelly il 19–20 novembre; della nuova beta in ampere è stato verificato soltanto l'avvio 10:47–10:49 del 20 novembre; il test finale è ancora da analizzare. Tutte le proposte restano in sola simulazione.
 
 La nuova simulazione Johnny v1 usa la **pressione dinamica sul DPM**, con conferma 2/3 minuti per carichi continui, memoria di 5 minuti per quelli intermittenti e quiete 15/10 minuti nelle fasce ampio/intermedio. Il DPM impostato a **zero** per la pausa non è trattato come limite elettrico e non causa mai un avvio automatico; Johnny richiede di conoscere l'origine della pausa prima di qualsiasi futuro controllo reale. Le vecchie soglie domestiche fisse 1,5/1,0 kW appartengono a un precedente test offline, non al supervisore collegato in Home Assistant. Tutti i parametri restano **tarature sperimentali**, non protezioni elettriche.
 
