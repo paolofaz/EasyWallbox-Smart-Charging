@@ -420,7 +420,7 @@ class RCController:
                     self.margin_minutes = ((departure-now).total_seconds()/60
                                            - 30 - duration_minutes)
         # The positive configured limit is the *mathematical* DPM reference.
-        # Observed zero means parked, NOT a zero power budget for Johnny.
+        # Observed zero means parked, NOT a zero power budget for the stabilizer.
         expected_dpm = float(self.cfg[CONF_EXPECTED_DPM])
         dpm_normal = dpm is not None and abs(dpm-expected_dpm) <= .11
         dpm_parked = dpm is not None and dpm <= .06 and enabled is False
@@ -602,7 +602,7 @@ class RCController:
                     self._dpm_lease is None and not self._park_owned and
                     self._blocked in (None, "startup_requires_explicit_reenable")):
                 # Never inherit an ESPHome/user DPM=0 as our own pause.
-                self._blocked = "dpm_zero_without_proven_johnny_lease"
+                self._blocked = "dpm_zero_without_proven_rc_lease"
                 self.real_enabled = False
             if self.mode == "manual" or self.explicit_pause:
                 self.status = "Manuale" if self.mode == "manual" else "Pausa gestione"
