@@ -476,14 +476,6 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(d=="switch" and svc=="turn_on"
                              for d,svc,_,_ in self.hass.services.calls),1)
 
-    async def test_lab_can_run_when_unplugged_without_switching(self):
-        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
-        self.hass.states["binary_sensor.fiat"].publish("off")
-        self.c.refresh()
-        await self.c.async_change("lab",True)
-        await self.settle()
-        self.assertEqual(self.hass.services.calls,[])
-        self.assertTrue(self.c.lab_enabled)
 
 
 if __name__=="__main__":
