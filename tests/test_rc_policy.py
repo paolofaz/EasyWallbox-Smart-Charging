@@ -165,7 +165,7 @@ class RCRules(unittest.TestCase):
         state = None
         reduced = None
         for m in range(4):
-            observation = sample(m, house=1.2, current=(
+            observation = sample(m, house=1.6, current=(
                 reduced if reduced is not None else baseline),
                 max_kw=baseline, boost_max_kw=3.8)
             state, decision = policy.evaluate(observation, state)
