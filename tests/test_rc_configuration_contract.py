@@ -68,7 +68,10 @@ class RCConfigContract(unittest.TestCase):
         self.assertIn("target_fixed",step)
         self.assertIn("target_entity",step)
         vehicle=step["vehicle"]["data"]
-        self.assertIn("planning_rate_kw",vehicle)
+        self.assertNotIn("planning_rate_kw",vehicle)
+        self.assertIn("edit_vehicle",obj["options"]["step"])
+        self.assertIn("add_vehicle",obj["options"]["step"]["init"]["menu_options"])
+        self.assertIn("remove_vehicle",obj["options"]["step"]["init"]["menu_options"])
         self.assertIn("house_power_sources",step["user"]["data"])
 
     def test_ui_no_hardcoded_house_floor_or_car_brand(self):
