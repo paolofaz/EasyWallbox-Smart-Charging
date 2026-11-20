@@ -60,6 +60,45 @@ funzione di laboratorio è installata.
    cavo in stato `unknown` e riavvio con DPM 0 A.
    Vietati retry ciechi.
 
+## Test della nuova gestione SOC (prima senza comandi reali)
+
+1. Aprire **Dispositivi e servizi → EasyWallbox Smart Charging →
+   Dispositivi**. Deve comparire il dispositivo logico
+   EasyWallbox Smart Charging con le entità associate, i due sensori
+   collocati in diagnostica e **nessun duplicato** degli ID esistenti.
+2. In **Configura → Modifica auto**, verificare che l'opzione
+   **Stop a target SOC** sia inizialmente disattivata per entrambe
+   le auto già configurate.
+3. Per Fiat: target da entità HA esistente **oppure** target fisso
+   80–100% con slider nativo a passi di 5. Non creare un secondo
+   slider quando già esiste un `input_number` di target.
+4. Per Kia: mantenere Stop a target OFF e lasciare che sia l'auto
+   ad interrompere al limite impostato internamente; la RC deve
+   osservare la fine e **non** emettere uno Stop né uno Start.
+5. Prima di un test elettrico dello Stop Fiat, **disabilitare
+   l'automazione legacy che scrive Start-Stop**. Non toccare
+   le notifiche e gli eventi MQTT finché non si concorda
+   la loro migrazione.
+6. Con Fiat in carica, SOC sotto target e Stop attivato,
+   nessuno Stop sulla wallbox. Vicino al target il refresh auto
+   è al massimo ogni 20 minuti, non una sequenza veloce.
+7. Dopo un refresh Fiat, verificare che il timestamp originario
+   `last_info_update_at` sia realmente cambiato; se non cambia,
+   **nessuno Stop**. Premere il pulsante non equivale a conferma.
+8. Soltanto con SOC >= limite, cavo ON, Charging ON e Shelly
+   positivo, il controller può richiedere **un solo** Start-Stop OFF.
+   DPM confermato a 0 A, Charge Enabled OFF, Charging OFF
+   e Shelly EV <30 W sono necessari per dichiarare fine carica.
+9. Se manca un ACK BLE o il consumo EV resta sopra 30 W,
+   blocco diagnosticato e **nessun retry**.
+10. Finché la Fiat resta collegata, cambiare il target NON deve
+    far ripartire la ricarica una volta fermata per SOC.
+
+**Attenzione:** i primi test di carica reale devono essere
+supervisionati. Disabilitare l'automazione legacy solo quando
+la sostituzione è verificata; se la RC non è ancora collaudata
+mantenere Controllo reale OFF.
+
 ## Rollback
 
 Portare **Controllo reale su OFF**, selezionare Manuale,
