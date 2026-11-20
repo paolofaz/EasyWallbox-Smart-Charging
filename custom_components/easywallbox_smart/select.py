@@ -3,6 +3,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN
+from .device import controller_device_info
 
 
 async def async_setup_entry(hass, entry, add_entities):
@@ -18,6 +19,7 @@ class ModeSelect(SelectEntity):
 
     def __init__(self, controller, entry):
         self.controller = controller
+        self._attr_device_info = controller_device_info(entry)
         self._attr_unique_id = entry.entry_id + "_mode"
 
     async def async_added_to_hass(self):
