@@ -6,6 +6,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN, SIMULATION_LABEL
+from .shadow_v2 import wallbox_requested_amps
 
 KINDS = {
     "session": "Sessione",
@@ -88,9 +89,7 @@ class SimulationSensor(SensorEntity):
         if self.kind == "shadow_v2":
             shadow = self.coordinator.shadow_v2_decision
             state = self.coordinator.shadow_v2_state
-            trial = self.coordinator.shadow_v2_states.get("dpm46")
-            trial_decision = self.coordinator.shadow_v2_decisions.get("dpm46")
-            attrs.update(
+             attrs.update(
                 hypothetical_ev_always_charging=True,
                 real_wallbox_commands=0,
                 shadow_budget_disabled=True,
@@ -98,7 +97,12 @@ class SimulationSensor(SensorEntity):
                 hypothetical_ev_max_kw=self.coordinator.max_charge_kw,
                 observed_dpm_source=self.coordinator.shadow_dpm_source,
                 dpm_reference_44_kw=4.4,
-                dpm_reference_46_kw=4.6,
+                wallbox_dpm_limit_current_a=19.1,
+                requested_ev_current_a=(
+                    wallbox_requested_amps(self.coordinator.max_charge_kw)
+                    if self.coordinator.max_charge_kw else None
+                ),
+                current_basis="BLE nominal 230 V; house watts are an active-power proxy",
                 virtual_scenarios_only=True,
                 shadow_log_file=self.coordinator.shadow_log_file,
                 shadow_log_status=self.coordinator.shadow_log_status,
@@ -119,12 +123,6 @@ class SimulationSensor(SensorEntity):
                     ),
                     v2_kind=state.kind,
                     v2_downward_adjustments=state.recheck_count,
-                    model_46_state=trial.mode if trial else None,
-                    model_46_kind=trial.kind if trial else None,
-                    model_46_cap_kw=(
-                        trial_decision.proposed_cap_kw if trial_decision else None
-                    ),
-                    model_46_action=trial_decision.action if trial_decision else None,
                 )
             return attrs
         if self.kind == "session":
