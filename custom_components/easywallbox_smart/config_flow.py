@@ -67,7 +67,6 @@ VEHICLE = vol.Schema({
     vol.Optional(CONF_VEHICLE_REFRESH): entity("button"),
     vol.Optional(CONF_VEHICLE_LAST_UPDATE): entity(["sensor", "datetime"]),
     vol.Required(CONF_CAPACITY): number(10, 200, .1),
-    vol.Required("planning_rate_kw", default=2.4): number(1.4, 6.0, .2),
     vol.Required(CONF_EFFICIENCY, default=.90): number(.5, 1, .01),
     vol.Required(CONF_DEPARTURE_WEEKDAY, default="07:00"): TextSelector(),
     vol.Required(CONF_DEPARTURE_WEEKEND, default="08:00"): TextSelector(),
@@ -193,7 +192,7 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
-    """Editable sources, car schedules and lab; never the currently active lease."""
+    """Edit wallbox settings and manage every vehicle after first installation."""
 
     async def async_step_init(self, user_input=None):
         return self.async_show_menu(step_id="init", menu_options=["wallbox", "choose_vehicle"])
