@@ -621,7 +621,7 @@ class TestCoordinatorSessionSmoke(TestCase):
                 entry.options = {
                     "shadow_lab_enabled": True,
                     "initial_charge_kw": 3.6,
-                    "max_charge_kw": 4.0,
+                    "max_charge_kw": 4.2,
                     "dpm_model_kw": 4.8,
                 }
                 h.config.path = lambda folder: str(Path(root) / folder)
@@ -635,32 +635,34 @@ class TestCoordinatorSessionSmoke(TestCase):
                 c.start()
                 self.assertFalse(c.session.charging)
                 self.assertIsNotNone(c._house_unsub)
-                self.assertEqual(set(c.shadow_v2_decisions), {"dpm44", "dpm46"})
                 self.assertIsNotNone(c.shadow_v2_state)
                 self.assertIsNotNone(c.shadow_v2_decision)
-                self.assertTrue(all(
-                    True for _ in c.shadow_v2_decisions.values()
-                ))
-                await asyncio.sleep(.05)
+                # Wait for the actual async executor job: no arbitrary delay.
+                if c._shadow_flush_task is not None:
+                    await c._shadow_flush_task
                 self.assertEqual(c.shadow_log_status, "ok")
                 logdir = Path(root) / "easywallbox_smart_shadow"
-                files = list(logdir.glob("shadow_v2_compare_*.jsonl"))
+                files = list(logdir.glob("shadow_v2_amps_*.jsonl"))
                 self.assertEqual(len(files), 1)
                 records = [json.loads(x) for x in files[0].read_text().splitlines()]
                 self.assertTrue(records)
                 first = records[0]
                 self.assertIn("v2", first)
-                self.assertIn("v2_dpm46", first)
+                self.assertNotIn("v2_dpm46", first)
+                self.assertEqual(first["dpm_limit_current_a"], 19.1)
+                self.assertEqual(first["ev_request_current_a"], 18.3)
                 self.assertNotIn("wide", first)
                 self.assertNotIn("medium", first)
                 self.assertTrue(first["virtual_state_reset_on_this_row"])
                 self.assertTrue(first["shadow_run_started_local"])
                 self.assertTrue(first["house_report_local"])
                 self.assertEqual(first["model"],
-                                 "continuous_johnny_v2_dual_dpm_reference")
+                                 "continuous_johnny_v2_current_equivalent_4_4")
                 self.assertEqual(first["dpm_observed_kw"], 0.)
-                self.assertEqual(first["dpm_model_kw"], 4.8)
+                self.assertEqual(first["dpm_model_kw"], 4.4)
                 self.assertEqual(first["dpm_model_source"],
+                                 "fixed_virtual_4_4_current_reference")
+                self.assertEqual(first["dpm_observed_source"],
                                  "explicit_model_when_paused_or_unavailable")
                 self.assertNotIn("vehicle_id", first)
                 self.assertNotIn("soc", first)
@@ -676,7 +678,7 @@ class TestCoordinatorSessionSmoke(TestCase):
         self.addCleanup(c.close)
         self.assertFalse(c.shadow_enabled)
         self.assertIsNone(c._house_unsub)
-        self.assertEqual(c.shadow_v2_decisions, {})
+        self.assertIsNone(c.shadow_v2_decision)
         self.assertEqual(c.shadow_log_status, "disabled")
 
     def test_select_entity_changes_only_virtual_mode(self):
