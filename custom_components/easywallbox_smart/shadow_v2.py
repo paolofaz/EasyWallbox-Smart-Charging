@@ -8,16 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from math import floor
+from math import floor, isfinite
 
 from .core import Config, HouseSnapshot, LimitSnapshot, SessionSnapshot
 from .johnny_policy import JohnnyState, evaluate
 
-BUFFER_MIN_KW = 0.5
+BUFFER_MIN_KW = 0.45
 BUFFER_MAX_KW = 1.1
 BUFFER_CONFIRM = timedelta(minutes=3)
 BUFFER_STEP_KW = 0.4
-BUFFER_QUIET_PRESSURE_KW = 0.06
+BUFFER_QUIET_PRESSURE_KW = 0.18
 BUFFER_QUIET = timedelta(minutes=10)
 COOLDOWN = timedelta(minutes=10)
 RECHECK_PRESSURE_KW = 0.25
@@ -27,6 +27,42 @@ RECHECK_STEP_KW = 0.4
 MAX_RECHECKS = 2
 FRESH = timedelta(minutes=3)
 MAX_GAP = timedelta(seconds=150)
+NOMINAL_KW_PER_AMP = 0.230  # Only the ESPHome BLE command convention.
+
+
+def wallbox_raw_deciamps(display_kw: float) -> int:
+    """Mirror firmware x/0.23 * 10, rounded half up to 0.1 A.
+
+    Never infer true AC active power from this nominal command.
+    """
+    if (not isinstance(display_kw, (int, float))
+            or isinstance(display_kw, bool) or not isfinite(display_kw)
+            or display_kw <= 0):
+        raise ValueError("valid positive display limit required")
+    return floor(display_kw / NOMINAL_KW_PER_AMP * 10 + .5)
+
+
+def wallbox_requested_amps(display_kw: float) -> float:
+    return wallbox_raw_deciamps(display_kw) / 10
+
+
+def household_current_proxy_amps(house_active_kw: float) -> float:
+    """Shelly active W / nominal 230 V: current-equivalent, NOT CT amperes.
+
+    The household's actual amperes also depend on local RMS voltage,
+    power factor and waveform. The physical DPM never relies on this proxy.
+    """
+    return house_active_kw / NOMINAL_KW_PER_AMP
+
+
+def pressure_proxy_amps(house_active_kw: float, ev_cap_kw: float,
+                        dpm_display_kw: float) -> float:
+    return max(0.0, (
+        household_current_proxy_amps(house_active_kw)
+        + wallbox_requested_amps(ev_cap_kw)
+        - wallbox_requested_amps(dpm_display_kw)
+    ))
+
 
 
 @dataclass(frozen=True)
@@ -96,11 +132,16 @@ def evaluate_v2(now: datetime, session: SessionSnapshot,
     old_base = st.base or JohnnyState(
         session_id=session.session_id, locked_budget_kwh=1_000_000.0,
     )
+    # Translate the displayed kW into the exact one-decimal-ampere
+    # commands encoded by ESPHome. The inherited wide policy receives
+    # their nominal-kW equivalents, not unrounded UI display requests.
+    ev_nominal_kw = wallbox_requested_amps(max_ev_kw) * NOMINAL_KW_PER_AMP
+    dpm_nominal_kw = wallbox_requested_amps(dpm_kw) * NOMINAL_KW_PER_AMP
     base, base_proposal = evaluate(
         now, session, house,
-        LimitSnapshot(requested_kw=max_ev_kw, confirmed_kw=max_ev_kw,
-                      dpm_kw=dpm_kw),
-        old_base, Config(dpm_model_kw=dpm_kw),
+        LimitSnapshot(requested_kw=ev_nominal_kw,
+                      confirmed_kw=ev_nominal_kw, dpm_kw=dpm_nominal_kw),
+        old_base, Config(dpm_model_kw=dpm_nominal_kw),
     )
     st = replace(st, base=base)
 
@@ -138,7 +179,8 @@ def evaluate_v2(now: datetime, session: SessionSnapshot,
                              "strong_wide_entry", now)
         if not is_new:
             return _decision(st, "hold", "waiting_for_new_house_sample", now)
-        pressure = max(0.0, value + st.cap_kw - dpm_kw)
+        pressure = (pressure_proxy_amps(value, st.cap_kw, dpm_kw)
+                    * NOMINAL_KW_PER_AMP)
         if gap is not None and gap > MAX_GAP:
             st = replace(st, recheck_since=None)
         if pressure < RECHECK_PRESSURE_KW:
@@ -172,7 +214,8 @@ def evaluate_v2(now: datetime, session: SessionSnapshot,
         # Judge quiet from the DPM pressure of the *original* EV request,
         # not a fixed house-power threshold. Otherwise a steady 0.4 kW
         # background load can keep an optional cap for hours unnecessarily.
-        baseline_pressure = max(0.0, value + st.original_kw - dpm_kw)
+        baseline_pressure = (pressure_proxy_amps(value, st.original_kw, dpm_kw)
+                             * NOMINAL_KW_PER_AMP)
         if baseline_pressure > BUFFER_QUIET_PRESSURE_KW:
             return _decision(replace(st, quiet_since=None), "hold",
                              "buffer_baseline_pressure_continues", now)
@@ -189,7 +232,8 @@ def evaluate_v2(now: datetime, session: SessionSnapshot,
     # it is not a fast electrical safety margin for sudden oven loads.
     buffer_candidate = (
         BUFFER_MIN_KW <= value <= BUFFER_MAX_KW
-        and value + max_ev_kw - dpm_kw >= 0.1
+        and (pressure_proxy_amps(value, max_ev_kw, dpm_kw)
+             * NOMINAL_KW_PER_AMP) >= 0.1
         and max_ev_kw - 1.4 >= BUFFER_STEP_KW-1e-8
     )
     if not buffer_candidate:
