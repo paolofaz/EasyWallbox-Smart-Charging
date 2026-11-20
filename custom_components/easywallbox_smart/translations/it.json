@@ -28,13 +28,12 @@
       },
       "vehicle": {
         "title": "Profilo auto",
-        "description": "Fiat, Kia o altre auto. Configurare una sola entità per ogni cavo.",
+        "description": "Configura i dati dell'auto: la potenza media di ricarica viene calcolata automaticamente dalle misure, non va inserita.",
         "data": {
           "name": "Nome auto",
           "cable": "Sensore cavo collegato",
           "soc": "Sensore SOC",
           "capacity_kwh": "Capacità utile batteria kWh",
-          "planning_rate_kw": "Potenza AC media prudenziale usata per stimare il tempo (kW)",
           "efficiency": "Rendimento AC",
           "departure_weekday": "Partenza feriali (HH:MM)",
           "departure_weekend": "Partenza weekend (HH:MM)",
@@ -82,8 +81,10 @@
       "init": {
         "title": "Impostazioni EasyWallbox Smart Charging",
         "menu_options": {
-          "wallbox": "Wallbox e limiti",
-          "choose_vehicle": "Orari per auto"
+          "wallbox": "Wallbox, sensori e potenze",
+          "choose_vehicle": "Modifica un'auto esistente",
+          "add_vehicle": "Aggiungi una nuova auto",
+          "remove_vehicle": "Rimuovi un'auto"
         }
       },
       "wallbox": {
@@ -109,22 +110,68 @@
           "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)"
         }
       },
-      "vehicle": {
-        "title": "Orari della partenza",
+      "choose_vehicle": {
+        "title": "Seleziona l'auto da modificare",
         "data": {
-          "departure_weekday": "Partenza feriali HH:MM",
-          "departure_weekend": "Partenza weekend HH:MM"
+          "vehicle": "Auto"
         }
       },
-      "choose_vehicle": {
-        "title": "Seleziona l'auto",
+      "edit_vehicle": {
+        "title": "Modifica i dati dell'auto",
+        "description": "Modifica sensori, capacità, rendimento, aggiornamento e orari. Il limite di carica SOC si sceglie nel passaggio successivo.",
         "data": {
-          "vehicle": "Veicolo"
+          "name": "Nome auto",
+          "cable": "Sensore cavo collegato",
+          "soc": "Sensore SOC",
+          "capacity_kwh": "Capacità utile batteria kWh",
+          "efficiency": "Rendimento AC",
+          "departure_weekday": "Partenza feriali (HH:MM)",
+          "departure_weekend": "Partenza weekend (HH:MM)",
+          "vehicle_refresh_button": "Pulsante aggiorna dati auto (facoltativo)",
+          "vehicle_last_update": "Timestamp ultimo aggiornamento auto (facoltativo)"
+        }
+      },
+      "edit_target_method": {
+        "title": "Come impostare l'obiettivo SOC?",
+        "menu_options": {
+          "edit_target_fixed": "Percentuale fissa",
+          "edit_target_entity": "Entità Home Assistant"
+        }
+      },
+      "edit_target_fixed": {
+        "title": "Obiettivo SOC fisso",
+        "data": {
+          "target_fixed": "Percentuale desiderata"
+        }
+      },
+      "edit_target_entity": {
+        "title": "Obiettivo SOC da entità",
+        "data": {
+          "target_entity": "Entità limite SOC"
+        }
+      },
+      "remove_vehicle": {
+        "title": "Quale auto vuoi rimuovere?",
+        "data": {
+          "vehicle": "Auto"
+        }
+      },
+      "confirm_remove": {
+        "title": "Conferma rimozione auto",
+        "description": "Questo elimina il profilo selezionato. La wallbox non riceverà comandi durante il ricaricamento delle opzioni.",
+        "data": {
+          "confirm": "Confermo la rimozione"
         }
       }
     },
     "error": {
-      "invalid_clock": "Orario non valido"
+      "invalid_clock": "Inserisci gli orari nel formato HH:MM",
+      "duplicate_vehicle": "Nome o sensore cavo già utilizzato da un'altra auto",
+      "invalid_vehicle": "Profilo incompleto o non valido",
+      "vehicle_missing": "L'auto non esiste più"
+    },
+    "abort": {
+      "cannot_remove_last": "Non puoi eliminare l'unica auto configurata"
     }
   }
 }
