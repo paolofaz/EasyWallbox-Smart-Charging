@@ -31,6 +31,13 @@ def valid_car(car: dict) -> bool:
     has_fixed = car.get("target_fixed") is not None
     if has_entity == has_fixed:
         return False
+    if car.get("stop_at_target") is True and has_fixed:
+        try:
+            target = float(car["target_fixed"])
+        except (TypeError, ValueError):
+            return False
+        if target < 80 or target > 100 or target % 5 != 0:
+            return False
     try:
         if has_fixed and not 1 <= float(car["target_fixed"]) <= 100:
             return False
