@@ -78,6 +78,8 @@ class RCController:
         self._connection = False
         self._session_id = None
         self._seq = 0
+        self._active_departure = None
+        self._scheduled_at = None
         self._power_state: State | None = None
         self._owned_limit: float | None = None
         self._dpm_lease: float | None = None
@@ -228,21 +230,26 @@ class RCController:
         return sum(values), max(times)
 
     def _departure(self, now, car):
-        if (self.departure_override is not None and
-                self.departure_override > now):
+        if self.departure_override is not None:
             return self.departure_override
+        if self._active_departure is not None:
+            return self._active_departure
         settings = self.entry.options.get("vehicle_schedules", {}).get(car[CONF_CABLE], {})
         weekday = settings.get(CONF_DEPARTURE_WEEKDAY, car[CONF_DEPARTURE_WEEKDAY])
         weekend = settings.get(CONF_DEPARTURE_WEEKEND, car[CONF_DEPARTURE_WEEKEND])
-        return next_departure(now.astimezone(ZoneInfo(self.hass.config.time_zone)),
-                              weekday, weekend)
+        self._active_departure = next_departure(
+            now.astimezone(ZoneInfo(self.hass.config.time_zone)), weekday, weekend)
+        return self._active_departure
 
     def _planned_start(self, now):
         local = now.astimezone(ZoneInfo(self.hass.config.time_zone))
+        if self._scheduled_at is not None:
+            return self._scheduled_at
         scheduled = datetime.combine(local.date(), self.preferred_start,
                                      tzinfo=local.tzinfo)
         if scheduled <= local:
-            return local  # Time passed today; NEVER defer to tomorrow automatically.
+            scheduled += timedelta(days=1)
+        self._scheduled_at = scheduled
         return scheduled
 
     def _snapshot(self, now):
@@ -287,7 +294,7 @@ class RCController:
                 self.remaining_kwh = round(remaining, 2)
                 # User-configured conservative planning rate, NOT inferred
                 # from the instantaneous DPM-limited vehicle power.
-                rate = float(car.get("planning_rate_kw", 2.4))
+                rate = min(float(self.cfg[CONF_BASE_KW]), float(car["planning_rate_kw"]))
                 if departure and rate >= 1.4:
                     duration_minutes = remaining / rate * 60
                     self.margin_minutes = ((departure-now).total_seconds()/60
@@ -364,6 +371,8 @@ class RCController:
             self._owned_limit = None
             self._dpm_lease = None
             self._pending = None
+            self._active_departure = None
+            self._scheduled_at = None
             self.charge_now = False
             self.explicit_pause = False
             self._blocked = None
@@ -383,6 +392,8 @@ class RCController:
                 self._owned_limit = None
                 self._dpm_lease = None
                 self._pending = None
+                self._active_departure = None
+                self._scheduled_at = None
                 self.charge_now = False
             self._status_acks(now, True)
             if self._blocked:
@@ -615,11 +626,14 @@ class RCController:
             if not isinstance(value, time):
                 raise ValueError("time required")
             self.preferred_start = value
+            self._scheduled_at = None
         elif field == "departure":
             if value is not None and (not isinstance(value, datetime)
                                        or value.utcoffset() is None):
                 raise ValueError("timezone aware departure required")
             self.departure_override = value
+            if value is None:
+                self._active_departure = None
         elif field == "lab":
             self.lab_enabled = bool(value)
         elif field == "now":
