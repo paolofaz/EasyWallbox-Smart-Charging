@@ -482,6 +482,7 @@ class RCController:
                       enabled is not None and
                       (dpm_normal or (dpm_parked and dpm_owned)) and
                       actual_limit is not None and requested is not None and
+                      house is not None and house_at is not None and
                       target_reached is not None)
         return dict(cable=cable, car=car, charging=charging,
                     enabled=enabled, active=active, fault=fault,
