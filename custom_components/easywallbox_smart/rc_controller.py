@@ -406,7 +406,8 @@ class RCController:
                 self._session_id = f"{self.entry.entry_id}:{self._seq}:{identity}"
                 self._connection = identity
                 self._power_state = State(session_id=self._session_id,
-                                          cap_kw=float(self.cfg[CONF_BASE_KW]))
+                                          cap_kw=float(self.cfg[CONF_BASE_KW]),
+                                          baseline_kw=float(self.cfg[CONF_BASE_KW]))
                 self._owned_limit = None
                 self._dpm_lease = None
                 self._pending = None
@@ -482,7 +483,7 @@ class RCController:
                     return
                 base = float(self.cfg[CONF_BASE_KW])
                 if self._power_state is None:
-                    self._power_state = State(session_id=self._session_id, cap_kw=base)
+                    self._power_state = State(session_id=self._session_id, cap_kw=base, baseline_kw=base)
                 # Initial real-mode activation assumes responsibility only
                 # after the user enabled it and all configured checks pass.
                 if self._owned_limit is None:
