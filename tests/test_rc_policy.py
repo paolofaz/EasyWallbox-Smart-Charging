@@ -160,6 +160,31 @@ class RCRules(unittest.TestCase):
         st,d=policy.evaluate(sample(1,house=1.5,session_id="new"),st)
         self.assertEqual(d.action,"none")
 
+    def test_configured_lower_baseline_restores_to_normal_not_limited(self):
+        baseline = 3.6
+        state = None
+        reduced = None
+        for m in range(4):
+            observation = sample(m, house=1.2, current=(
+                reduced if reduced is not None else baseline),
+                max_kw=baseline, boost_max_kw=3.8)
+            state, decision = policy.evaluate(observation, state)
+            if decision.action == "set_limit":
+                reduced = decision.target_kw
+                self.assertEqual(state.phase, "LIMITED")
+                break
+        self.assertIsNotNone(reduced)
+        for m in range(4, 24):
+            observation = sample(m, house=0.08, current=reduced,
+                                 max_kw=baseline, boost_max_kw=3.8)
+            state, decision = policy.evaluate(observation, state)
+            if decision.action == "set_limit":
+                self.assertEqual((decision.target_kw, state.phase),
+                                 (baseline, "NORMAL"))
+                break
+        else:
+            self.fail("Did not restore a configured non-4.0 baseline")
+
     def test_no_electrical_or_io_imports_in_policy(self):
         source=SOURCE.read_text(encoding="utf-8")
         for forbidden in ("homeassistant", "services.async_call", "bleak",
