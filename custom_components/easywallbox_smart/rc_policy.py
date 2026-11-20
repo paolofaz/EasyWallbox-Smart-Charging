@@ -108,6 +108,38 @@ def _seconds_covered(items, now, predicate, interval_minutes, *, tolerance_secon
     return total
 
 
+def strong_p75_cap(items, now, *, dpm_kw: float, base_kw: float) -> float:
+    """Discrete 75th percentile of HIGH reports in the latest 3 minutes.
+
+    Use the observed high-load history rather than a single instant at the
+    triggering timestamp. Output is a nominal kW UI setpoint.
+    """
+    candidates = sorted(
+        h for t, h, _ in items
+        if t >= now-timedelta(minutes=3)
+        and max(0.0, h+base_kw-dpm_kw) >= STRONG_PRESSURE
+    )
+    if not candidates:
+        return base_kw
+    index = max(0, (3*len(candidates)+3)//4-1)
+    high_p75 = candidates[index]
+    return max(MIN_KW, step_down(dpm_kw-high_p75-.2))
+
+
+def intermittent_pressure_area(items, now, base_kw, dpm_kw):
+    """Observed kW*minutes above the strong entry threshold, no gap fill."""
+    area = 0.0
+    cutoff = now-timedelta(minutes=5)
+    for (at, house, _), (end, _, _) in zip(items, items[1:]):
+        dt = (end-at).total_seconds()
+        if dt <= 0 or dt > MAX_GAP.total_seconds() or end <= cutoff:
+            continue
+        pressure = max(0.0, house+base_kw-dpm_kw)
+        if pressure >= STRONG_PRESSURE:
+            area += pressure*(end-max(at,cutoff)).total_seconds()/60
+    return area
+
+
 def evaluate(o: Observation, previous: State | None = None):
     """Proposal for one *observed charging* session, never direct actuation.
 
@@ -161,7 +193,7 @@ def evaluate(o: Observation, previous: State | None = None):
         if quiet and st.last_change and o.at-st.last_change >= timedelta(minutes=15):
             if _seconds_covered(items, o.house_at,
                                 lambda h, p: o.dpm_kw-h-o.max_kw >= -0.02,
-                                15) >= 14*60:
+                                15) >= 15*60-1:
                 return _shift(st, o.at, o.max_kw, "restore", "fifteen_minutes_headroom")
         if st.last_change and o.at-st.last_change >= timedelta(minutes=10):
             elapsed = _seconds_covered(items, o.house_at,
@@ -204,9 +236,12 @@ def evaluate(o: Observation, previous: State | None = None):
             max(0,h+o.max_kw-o.dpm_kw) >= STRONG_PRESSURE and
             (idx == 0 or max(0,items[idx-1][1]+o.max_kw-o.dpm_kw) < STRONG_PRESSURE)
             for idx, (t,h,p) in enumerate(items))
-        intermittent = transitions >= 2 and busy_seconds >= 120
+        intermittent = (transitions >= 2 and busy_seconds >= 120
+                        and intermittent_pressure_area(
+                            items, o.house_at, o.max_kw, o.dpm_kw) >= 2.4)
         if continuous or intermittent:
-            target = max(MIN_KW, step_down(o.dpm_kw - o.house_kw - .2))
+            target = strong_p75_cap(items, o.house_at,
+                                    dpm_kw=o.dpm_kw, base_kw=o.max_kw)
             if o.max_kw-target >= .4 and budget-st.spent_budget_kwh >= (o.max_kw-target)*.25:
                 return _shift(st, o.at, target, "strong", "strong_confirmed")
         return _decision(st, "none", "strong_accumulating")
