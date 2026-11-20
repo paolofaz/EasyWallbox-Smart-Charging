@@ -99,7 +99,7 @@ def check_wallbox(x):
     return None
 
 
-class RCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 2
 
     def __init__(self):
@@ -110,7 +110,7 @@ class RCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry):
-        return RCOptionsFlow()
+        return EasyWallboxSmartOptionsFlow()
 
     async def async_step_user(self, user_input=None):
         if self._async_current_entries():
@@ -138,39 +138,70 @@ class RCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "duplicate_vehicle"
             else:
                 self._pending = dict(user_input)
-                return await self.async_step_target()
+                return await self.async_step_target_method()
         return self.async_show_form(step_id="vehicle", data_schema=VEHICLE, errors=errors)
 
-    async def async_step_target(self, user_input=None):
-        errors = {}
+    def _finish_vehicle(self, target_mapping):
+        """Persist the fully configured car; no ambiguous optional targets."""
+        car = {k: v for k, v in self._pending.items() if k != CONF_ADD_ANOTHER}
+        car.update(target_mapping)
+        self._vehicles.append(car)
+        if self._pending[CONF_ADD_ANOTHER]:
+            return self.async_show_form(
+                step_id="vehicle", data_schema=VEHICLE)
+        return self.async_create_entry(
+            title="EasyWallbox Smart Charging",
+            data={**self._wallbox, CONF_VEHICLES: self._vehicles},
+        )
+
+    async def async_step_target_method(self, user_input=None):
+        """Make it impossible to submit a missing or conflicting SOC target."""
         if user_input is not None:
-            entity_id = user_input.get(CONF_TARGET_ENTITY)
-            target = user_input.get(CONF_TARGET_FIXED)
-            if bool(entity_id) == (target is not None):
-                errors["base"] = "choose_one_target"
-            elif target is not None and not 1 <= float(target) <= 100:
-                errors["base"] = "invalid_target"
-            else:
-                car = {k: v for k, v in self._pending.items() if k != CONF_ADD_ANOTHER}
-                car.update(user_input)
-                self._vehicles.append(car)
-                if self._pending[CONF_ADD_ANOTHER]:
-                    return await self.async_step_vehicle()
-                return self.async_create_entry(
-                    title="EasyWallbox Smart Charging RC",
-                    data={**self._wallbox, CONF_VEHICLES: self._vehicles},
-                )
+            method = user_input["target_method"]
+            if method == "entity":
+                return await self.async_step_target_entity()
+            return await self.async_step_target_fixed()
         return self.async_show_form(
-            step_id="target",
+            step_id="target_method",
             data_schema=vol.Schema({
-                vol.Optional(CONF_TARGET_ENTITY): entity(["sensor", "number", "input_number"]),
-                vol.Optional(CONF_TARGET_FIXED): number(1, 100, 1),
+                vol.Required("target_method", default="fixed"): vol.In(
+                    {"fixed": "Percentuale fissa", "entity": "Entità Home Assistant"})
             }),
-            errors=errors,
+        )
+
+    async def async_step_target_entity(self, user_input=None):
+        if user_input is not None:
+            return self._finish_vehicle({
+                CONF_TARGET_ENTITY: user_input[CONF_TARGET_ENTITY]})
+        return self.async_show_form(
+            step_id="target_entity",
+            data_schema=vol.Schema({
+                vol.Required(CONF_TARGET_ENTITY): entity(
+                    ["sensor", "number", "input_number"]),
+            }),
+        )
+
+    async def async_step_target_fixed(self, user_input=None):
+        if user_input is not None:
+            target = user_input[CONF_TARGET_FIXED]
+            if 1 <= float(target) <= 100:
+                return self._finish_vehicle({CONF_TARGET_FIXED: target})
+            return self.async_show_form(
+                step_id="target_fixed",
+                data_schema=vol.Schema({
+                    vol.Required(CONF_TARGET_FIXED, default=80):
+                        number(1, 100, 1)}),
+                errors={"base": "invalid_target"},
+            )
+        return self.async_show_form(
+            step_id="target_fixed",
+            data_schema=vol.Schema({
+                vol.Required(CONF_TARGET_FIXED, default=80): number(1, 100, 1),
+            }),
         )
 
 
-class RCOptionsFlow(OptionsFlowWithReload):
+class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
     """Editable sources, car schedules and lab; never the currently active lease."""
 
     async def async_step_init(self, user_input=None):
