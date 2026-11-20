@@ -80,6 +80,18 @@ class RCController:
         self._seq = 0
         self._active_departure = None
         self._scheduled_at = None
+        self._last_cable = None
+        self._connect_since = None
+        self._disconnect_since = None
+        self._park_owned = False
+        self._refresh_due = None
+        self._refresh_issued = False
+        self._refresh_requested_at = None
+        self._refresh_deadline = None
+        self._refresh_targets = ()
+        self._refresh_error = None
+        self._prepared_session = None
+        self._wallbox_refresh_sent = False
         self._power_state: State | None = None
         self._owned_limit: float | None = None
         self._dpm_lease: float | None = None
@@ -108,6 +120,8 @@ class RCController:
         self.mode = saved.get("mode") if saved.get("mode") in ("automatic", "manual") else "automatic"
         self.delay_enabled = bool(saved.get("delay", False))
         self.lab_enabled = bool(saved.get("lab", False))
+        # A persisted proven parking intent is not a fresh DPM readback.
+        self._park_owned = saved.get("park_owned") is True
         try:
             self.preferred_start = time.fromisoformat(saved.get("start", "23:00"))
         except (TypeError, ValueError):
@@ -126,6 +140,7 @@ class RCController:
     async def _save(self):
         await self._store.async_save({
             "mode": self.mode, "delay": self.delay_enabled,
+            "park_owned": self._park_owned,
             "lab": self.lab_enabled,
             "start": self.preferred_start.isoformat(timespec="minutes"),
             "departure": self.departure_override.isoformat()
@@ -165,11 +180,15 @@ class RCController:
             return None
         return finite_number(s.state)
 
+    def _schedule_save(self):
+        self.entry.async_create_background_task(
+            self.hass, self._save(), "EasyWallbox RC save verified parking")
+
     def _status_acks(self, now, cable):
         p = self._pending
         if p is None:
             return
-        if cable is not True:
+        if cable is not True and p.kind != "park":
             self._blocked = "pending_command_cable_lost"
             self._pending = None
             self.real_enabled = False
@@ -182,31 +201,41 @@ class RCController:
         confirmed_dpm = self._power(self.cfg[CONF_DPM_CONFIRMED], now, DPM_TTL)
         charge_enabled = self._binary(self.cfg[CONF_CHARGE_ENABLED], now)
         valid = False
-        if p.kind == "power":
+        if p.kind in ("power", "prepare"):
             requested = self._power(self.cfg[CONF_REQUESTED_LIMIT], now)
             valid = (flag == "Verified charge power" and confirmed_ev is not None
                      and requested is not None and abs(confirmed_ev-p.target) <= .11
                      and abs(requested-p.target) <= .11)
-        elif p.kind == "pause":
+        elif p.kind in ("pause", "park"):
             valid = (flag == "Verified DPM" and confirmed_dpm is not None
                      and confirmed_dpm <= .06 and charge_enabled is False)
         elif p.kind == "resume":
             valid = (flag == "Verified DPM" and confirmed_dpm is not None
                      and abs(confirmed_dpm-p.target) <= .11 and charge_enabled is True)
         if valid:
-            if p.kind == "power":
+            if p.kind in ("power", "prepare"):
                 self._owned_limit = p.target
                 if p.next_state is not None:
                     self._power_state = p.next_state
+                if p.kind == "prepare":
+                    self._prepared_session = self._session_id
             elif p.kind == "pause":
                 self._dpm_lease = p.target  # remembers ORIGINAL positive DPM
+            elif p.kind == "park":
+                self._park_owned = True
+                self._schedule_save()
             elif p.kind == "resume":
                 self._dpm_lease = None
+                self._park_owned = False
+                self._schedule_save()
             self.last_ack = now.isoformat(timespec="seconds")
             self._pending = None
             self.reason = "confirmed_" + p.kind
             return
         if now-p.since >= ACK_TIMEOUT:
+            if p.kind == "park":
+                self._park_owned = False
+                self._schedule_save()
             self._blocked = "unconfirmed_" + p.kind + "_no_retry"
             self._pending = None
             self.real_enabled = False
