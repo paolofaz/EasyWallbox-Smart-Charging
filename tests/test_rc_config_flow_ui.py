@@ -166,6 +166,30 @@ class TestVehicleConfigUI(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["type"],"create_entry")
         self.assertNotIn("planning_rate_kw", saved["data"]["vehicles"][0])
 
+    async def test_soc_stop_defaults_off_for_existing_cars(self):
+        flow = self.options()
+        form = await flow.async_step_choose_vehicle({"vehicle":"binary_sensor.fiat"})
+        data = sample_car("Fiat","binary_sensor.fiat")
+        data.pop("target_fixed")
+        validated = form["data_schema"](data)
+        self.assertIs(validated["stop_at_target"],False)
+        self.assertEqual(form["step_id"],"edit_vehicle")
+
+    async def test_opt_in_stop_fixed_target_accepts_80_100_step_5(self):
+        flow = self.app.EasyWallboxSmartConfigFlow()
+        flow._wallbox = {"house_power_sources":["sensor.house"]}
+        frm = await flow.async_step_vehicle()
+        car = sample_car("Fiat","binary_sensor.fiat")
+        car.pop("target_fixed")
+        car["stop_at_target"]=True
+        car["add_another"]=False
+        await flow.async_step_vehicle(frm["data_schema"](car))
+        invalid = await flow.async_step_target_fixed({"target_fixed":78})
+        self.assertEqual(invalid["errors"]["base"],"invalid_target")
+        saved = await flow.async_step_target_fixed({"target_fixed":85})
+        self.assertEqual(saved["data"]["vehicles"][0]["stop_at_target"],True)
+        self.assertEqual(saved["data"]["vehicles"][0]["target_fixed"],85)
+
     async def test_edit_all_vehicle_fields_and_soc_target(self):
         flow = self.options()
         menu = await flow.async_step_init()
