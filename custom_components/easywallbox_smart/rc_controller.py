@@ -365,6 +365,18 @@ class RCController:
         cable = snapshot["cable"]
         self._house_subscribe(cable is True or self.lab_enabled)
         if cable is False:
+            # A Manual/Pause/Delay override belongs to the just-finished EV
+            # session, not the next car. Do not clear preferences armed while
+            # already disconnected for a future planned session.
+            if self._connection:
+                changed = (self.mode == "manual" or self.delay_enabled or
+                           self.departure_override is not None)
+                self.mode = "automatic"
+                self.delay_enabled = False
+                self.departure_override = None
+                if changed:
+                    self.entry.async_create_background_task(
+                        self.hass, self._save(), "EasyWallbox RC clear session overrides")
             self._session_id = None
             self._connection = False
             self._power_state = None
@@ -400,11 +412,21 @@ class RCController:
                 self.status, self.reason = "Bloccata", self._blocked
             elif self.mode == "manual" or self.explicit_pause:
                 self.status, self.reason = "Manuale", "user_owns_wallbox"
-            elif snapshot["target_reached"] is True:
+            elif snapshot["target_reached"] is True and snapshot["charging"] is not True:
                 self.status, self.reason = "Completata", "soc_target_reached"
             elif snapshot["charging"] is True:
-                self.status = "In carica"
-                self.reason = "normal_or_limited"
+                if not snapshot["trusted"]:
+                    self.status, self.reason = ("In carica — verifica dati",
+                                                "source_stale_or_contradictory_no_write")
+                elif (self.delay_enabled and self._dpm_lease is None and
+                      self._planned_start(now) > now):
+                    self.status, self.reason = ("In carica — posticipo non applicato",
+                                                "charging_began_before_safe_pause")
+                elif snapshot["target_reached"] is True:
+                    self.status, self.reason = ("In carica — target stimato",
+                                                "possible_vehicle_balancing")
+                else:
+                    self.status, self.reason = "In carica", "normal_or_limited"
             elif snapshot["charging"] is False:
                 self.status = "Collegata, non in carica"
                 self.reason = "waiting_or_stopped"
