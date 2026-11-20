@@ -141,3 +141,15 @@ sul dispositivo. Restano da superare CI completa e collaudo reale.
 
 **Distribuzione**: modifiche nel branch `RC`; nessuna nuova
 release/tag, nessuna modifica a `main` o firmware senza autorizzazione.
+
+
+**Release pubblicata:** v0.3.0rc4 — prerelease GitHub verificata.
+Il workflow ha superato **91 test Python** su 3.12 e 3.13,
+validazione Home Assistant hassfest e HACS Marketplace.
+Tag rilasciato dal branch `RC` sul commit
+`a7d079b544480b2804a2c77ab35bfe709a38de75`;
+flag `prerelease=true` verificato. Nessun test elettrico reale
+eseguito. Consentire il primo controllo SOC Fiat soltanto dopo
+disattivazione del vecchio proprietario Start-Stop, sotto supervisione.
+La nuova registrazione del dispositivo logico deve essere verificata
+sulla pagina Dispositivi di HA dopo l'aggiornamento.
