@@ -11,6 +11,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
 )
 from .const import *
+from .vehicle_profiles import configured_vehicles, upsert_vehicle, remove_vehicle
 
 
 def entity(domains, multiple=False):
@@ -192,10 +193,23 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
-    """Edit wallbox settings and manage every vehicle after first installation."""
+    """Edit complete car profiles and wallbox sources; reload safely on save."""
+
+    def _cars(self):
+        return configured_vehicles(
+            self.config_entry.data, self.config_entry.options)
+
+    def _save_cars(self, cars):
+        updated = dict(self.config_entry.options)
+        updated[CONF_VEHICLES] = cars
+        updated.pop("vehicle_schedules", None)
+        return self.async_create_entry(data=updated)
 
     async def async_step_init(self, user_input=None):
-        return self.async_show_menu(step_id="init", menu_options=["wallbox", "choose_vehicle"])
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["wallbox", "choose_vehicle",
+                          "add_vehicle", "remove_vehicle"])
 
     async def async_step_wallbox(self, user_input=None):
         existing = {**self.config_entry.data, **self.config_entry.options}
@@ -231,33 +245,141 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
         return self.async_show_form(step_id="wallbox", data_schema=schema, errors=errors)
 
     async def async_step_choose_vehicle(self, user_input=None):
-        vehicles = self.config_entry.data[CONF_VEHICLES]
-        choices = {v[CONF_CABLE]: v[CONF_NAME] for v in vehicles}
         if user_input is not None:
-            self._chosen_cable = user_input["vehicle"]
-            return await self.async_step_vehicle()
+            self._original_cable = user_input["vehicle"]
+            return await self.async_step_edit_vehicle()
+        choices = {v[CONF_CABLE]: v[CONF_NAME] for v in self._cars()}
         return self.async_show_form(
             step_id="choose_vehicle",
-            data_schema=vol.Schema({vol.Required("vehicle"): vol.In(choices)}))
+            data_schema=vol.Schema({
+                vol.Required("vehicle"): vol.In(choices)}))
 
-    async def async_step_vehicle(self, user_input=None):
-        car = next((v for v in self.config_entry.data[CONF_VEHICLES]
-                    if v[CONF_CABLE] == getattr(self, "_chosen_cable", None)), None)
-        if car is None:
-            return await self.async_step_choose_vehicle()
-        options = self.config_entry.options
-        old = {**car, **options.get("vehicle_schedules", {}).get(car[CONF_CABLE], {})}
+    async def async_step_add_vehicle(self, user_input=None):
+        self._original_cable = None
+        return await self.async_step_edit_vehicle(user_input)
+
+    @staticmethod
+    def _required(key, old, selector):
+        if key in old and old[key] is not None:
+            return vol.Required(key, default=old[key]), selector
+        return vol.Required(key), selector
+
+    @staticmethod
+    def _optional(key, old, selector):
+        if old.get(key):
+            return vol.Optional(key, default=old[key]), selector
+        return vol.Optional(key), selector
+
+    def _edit_schema(self, old):
+        result = {}
+        fields = [
+            self._required(CONF_NAME, old, TextSelector()),
+            self._required(CONF_CABLE, old, entity("binary_sensor")),
+            self._required(CONF_SOC, old, entity("sensor")),
+            self._optional(CONF_VEHICLE_REFRESH, old, entity("button")),
+            self._optional(CONF_VEHICLE_LAST_UPDATE, old, entity(["sensor", "datetime"])),
+            self._required(CONF_CAPACITY, old, number(10, 200, .1)),
+            self._required(CONF_EFFICIENCY, old, number(.5, 1, .01)),
+            self._required(CONF_DEPARTURE_WEEKDAY, old, TextSelector()),
+            self._required(CONF_DEPARTURE_WEEKEND, old, TextSelector()),
+        ]
+        for key, selector in fields:
+            result[key] = selector
+        return vol.Schema(result)
+
+    async def async_step_edit_vehicle(self, user_input=None):
+        selected = getattr(self, "_original_cable", None)
+        old = next((v for v in self._cars() if v[CONF_CABLE] == selected), {})
         errors = {}
         if user_input is not None:
-            if not clock(user_input[CONF_DEPARTURE_WEEKDAY]) or not clock(user_input[CONF_DEPARTURE_WEEKEND]):
+            if not clock(user_input[CONF_DEPARTURE_WEEKDAY]) or not clock(
+                    user_input[CONF_DEPARTURE_WEEKEND]):
                 errors["base"] = "invalid_clock"
             else:
-                saved = dict(options.get("vehicle_schedules", {}))
-                saved[car[CONF_CABLE]] = dict(user_input)
-                return self.async_create_entry(data={**options, "vehicle_schedules": saved})
+                self._previous_target = {
+                    k: old[k] for k in (CONF_TARGET_ENTITY, CONF_TARGET_FIXED)
+                    if k in old
+                }
+                # Optional fields removed in the editor really are removed;
+                # never preserve stale refresh/timestamp IDs from old config.
+                self._pending_vehicle = dict(user_input)
+                return await self.async_step_edit_target_method()
         return self.async_show_form(
-            step_id="vehicle", errors=errors,
+            step_id="edit_vehicle", errors=errors,
+            data_schema=self._edit_schema(old))
+
+    async def async_step_edit_target_method(self, user_input=None):
+        return self.async_show_menu(
+            step_id="edit_target_method",
+            menu_options=["edit_target_fixed", "edit_target_entity"])
+
+    def _finish_edit(self, target):
+        pending = dict(self._pending_vehicle)
+        pending.update(target)
+        try:
+            vehicles = upsert_vehicle(
+                self._cars(), pending,
+                original_cable=getattr(self, "_original_cable", None))
+        except ValueError as error:
+            self._edit_error = str(error)
+            return None
+        return self._save_cars(vehicles)
+
+    async def async_step_edit_target_fixed(self, user_input=None):
+        old = getattr(self, "_previous_target", {})
+        default = old.get(CONF_TARGET_FIXED, 80)
+        errors = {}
+        if user_input is not None:
+            result = self._finish_edit({
+                CONF_TARGET_FIXED: user_input[CONF_TARGET_FIXED]})
+            if result is not None:
+                return result
+            errors["base"] = getattr(self, "_edit_error", "invalid_vehicle")
+        return self.async_show_form(
+            step_id="edit_target_fixed", errors=errors,
             data_schema=vol.Schema({
-                vol.Required(CONF_DEPARTURE_WEEKDAY, default=old[CONF_DEPARTURE_WEEKDAY]): TextSelector(),
-                vol.Required(CONF_DEPARTURE_WEEKEND, default=old[CONF_DEPARTURE_WEEKEND]): TextSelector(),
-            }))
+                vol.Required(CONF_TARGET_FIXED, default=default):
+                    number(1, 100, 1)}))
+
+    async def async_step_edit_target_entity(self, user_input=None):
+        old = getattr(self, "_previous_target", {})
+        errors = {}
+        if user_input is not None:
+            result = self._finish_edit({
+                CONF_TARGET_ENTITY: user_input[CONF_TARGET_ENTITY]})
+            if result is not None:
+                return result
+            errors["base"] = getattr(self, "_edit_error", "invalid_vehicle")
+        key = (vol.Required(CONF_TARGET_ENTITY,
+                            default=old[CONF_TARGET_ENTITY])
+               if old.get(CONF_TARGET_ENTITY)
+               else vol.Required(CONF_TARGET_ENTITY))
+        return self.async_show_form(
+            step_id="edit_target_entity", errors=errors,
+            data_schema=vol.Schema({
+                key: entity(["sensor", "number", "input_number"])}))
+
+    async def async_step_remove_vehicle(self, user_input=None):
+        if len(self._cars()) <= 1:
+            return self.async_abort(reason="cannot_remove_last")
+        if user_input is not None:
+            self._remove_cable = user_input["vehicle"]
+            return await self.async_step_confirm_remove()
+        choices = {v[CONF_CABLE]: v[CONF_NAME] for v in self._cars()}
+        return self.async_show_form(
+            step_id="remove_vehicle",
+            data_schema=vol.Schema({
+                vol.Required("vehicle"): vol.In(choices)}))
+
+    async def async_step_confirm_remove(self, user_input=None):
+        if user_input is not None:
+            if user_input["confirm"]:
+                try:
+                    return self._save_cars(remove_vehicle(
+                        self._cars(), self._remove_cable))
+                except ValueError:
+                    return self.async_abort(reason="cannot_remove_last")
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="confirm_remove",
+            data_schema=vol.Schema({vol.Required("confirm", default=False): bool}))
