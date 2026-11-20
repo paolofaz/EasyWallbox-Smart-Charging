@@ -133,8 +133,8 @@ def evaluate_bench(data: BenchInputs) -> BenchAdvice:
         return _none("BLOCKED", "soc_or_target_not_trusted")
     if data.target_reached is True:
         return _none("COMPLETED", "target_reached_no_automatic_restart")
-    if dpm == 0 and data.charging is True:
-        return _none("BLOCKED", "charging_conflicts_with_zero_dpm")
+    if dpm == 0 and data.charging is not False:
+        return _none("BLOCKED", "charging_unknown_or_conflicts_with_zero_dpm")
     if data.arm_owner in ("external", "unknown"):
         return _none("RECONCILE", "pause_or_limit_not_owned")
 
