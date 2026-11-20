@@ -18,7 +18,7 @@ class RCSensor(SensorEntity):
     def __init__(self, controller, entry, kind):
         self.c, self.kind = controller, kind
         self._attr_unique_id = entry.entry_id + "_rc_" + kind
-        self._attr_name = ("Johnny RC" if kind == "state" else "Pianificatore RC")
+        self._attr_name = ("Stato ricarica" if kind == "state" else "Pianificazione ricarica")
         self._attr_icon = ("mdi:car-electric" if kind == "state" else "mdi:calendar-clock")
 
     async def async_added_to_hass(self):
@@ -51,8 +51,8 @@ class RCSensor(SensorEntity):
                 "last_verified_command": self.c.last_ack,
                 "pending_command": self.c._pending.kind if self.c._pending else None,
                 "reconciliation_required": self.c._blocked,
-                "johnny_phase": self.c._power_state.phase if self.c._power_state else None,
-                "johnny_limit_kw": self.c._power_state.cap_kw if self.c._power_state else None,
+                "charging_phase": self.c._power_state.phase if self.c._power_state else None,
+                "charging_limit_kw": self.c._power_state.cap_kw if self.c._power_state else None,
                 "hardware_safety": "physical_DPM_always_active",
             }
         return {
