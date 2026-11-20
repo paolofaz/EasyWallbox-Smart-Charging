@@ -723,30 +723,44 @@ class RCController:
             return
         # Double-check one last time before every irreversible request.
         now = datetime.now(timezone.utc)
-        if (self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now) is not True
-                or self._select_vehicle(now, True) is None
-                or self._binary(self.cfg[CONF_TELEMETRY_FRESH], now) is not True
-                or self._binary(self.cfg[CONF_DPM_ACTIVE], now) is not True
-                or self._binary(self.cfg[CONF_WALLBOX_FAULT], now) is not False):
+        cable = self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now)
+        if (self._binary(self.cfg[CONF_TELEMETRY_FRESH], now) is not True or
+                self._binary(self.cfg[CONF_DPM_ACTIVE], now) is not True or
+                self._binary(self.cfg[CONF_WALLBOX_FAULT], now) is not False):
             return
         observed_charging = self._binary(self.cfg[CONF_WALLBOX_CHARGING], now)
-        if (kind == "power" and observed_charging is not True) or (
-                kind in ("pause", "resume") and observed_charging is not False):
-            return
-        if kind == "resume" and self._dpm_lease is None:
-            return
+        ev_kw = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
+        if kind == "park":
+            if (cable is not False or self._disconnect_since is None or
+                    self._ev_idle_since is None or
+                    now-self._disconnect_since < timedelta(seconds=30) or
+                    now-self._ev_idle_since < timedelta(seconds=30) or
+                    ev_kw is None or ev_kw >= .03 or
+                    self._binary(self.cfg[CONF_CHARGE_ENABLED], now) is not True):
+                return
+        else:
+            if cable is not True or self._select_vehicle(now, True) is None:
+                return
+            if (kind == "power" and observed_charging is not True) or (
+                    kind in ("pause", "resume", "prepare") and
+                    (observed_charging is not False or ev_kw is None or ev_kw >= .03)):
+                return
+            if kind == "prepare" and not (self._park_owned or self._dpm_lease):
+                return
+            if kind == "resume" and not (self._park_owned or self._dpm_lease):
+                return
         self._pending = Pending(kind, target, now, next_state)
         self.last_command = f"{kind}:{target:.1f}"
         self.reason = f"requested_{kind}_not_yet_confirmed"
         self._notify()
         try:
-            if kind == "power":
+            if kind in ("power", "prepare"):
                 await self.hass.services.async_call(
                     "number", "set_value",
                     {"entity_id": self.cfg[CONF_REQUESTED_LIMIT], "value": target},
                     blocking=True,
                 )
-            elif kind == "pause":
+            elif kind in ("pause", "park"):
                 await self.hass.services.async_call(
                     "switch", "turn_off",
                     {"entity_id": self.cfg[CONF_START_STOP]}, blocking=True,
