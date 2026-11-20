@@ -685,37 +685,44 @@ class RCController:
                     self._power_state = state
                 return
 
-            # Only a disconnected *charging state* (cable still ON) may
-            # request Start/Stop, and exclusively for scheduled waiting.
-            if (current["ev_kw"] is None or current["ev_kw"] >= .10):
+            # Connected but confirmed NOT charging: the normal parked-DPM
+            # lifecycle can start only after vehicle update and planning.
+            if (current["ev_kw"] is None or current["ev_kw"] >= .03 or
+                    current["target_reached"] is not False):
                 return
-            if not self.delay_enabled:
-                # An explicit cancellation of a previously delayed, Johnny-
-                # owned pause may release that lease. This is still the
-                # delayed-start lifecycle, never a generic car start.
-                if (self._dpm_lease is not None and current["dpm"] <= .06
-                        and current["enabled"] is False):
-                    await self._send("resume", self._dpm_lease, None)
+            if not (current["dpm_parked"] and
+                    (self._park_owned or self._dpm_lease is not None)):
                 return
-            if self.margin_minutes is None:
+
+            # A requested refresh is never proof that cloud telemetry arrived.
+            if not self._car_update_ready(datetime.now(timezone.utc), current["car"]):
                 return
-            start = self._planned_start(datetime.now(timezone.utc))
-            # Waiting is advisory; never deliberately miss a departure.
-            latest = self.departure - timedelta(
-                minutes=30 + (self.remaining_kwh / max(
-                    1.4, min(float(self.cfg[CONF_BASE_KW]), float(current["car"]["planning_rate_kw"])))) * 60
-            ) if self.departure is not None and self.remaining_kwh is not None else None
-            should_wait = (not self.charge_now and latest is not None and
-                           latest > datetime.now(timezone.utc) and
-                           start > datetime.now(timezone.utc))
-            if should_wait:
-                if (self._dpm_lease is None and current["dpm"] > 1.4
-                        and current["enabled"] is True):
-                    await self._send("pause", current["dpm"], None)
+            now_decision = datetime.now(timezone.utc)
+            start = self._planned_start(now_decision) if self.delay_enabled else now_decision
+            latest = (self.departure - timedelta(
+                minutes=30 + 60 * self.remaining_kwh / max(
+                    1.4, min(float(self.cfg[CONF_BASE_KW]),
+                             float(current["car"]["planning_rate_kw"]))))
+                if self.departure is not None and
+                self.remaining_kwh is not None else None)
+            if latest is None:
                 return
-            if (self._dpm_lease is not None and current["dpm"] <= .06
-                    and current["enabled"] is False):
-                await self._send("resume", self._dpm_lease, None)
+            if (self.delay_enabled and not self.charge_now and
+                    start > now_decision and latest > now_decision):
+                self.status, self.reason = "In attesa", "delayed_start_ready"
+                self._notify()
+                return
+
+            base = float(self.cfg[CONF_BASE_KW])
+            if self._prepared_session != self._session_id:
+                if (abs(current["actual"]-base) <= .11 and
+                        abs(current["requested"]-base) <= .11):
+                    self._prepared_session = self._session_id
+                else:
+                    await self._send("prepare", base, None)
+                    return
+            if self._prepared_session == self._session_id:
+                await self._send("resume", float(self.cfg[CONF_EXPECTED_DPM]), None)
 
     async def _send(self, kind: str, target: float, next_state: State | None):
         """One command, never retry, with separately timed BLE verification."""
