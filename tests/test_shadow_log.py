@@ -64,6 +64,19 @@ class TestShadowLog(unittest.TestCase):
             self.assertEqual(count,1)
             self.assertEqual(len((Path(root)/name).read_text().splitlines()),2)
 
+    def test_amps_trial_prefix_creates_separate_daily_log(self):
+        with tempfile.TemporaryDirectory() as root:
+            row = entry("2026-11-20T09:00:00+01:00")
+            row["v2"] = {"action": "hold", "cap_kw": 4.2}
+            row["dpm_limit_current_a"] = 19.1
+            row["ev_request_current_a"] = 18.3
+            count, filename = module.append_shadow_rows(
+                root, [row], "shadow_v2_amps")
+            self.assertEqual(count, 1)
+            self.assertEqual(filename, "shadow_v2_amps_2026-11-20.jsonl")
+            loaded = json.loads((Path(root) / filename).read_text())
+            self.assertEqual(loaded["ev_request_current_a"], 18.3)
+
     def test_empty_is_noop(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(module.append_shadow_rows(root, []), (0, ""))
