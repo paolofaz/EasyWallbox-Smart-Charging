@@ -1,3 +1,55 @@
+# Checklist prioritaria RC: parcheggio e nuovo avvio
+
+**Primo collaudo**: non iniziare dal laboratorio con `Controllo reale ON`.
+Verificare prima la configurazione grafica, il funzionamento dei tre
+Shelly, lo stato BLE, l'assenza di automazioni concorrenti e
+che il DPM attivo rimanga ON.
+
+## Test da fare in sequenza (su sessione già prevista)
+
+1. Con cavo scollegato **all'avvio HA**, verificare zero nuovi comandi.
+   Attivare eventualmente il laboratorio: JSONL privato sì,
+   comandi alla wallbox/auto no.
+2. Dopo una sessione reale, a collegamento ancora presente,
+   impostare Manuale. Verificare che Johnny NON comandi.
+   Scollegare l'auto; dopo 30 s di Shelly EV **sotto 30 W**
+   e cavo OFF, verifica di UNA richiesta Start-Stop OFF
+   soltanto se il controllo reale era stato esplicitamente
+   autorizzato. Il comportamento di `Real` in Manuale va verificato:
+   la sessione deve passare in AUTO solo allo scollegamento confermato.
+3. Verificare `Charge Enabled OFF` e `DPM limit = 0 A` dalla
+   conferma BLE; nessun retry se un report manca.
+4. Collegare Fiat/Kia; dopo circa 20 s premere automaticamente
+   **solo** il pulsante `Update data` dell'auto riconosciuta,
+   oppure entrambi se non riconosciuta. Nessun refresh continuo.
+5. Verificare che il nuovo SOC e, se presente, il timestamp
+   ultimo aggiornamento siano effettivamente posteriori
+   alla richiesta; premere il pulsante **non** prova il successo.
+6. Con `Avvio posticipato` abilitato e partenza sufficiente,
+   Start-Stop resta OFF fino all'ora consentita. In assenza
+   di ritardo, avvio immediato solo dopo riconoscimento e calcoli.
+7. Prima dell'avvio: confermare `Charge power = Power set =
+   4,0 kW` (oppure valore base esplicitamente impostato),
+   solo DOPO chiedere Start-Stop ON.
+   Verificare DPM ripristinato al valore positivo
+   configurato (es. 4,4 kW).
+8. Quando Charging e Shelly EV confermano carica effettiva,
+   Johnny può cambiare **soltanto Charge power**, mai Start-Stop.
+9. Durante il test di carichi (es. induzione), verificare
+   che il DPM fisico gestisca subito i picchi, Johnny
+   soltanto dopo le finestre lente.
+10. Forzare solo in un ambiente isolato (non sulla ricarica
+    attiva) failure di BLE, DPM stale e riavvio HA:
+    la RC non deve fare start/stop ciechi; dopo reboot
+    controllo reale torna OFF.
+
+**Rollback:** Controllo reale OFF, Manuale, controllare che non
+ci siano richieste pendenti. Rimuovere la RC o ripristinare
+la beta precedente, riavviare HA e verificare lo stato
+DPM fisico dall'ESPHome, evitando `Start-Stop ON` alla cieca.
+
+---
+
 # RC — criteri di collaudo e arresto dei test
 
 **Non installare per caricare l'auto in autonomia senza prima superare questi
