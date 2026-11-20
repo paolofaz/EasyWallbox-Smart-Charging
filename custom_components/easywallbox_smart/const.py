@@ -1,6 +1,6 @@
 """EasyWallbox RC configuration keys. No hard-coded Home Assistant entity IDs."""
 DOMAIN = "easywallbox_smart"
-PLATFORMS = ["sensor", "select", "switch", "time", "datetime", "button"]
+PLATFORMS = ["sensor", "select", "switch", "time", "datetime", "button", "number"]
 CONF_HOUSE_SOURCES = "house_power_sources"
 CONF_EV_POWER = "ev_power"
 CONF_WALLBOX_CONNECTED = "wallbox_connected"
@@ -26,6 +26,7 @@ CONF_VEHICLE_LAST_UPDATE = "vehicle_last_update"
 CONF_WALLBOX_REFRESH = "wallbox_refresh_button"
 CONF_TARGET_ENTITY = "target_entity"
 CONF_TARGET_FIXED = "target_fixed"
+CONF_STOP_AT_TARGET = "stop_at_target"
 CONF_CAPACITY = "capacity_kwh"
 CONF_EFFICIENCY = "efficiency"
 CONF_DEPARTURE_WEEKDAY = "departure_weekday"
