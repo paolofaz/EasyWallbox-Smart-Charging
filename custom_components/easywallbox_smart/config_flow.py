@@ -155,19 +155,10 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_target_method(self, user_input=None):
-        """Make it impossible to submit a missing or conflicting SOC target."""
-        if user_input is not None:
-            method = user_input["target_method"]
-            if method == "entity":
-                return await self.async_step_target_entity()
-            return await self.async_step_target_fixed()
-        return self.async_show_form(
+        """Exactly one target pathway, displayed as two localized choices."""
+        return self.async_show_menu(
             step_id="target_method",
-            data_schema=vol.Schema({
-                vol.Required("target_method", default="fixed"): vol.In(
-                    {"fixed": "Percentuale fissa", "entity": "Entità Home Assistant"})
-            }),
-        )
+            menu_options=["target_entity", "target_fixed"])
 
     async def async_step_target_entity(self, user_input=None):
         if user_input is not None:
