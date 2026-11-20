@@ -77,7 +77,6 @@ class Decision:
     reason: str
     phase: str
     kind: str
-    simulation_only: bool = True
 
 
 def _decision(st: State, action: str, reason: str, value=None):
