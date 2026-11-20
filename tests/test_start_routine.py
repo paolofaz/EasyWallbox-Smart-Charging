@@ -31,11 +31,11 @@ def sample(**update):
 
 
 def connected(**update):
-    return sample(
-        wallbox_cable=True, vehicle_cable=True,
-        session_id="fiat-1", vehicle_id="fiat", target_reached=False,
-        **update,
-    )
+    values = dict(wallbox_cable=True, vehicle_cable=True,
+                  session_id="fiat-1", vehicle_id="fiat",
+                  target_reached=False)
+    values.update(update)
+    return sample(**values)
 
 
 class StartRoutineBenchTest(unittest.TestCase):
