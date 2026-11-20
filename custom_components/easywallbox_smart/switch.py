@@ -3,6 +3,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN
+from .device import controller_device_info
 
 
 SWITCHES = {
@@ -22,6 +23,7 @@ class RCSwitch(SwitchEntity):
 
     def __init__(self, controller, entry, kind):
         self.controller, self.kind = controller, kind
+        self._attr_device_info = controller_device_info(entry)
         self._attr_name, self._attr_icon = SWITCHES[kind]
         self._attr_unique_id = entry.entry_id + "_" + kind
 
