@@ -68,6 +68,9 @@
       },
       "stabilizer": {
         "name": "Stabilizzatore ricarica"
+      },
+      "shadow_v2": {
+        "name": "Johnny V2 — simulazione"
       }
     },
     "select": {
@@ -89,7 +92,7 @@
         "menu_options": {
           "sources": "Sensori consumi e contatori sessione",
           "choose_vehicle": "Parametri veicolo e orari",
-          "shadow_lab": "Potenza EV e laboratorio a tre scenari"
+          "shadow_lab": "Potenza EV e prova Johnny V2 DPM"
         }
       },
       "vehicle": {
@@ -127,12 +130,12 @@
         }
       },
       "shadow_lab": {
-        "title": "Prova sul campo — confronto Johnny V1 e V2",
-        "description": "Nessun comando alla wallbox. Tre scenari virtuali indipendenti: Ampio, Intermedio e Johnny V2 (cuscinetto e rara correzione del limite). File shadow_v2_YYYY-MM-DD.jsonl sotto /config/easywallbox_smart_shadow/ con il confronto completo. La simulazione usa la potenza EV massima e marca la sorgente del DPM.",
+        "title": "Prova Johnny V2 — DPM virtuale 4,4 e 4,6 kW",
+        "description": "Nessun comando reale. Un solo Johnny V2 simulato con due soglie DPM puramente virtuali (4,4 e 4,6 kW), indipendenti dal DPM della wallbox. Per questa prova imposta il massimo EV simulato a 4,2 kW. Log: shadow_v2_compare_YYYY-MM-DD.jsonl. Il DPM di riferimento qui sotto non modifica le due soglie virtuali fisse.",
         "data": {
           "initial_charge_kw": "Potenza iniziale per futura sessione (kW)",
           "max_charge_kw": "Massimo ordinario e potenza simulata (kW)",
-          "shadow_lab_enabled": "Attiva tre Johnny virtuali indipendenti e log locale",
+          "shadow_lab_enabled": "Attiva prova Johnny V2 a doppio DPM virtuale e log JSONL",
           "dpm_model_kw": "DPM di riferimento (kW) quando il sensore è a 0 o non disponibile"
         }
       }
