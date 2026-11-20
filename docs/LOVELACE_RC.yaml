@@ -52,7 +52,7 @@ views:
             entity: time.SOSTITUIRE_ORA_INIZIO
             name: Ora di avvio preferita
           - type: tile
-            entity: datetime.SOSTITUIRE_OVERRRIDE_PARTENZA
+            entity: datetime.SOSTITUIRE_OVERRIDE_PARTENZA
             name: Override prossima partenza
           - type: tile
             entity: button.SOSTITUIRE_CARICA_SUBITO
@@ -92,7 +92,7 @@ views:
             entity: sensor.SOSTITUIRE_DPM_CONFIRMED
             name: DPM limite confermato
           - type: tile
-            entity: text_sensor.SOSTITUIRE_COMMAND_STATUS
+            entity: sensor.SOSTITUIRE_COMMAND_STATUS
             name: Ultima conferma BLE
           - type: tile
             entity: binary_sensor.SOSTITUIRE_FAULT
