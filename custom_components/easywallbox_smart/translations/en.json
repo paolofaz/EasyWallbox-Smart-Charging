@@ -68,6 +68,9 @@
       },
       "stabilizer": {
         "name": "Charging stabilizer"
+      },
+      "shadow_v2": {
+        "name": "Johnny V2 virtual trial"
       }
     },
     "select": {
@@ -89,7 +92,7 @@
         "menu_options": {
           "sources": "Power meters and session counters",
           "choose_vehicle": "Vehicle target and departure times",
-          "shadow_lab": "EV power and three-scenario field lab"
+          "shadow_lab": "EV power and Johnny V2 DPM test"
         }
       },
       "vehicle": {
@@ -127,12 +130,12 @@
         }
       },
       "shadow_lab": {
-        "title": "Field trial — Johnny V1 and V2 shadow comparison",
-        "description": "No wallbox commands. Three independent synthetic EV scenarios: wide, medium, and V2 (buffer + rare downward correction). Files shadow_v2_YYYY-MM-DD.jsonl under /config/easywallbox_smart_shadow/ include all three for comparison. The continuous trial assumes maximum EV power and uses a labeled DPM test model when unavailable.",
+        "title": "Field trial — Johnny V2, virtual DPM 4.4 / 4.6 kW",
+        "description": "No device commands. One Johnny V2 algorithm simulated at two explicitly virtual DPM thresholds (4.4 and 4.6 kW), regardless of the actual wallbox DPM. Set simulated EV maximum to 4.2 kW for this trial. Logs: shadow_v2_compare_YYYY-MM-DD.jsonl. The DPM reference option below does not change the two fixed virtual thresholds.",
         "data": {
           "initial_charge_kw": "Future session initial power (kW)",
           "max_charge_kw": "Ordinary maximum and simulated EV power (kW)",
-          "shadow_lab_enabled": "Enable three independent shadow scenarios and private JSONL log",
+          "shadow_lab_enabled": "Enable Johnny V2 read-only dual-DPM trial and JSONL log",
           "dpm_model_kw": "DPM reference model (kW) when the sensor is 0 or unavailable"
         }
       }
