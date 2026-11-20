@@ -223,7 +223,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await self.c.async_change("delay",True)
         await self.c.async_change("real",True)
         await self.settle()
-        self.assertLessEqual(len(self.hass.services.calls),1)
+        self.assertEqual(len(self.hass.services.calls),1)
         for domain,service,args,_ in self.hass.services.calls:
             self.assertEqual((domain,service),("switch","turn_off"))
 
