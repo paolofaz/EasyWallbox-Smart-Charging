@@ -67,8 +67,8 @@ class RCStructureTest(unittest.TestCase):
                and node.name=="_send"]
         self.assertEqual(len(sends),1)
         code=ast.get_source_segment((COMP/"rc_controller.py").read_text(),sends[0])
-        self.assertIn('kind in ("pause", "resume")',code)
-        self.assertIn('self._dpm_lease is None',code)
+        self.assertIn('kind in ("pause", "resume", "prepare")',code)
+        self.assertIn('self._park_owned or self._dpm_lease',code)
 
 
 if __name__=="__main__":
