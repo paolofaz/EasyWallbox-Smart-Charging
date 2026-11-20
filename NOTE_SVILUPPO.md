@@ -449,3 +449,13 @@ wallbox, modifica del firmware, del DPM o delle automazioni legacy;
 **Non implementato:** persistito un limite reale, comandati Start/Stop/DPM, verificata tensione al contatore, effettuato replay perfetto con campioni Shelly raw, introdotti sensori nuovi o cambiato firmware/main. Nessuna attività BLE frequente. La futura supervised release dovrà verificare di chi sia il limite, la conferma ESPHome, i watt effettivi Shelly, manual override, DPM zero, conclusione sessione, riavvii e anti-oscillazione con consenso separato.
 
 **Verifiche:** nuovi test puri e coordinatore mock + CI da confermare sulla HEAD. Installazione 0.2.0b5 e prova su HA personale ancora **non eseguite**. Non trattare le eventuali riduzioni virtuali come effetto elettrico verificato.
+
+## 2026-11-20 — M4, primo preflight del controllo reale supervisionato (NON ATTUATIVO)
+
+- Verificata la HEAD iniziale del branch stabilizzatore-m1: 9c91ea6e618ccc537a6d80f10bf89e5fa6f0d7eb; beta 0.2.0b5 in sola simulazione.
+- Il passaggio di consegne contiene il riepilogo dell'avvio 10:47–10:49 ma **non** i JSONL finali del 20/11. Nessuna validazione delle soglie V2, dei restore o degli adjust è stata dichiarata.
+- Aggiunto custom_components/easywallbox_smart/control_guard.py, puro e NON importato dal coordinatore HA: conversione nominale kW→decimi di A, proposta fail-closed, verifica limitata di DPM/ESPHome/Shelly, distinzione richiesto/confermato e vincolo di ownership per ogni ripristino. Ogni offer richiede approvazione umana; nessuna esecuzione e nessuna persistenza.
+- Introdotti tests/test_control_guard.py (15 unit test **locali** superati; CI da controllare dopo la pubblicazione) e docs/M4_CONTROLLO_SUPERVISIONATO_GUARD.md.
+- Il recupero post riavvio è volutamente bloccante: un record anche coerente non sblocca automaticamente un restore; persistenza HA, session_id duraturo, approvazione e invio comandi sono ancora DA IMPLEMENTARE e testare.
+- Non modificati coordinatore, session_policy, shadow_v2, manifest, main, firmware ESPHome, automazioni esistenti, DPM o configurazioni HA personali. Nessun controllo elettrico abilitato.
+- Prossimi passi: ottenere il JSONL definitivo, validare V2 e il budget planner reale, verificare gli entity_id di conferma/qualità e progettare adapter con singolo proprietario, verifica reale Shelly, timeout e rollback prima di chiedere consenso alla prova attuativa.
