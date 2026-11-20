@@ -49,6 +49,8 @@ class RCSensor(SensorEntity):
                 "mode": self.c.mode,
                 "real_control_armed": self.c.real_enabled,
                 "session_vehicle": self.c.vehicle_name,
+                "soc_stop_enabled_for_vehicle": self.c.stop_at_target_enabled,
+                "soc_stop_verified_this_session": self.c._soc_stop_done,
                 "last_command": self.c.last_command,
                 "last_verified_command": self.c.last_ack,
                 "pending_command": self.c._pending.kind if self.c._pending else None,
