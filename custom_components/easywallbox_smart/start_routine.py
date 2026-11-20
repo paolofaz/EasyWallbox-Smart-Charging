@@ -51,6 +51,8 @@ class BenchInputs:
     arm_owner: str = "none"       # none | johnny | external | unknown
     auto_park_enabled: bool = False  # explicit opt-in, not a permanent idle loop
     arm_attempted: bool = False     # durable future adapter must track attempts
+    ev_limit_attempted: bool = False
+    resume_attempted: bool = False
     user_override: bool = False
     preferred_start_at: datetime | None = None
     latest_safe_start_at: datetime | None = None
@@ -171,12 +173,14 @@ def evaluate_bench(data: BenchInputs) -> BenchAdvice:
         return _none("BLOCKED", "ev_max_outside_confirmed_step")
     if baseline <= 0:
         return _none("BLOCKED", "invalid_dpm_restore_baseline")
-    if requested != confirmed:
+    if requested != confirmed or data.ev_limit_attempted:
         return _none("WAIT_ACK", "ev_limit_confirmation_pending")
     if confirmed != target:
         return BenchAdvice("PREPARE_CHARGE", "offer_ev_limit",
                            "set_ev_baseline_before_dpm_resume",
                            data.ev_session_max_kw)
+    if data.resume_attempted:
+        return _none("WAIT_ACK", "dpm_resume_confirmation_pending_no_retry")
     return BenchAdvice("PREPARE_CHARGE", "offer_resume",
                        "ev_limit_confirmed_resume_original_dpm",
                        data.dpm_original_kw)
