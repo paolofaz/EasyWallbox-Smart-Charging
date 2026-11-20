@@ -27,6 +27,7 @@ class RCConfigContract(unittest.TestCase):
         self.assertIn('vol.Required(CONF_TARGET_FIXED, default=80): number(1, 100, 1)', code)
         self.assertNotIn("target_default", code)
         self.assertNotIn("sustainable_kw", code)
+        self.assertNotIn('"planning_rate_kw"', code)
         parsed = ast.parse(code)
         methods = {
             node.name for node in ast.walk(parsed)
@@ -35,6 +36,15 @@ class RCConfigContract(unittest.TestCase):
         for name in ("async_step_target_method", "async_step_target_fixed",
                      "async_step_target_entity", "async_step_vehicle"):
             self.assertIn(name, methods)
+
+    def test_complete_vehicle_management_flow(self):
+        code = (COMP / "config_flow.py").read_text(encoding="utf-8")
+        for key in ("async_step_add_vehicle", "async_step_edit_vehicle",
+                    "async_step_remove_vehicle", "async_step_confirm_remove",
+                    "async_step_edit_target_fixed", "async_step_edit_target_entity"):
+            self.assertIn(key,code)
+        self.assertIn("CONF_VEHICLES] = cars",code)
+        self.assertIn("OptionsFlowWithReload",code)
 
     def test_no_simulation_or_johnny_in_ui_and_runtime(self):
         for path in (COMP / "config_flow.py", COMP / "sensor.py",
