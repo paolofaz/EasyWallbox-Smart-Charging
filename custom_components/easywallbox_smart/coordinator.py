@@ -31,7 +31,7 @@ from .sources import finite_number, next_departure, on, power_kw
 from .rate_estimator import RateState, RateEstimate, estimate
 from .target_policy import resolved_target, selected_mode
 from .johnny_policy import JohnnyState, evaluate, margin_band, HOUSE_LOSS_RESTORE_MINUTES
-from .shadow_lab import simulate_shadow, simulate_shadow_v2
+from .shadow_lab import simulate_shadow_v2
 from .shadow_log import ShadowLogSampler, append_shadow_rows
 
 # Conservative lab candidates; staleness is not inferred from last_changed.
@@ -82,8 +82,8 @@ class SimulationCoordinator:
         self.dpm_pressure_kw: float | None = None
         self.dpm_limit_source = "sensor" if self.config.get(CONF_DPM_CONFIRMED) else "simulation_model"
         self.last_evaluation: datetime | None = None
-        # A separate, deliberately unbounded fake EV session in each band.
-        # Defaults to OFF; no disk writes without explicit opt-in.
+        # Johnny V2 laboratory: one algorithm, two *virtual* DPM references.
+        # Defaults to OFF; never modifies physical DPM or EV settings.
         self.shadow_enabled = bool(entry.options.get(
             CONF_SHADOW_LAB_ENABLED, False))
         self.initial_charge_kw = float(entry.options.get(
@@ -92,8 +92,10 @@ class SimulationCoordinator:
         self.max_charge_kw = float(entry.options.get(
             CONF_MAX_CHARGE_KW, self.config.get(
                 CONF_MAX_CHARGE_KW, DEFAULT_MAX_CHARGE_KW)))
-        self.shadow_states = {}
-        self.shadow_decisions = {}
+        self.shadow_v2_states = {}
+        self.shadow_v2_decisions = {}
+        # The 4.4 kW scenario is the primary sensor; 4.6 kW is a separate
+        # hypothetical benchmark, not a command or an installed DPM value.
         self.shadow_v2_state = None
         self.shadow_v2_decision = None
         self.shadow_dpm_source = None
@@ -319,24 +321,11 @@ class SimulationCoordinator:
         if self.shadow_enabled:
             # The real car can be unplugged: lab timers and household
             # subscriptions continue independently, event-driven.
-            for band in ("wide", "medium"):
-                prop = self.shadow_decisions.get(band)
-                state = self.shadow_states.get(band)
-                if prop and prop.next_check_at and prop.next_check_at > now:
-                    choices.append(prop.next_check_at)
-                if state and state.mode == "LIMITED" and state.last_good_house_at:
-                    limit = (state.last_good_house_at +
-                             timedelta(minutes=HOUSE_LOSS_RESTORE_MINUTES,
-                                       seconds=1))
-                    if limit > now:
-                        choices.append(limit)
-            if (self.shadow_v2_state is not None
-                    and self.shadow_v2_state.mode == "LIMITED"
-                    and self.shadow_v2_state.last_good_at is not None):
-                due = (self.shadow_v2_state.last_good_at
-                       + timedelta(minutes=8, seconds=1))
-                if due > now:
-                    choices.append(due)
+            for state in self.shadow_v2_states.values():
+                if state.mode == "LIMITED" and state.last_good_at:
+                    due = state.last_good_at + timedelta(minutes=8, seconds=1)
+                    if due > now:
+                        choices.append(due)
             for entity_id in self.house_sources:
                 src = self._raw(entity_id)
                 if src is not None:
@@ -438,12 +427,13 @@ class SimulationCoordinator:
             (round(self.rate.kw * 2) / 2 if self.rate.kw is not None else None),
             self.quality,
             self.shadow_enabled,
-            tuple((band,
-                   self.shadow_decisions[band].action,
-                   self.shadow_decisions[band].reason,
-                   self.shadow_decisions[band].proposed_cap_kw)
-                  for band in ("wide", "medium")
-                  if band in self.shadow_decisions),
+            tuple((
+                key, self.shadow_v2_states[key].mode,
+                self.shadow_v2_states[key].kind,
+                self.shadow_v2_decisions[key].action,
+                self.shadow_v2_decisions[key].proposed_cap_kw,
+            ) for key in ("dpm44", "dpm46")
+              if key in self.shadow_v2_decisions),
             (
                 self.shadow_v2_state.mode,
                 self.shadow_v2_state.kind,
@@ -522,7 +512,7 @@ class SimulationCoordinator:
 
     def _refresh_shadow(self, now: datetime, house: HouseSnapshot,
                         limits: LimitSnapshot) -> None:
-        """Evaluate both hypothetical EVs even with the cable unplugged."""
+        """Evaluate one Johnny V2 policy against two virtual DPM settings."""
         if limits.dpm_kw is not None and limits.dpm_kw > 0:
             effective_dpm = limits.dpm_kw
             self._shadow_last_positive_dpm = effective_dpm
@@ -535,32 +525,31 @@ class SimulationCoordinator:
             effective_dpm = self.policy.dpm_model_kw
             origin = "explicit_model_when_paused_or_unavailable"
         self.shadow_dpm_source = origin
-        starting_new_virtual_run = not bool(self.shadow_states)
-        self.shadow_states, self.shadow_decisions = simulate_shadow(
-            now, house, effective_dpm, self.max_charge_kw, self.shadow_states,
-        )
-        self.shadow_v2_state, self.shadow_v2_decision = simulate_shadow_v2(
-            now, house, effective_dpm, self.max_charge_kw,
-            self.shadow_v2_state,
-        )
+        starting_new_virtual_run = not bool(self.shadow_v2_states)
+        for key, test_dpm in (("dpm44", 4.4), ("dpm46", 4.6)):
+            state, decision = simulate_shadow_v2(
+                now, house, test_dpm, self.max_charge_kw,
+                self.shadow_v2_states.get(key),
+            )
+            self.shadow_v2_states[key] = state
+            self.shadow_v2_decisions[key] = decision
+        self.shadow_v2_state = self.shadow_v2_states["dpm44"]
+        self.shadow_v2_decision = self.shadow_v2_decisions["dpm44"]
         sample = house.observed_at if house.kw is not None else None
         # Meaningful policy transitions only. A changing 'hold' explanation
         # is still preserved in the minute summary, not as another disk row.
         decision_signature = tuple(
-            (band, self.shadow_decisions[band].action,
-             self.shadow_states[band].mode,
-             self.shadow_decisions[band].proposed_cap_kw,
-             self.shadow_states[band].last_transition_reason)
-            for band in ("wide", "medium")
-        ) + (("v2", self.shadow_v2_decision.action,
-              self.shadow_v2_state.mode,
-              self.shadow_v2_decision.proposed_cap_kw,
-              self.shadow_v2_state.kind,
-              self.shadow_v2_state.last_transition_reason),)
+            (key, self.shadow_v2_decisions[key].action,
+             self.shadow_v2_states[key].mode,
+             self.shadow_v2_decisions[key].proposed_cap_kw,
+             self.shadow_v2_states[key].kind,
+             self.shadow_v2_states[key].last_transition_reason)
+            for key in ("dpm44", "dpm46")
+        )
         record = {
             "time_local": now.astimezone(
                 ZoneInfo(self.hass.config.time_zone)).isoformat(timespec="seconds"),
-            "model": "continuous_three_candidate_no_real_vehicle", 
+            "model": "continuous_johnny_v2_dual_dpm_reference",
             "session_budget": "disabled_only_for_infinite_ev_lab",
             "shadow_run_started_local": self.shadow_run_started_at,
             "virtual_state_reset_on_this_row": starting_new_virtual_run,
@@ -574,17 +563,9 @@ class SimulationCoordinator:
             "dpm_model_kw": round(effective_dpm, 3),
             "dpm_model_source": origin,
             "ev_baseline_kw": self.max_charge_kw,
-            "wide": self._shadow_summary("wide"),
-            "medium": self._shadow_summary("medium"),
-            "v2": {
-                "action": self.shadow_v2_decision.action,
-                "reason": self.shadow_v2_decision.reason,
-                "state": self.shadow_v2_state.mode,
-                "kind": self.shadow_v2_state.kind,
-                "cap_kw": self.shadow_v2_decision.proposed_cap_kw,
-                "adjustments": self.shadow_v2_state.recheck_count,
-                "last_event": self.shadow_v2_state.last_transition_reason,
-            },
+            "v2": self._v2_summary("dpm44"),
+            "v2_dpm46": self._v2_summary("dpm46"),
+            "virtual_dpm_references_kw": [4.4, 4.6],
         }
         row = self._shadow_log_sampler.observe(
             now, sample, record, decision_signature,
@@ -599,12 +580,14 @@ class SimulationCoordinator:
                 self.hass, self._flush_shadow(), "EasyWallbox shadow JSONL",
             )
 
-    def _shadow_summary(self, band: str) -> dict:
-        decision = self.shadow_decisions[band]
-        state = self.shadow_states[band]
+    def _v2_summary(self, key: str) -> dict:
+        decision = self.shadow_v2_decisions[key]
+        state = self.shadow_v2_states[key]
         return {
             "action": decision.action, "reason": decision.reason,
-            "state": state.mode, "cap_kw": decision.proposed_cap_kw,
+            "state": state.mode, "kind": state.kind,
+            "cap_kw": decision.proposed_cap_kw,
+            "adjustments": state.recheck_count,
             "last_event": state.last_transition_reason,
         }
 
@@ -617,7 +600,7 @@ class SimulationCoordinator:
                 batch, self._shadow_rows = self._shadow_rows, []
                 root = self.hass.config.path("easywallbox_smart_shadow")
                 count, last_file = await self.hass.async_add_executor_job(
-                    append_shadow_rows, root, batch, "shadow_v2",
+                    append_shadow_rows, root, batch, "shadow_v2_compare",
                 )
                 self.shadow_logged_rows += count
                 self.shadow_log_file = last_file
