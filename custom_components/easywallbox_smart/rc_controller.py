@@ -28,6 +28,8 @@ DPM_TTL = timedelta(minutes=5)
 SHELLY_TTL = timedelta(minutes=3)
 CAR_TTL = timedelta(minutes=30)
 ACK_TIMEOUT = timedelta(minutes=3)
+SOC_STOP_TTL = timedelta(minutes=5)
+SOC_STOP_REFRESH_INTERVAL = timedelta(minutes=20)
 
 
 @dataclass
@@ -78,6 +80,10 @@ class RCController:
         self._ev_idle_since = None
         self._park_attempted = False
         self._park_owned = False
+        self._soc_stop_done = False
+        self._soc_stop_refresh_at = None
+        self._soc_stop_last_error = None
+        self._fixed_target_overrides = {}
         self._refresh_due = None
         self._refresh_issued = False
         self._refresh_requested_at = None
@@ -107,6 +113,9 @@ class RCController:
         saved = await self._store.async_load() or {}
         self.mode = saved.get("mode") if saved.get("mode") in ("automatic", "manual") else "automatic"
         self.delay_enabled = bool(saved.get("delay", False))
+        self._fixed_target_overrides = (saved.get("fixed_target_overrides", {})
+                                        if isinstance(saved.get("fixed_target_overrides", {}), dict)
+                                        else {})
         # A persisted proven parking intent is not a fresh DPM readback.
         self._park_owned = saved.get("park_owned") is True
         try:
@@ -128,10 +137,37 @@ class RCController:
         await self._store.async_save({
             "mode": self.mode, "delay": self.delay_enabled,
             "park_owned": self._park_owned,
+            "fixed_target_overrides": self._fixed_target_overrides,
             "start": self.preferred_start.isoformat(timespec="minutes"),
             "departure": self.departure_override.isoformat()
             if self.departure_override else None,
         })
+
+    def fixed_target(self, car):
+        """A fixed SOC from HA options or the persisted 80..100% slider."""
+        if not car or CONF_TARGET_FIXED not in car:
+            return None
+        baseline = car[CONF_TARGET_FIXED]
+        saved = self._fixed_target_overrides.get(car[CONF_CABLE])
+        if (isinstance(saved, dict) and saved.get("configured") == baseline
+                and saved.get("value") in (80, 85, 90, 95, 100)):
+            return saved["value"]
+        return baseline
+
+    async def async_set_fixed_target(self, cable, value):
+        """Persist one manual SOC target change, without changing DPM."""
+        if (not isinstance(value, (int, float)) or
+                not 80 <= float(value) <= 100 or float(value) % 5 != 0):
+            raise ValueError("Il limite deve essere 80–100%, a passi di 5")
+        car = next((x for x in self.cfg[CONF_VEHICLES]
+                    if x[CONF_CABLE] == cable), None)
+        if (car is None or car.get(CONF_STOP_AT_TARGET) is not True
+                or CONF_TARGET_FIXED not in car):
+            raise ValueError("Target fisso gestito non disponibile")
+        self._fixed_target_overrides[cable] = {
+            "configured": car[CONF_TARGET_FIXED], "value": int(value)}
+        await self._save()
+        self.refresh()
 
     def _raw(self, entity):
         return self.hass.states.get(entity) if entity else None
@@ -455,7 +491,7 @@ class RCController:
         if car:
             soc = self._number(car[CONF_SOC], now, CAR_TTL)
             target = (self._number(car.get(CONF_TARGET_ENTITY), now, None)
-                      if car.get(CONF_TARGET_ENTITY) else car.get(CONF_TARGET_FIXED))
+                      if car.get(CONF_TARGET_ENTITY) else self.fixed_target(car))
             self.soc, self.target_soc = soc, target
             departure = self._departure(now, car)
             self.departure = departure
@@ -568,6 +604,9 @@ class RCController:
                 self._wallbox_refresh_sent = False
                 self._start_refresh_attempted = False
                 self._start_refresh_at = None
+                self._soc_stop_done = False
+                self._soc_stop_refresh_at = None
+                self._soc_stop_last_error = None
             elif self._last_cable is True:
                 self._disconnect_since = now
                 self._ev_idle_since = (now if snapshot["ev_kw"] is not None
@@ -644,6 +683,7 @@ class RCController:
                 self._active_departure = None
                 self._scheduled_at = None
                 self._prepared_session = None
+                self._soc_stop_done = False
                 self.charge_now = False
             if (self._pending is None and
                     snapshot["dpm"] is not None and
