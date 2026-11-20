@@ -48,3 +48,49 @@ cavo scollegato, nessuna azione a stati incerti, nessun Start/Stop durante
 Charging, nessuna doppia gestione delle stesse entità.
 
 **Nessun test automatico o parere di progetto è un collaudo elettrico.**
+
+
+## 20 novembre 2026 — RC: lifecycle e refresh confermati
+
+**Decisione utente**: abbandonato il veto assoluto ai comandi con cavo
+scollegato; unica eccezione `Start-Stop OFF` dopo transizione fisica
+ON→OFF confermata da wallbox + Shelly EV <30 W per almeno 30 s.
+Un solo tentativo, conferma DPM0 e Charge Enabled OFF. Nessuna
+azione se si trova già scollegata all'avvio HA. Il firmware ESPHome
+Start-Stop è già stato testato e non viene modificato.
+
+**Modalità**: durante Manuale, nessun comando automatico di carica.
+Alla fine sessione (cavo OFF) ritorno ad AUTO; conservazione del
+consenso al parcheggio solo se il controllo reale era stato esplicitamente
+abilitato. AUTO con cavo ON e wallbox parcheggiata verifica un solo
+veicolo, SOC, target, capacità, efficienza, programma di partenza e
+ultimo avvio sicuro; attende eventuale orario posticipato; verifica
+EV 4,0 kW prima di uno `Start-Stop ON`; controlla DPM positivo dopo
+l'effetto. In carica Johnny può scrivere soltanto il limite EV.
+
+**Refresh**: dopo 20 s di cavo ON, `button.press` dell'auto identificata,
+o entrambi se l'identità è ancora ignota, una sola richiesta senza retry.
+Sorgente `last info update` opzionale, altrimenti nuova pubblicazione
+SOC dopo la richiesta; attesa massima 120 s per nuovi dati. Se non
+arrivano, niente avvio. Il pulsante ESPHome Refresh data viene richiesto
+nel Config Flow e usato soltanto al collegamento e, se necessario,
+una seconda volta quando si deve riprendere dopo una lunga attesa.
+Il laboratorio non preme questi pulsanti.
+
+**DPM**: per i calcoli usare il limite POSITIVO configurato
+(es. 4,4 kW), mai lo zero del sensore durante la pausa. Il sensore è
+una conferma dello stato osservato. DPM Active rimane ON. Valori
+positivi divergenti o stantii sospendono scritture automatiche.
+
+**Riavvii**: stato fisico invariato. Provenienza di un DPM0 verificato
+persistita, ma dopo reload/riavvio `Controllo reale` OFF per
+autorizzazione esplicita; nessun avvio cieco. Non si tentano retry
+di alcun comando. Manuale, PAUSA gestione, SOC mancante e sorgenti
+contraddittorie sono veti.
+
+**Stato di sviluppo**: ramo `RC`; `main` e repository ESPHome
+invariati. Nuovi test simulano richiesta di parcheggio dopo quiete,
+refresh veicolo dopo 20 s, pre-arming con EV 4 kW, ACK successivi e
+nessun Start-Stop su una carica in corso.
+Test automatici e validazione manifest NON costituiscono collaudo
+elettrico. Nessun file privato o credenziale inserito su GitHub.
