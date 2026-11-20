@@ -105,6 +105,7 @@ class RCController:
         self._house_unsub = None
         self._timer_unsub = None
         self._task = None
+        self._refresh_task = None
         self._lock = asyncio.Lock()
         self._store = Store(hass, 1, "easywallbox_smart_rc_" + entry.entry_id)
         self._lab_state = None
@@ -259,6 +260,94 @@ class RCController:
                 any(v is None for v in observed) or profile is False):
             return None
         return profile
+
+    def _car_update_ready(self, now, car):
+        """A refresh button press is NOT new vehicle data.
+
+        When a per-car source timestamp is configured, demand a truly newer
+        upstream update. Otherwise require a new SOC report after plugging.
+        """
+        if self._connect_since is None:
+            return False
+        if self._refresh_due is not None and not self._refresh_issued:
+            return False
+        if self._refresh_error:
+            return False
+        if car is None:
+            return False
+        if self._refresh_requested_at is not None:
+            since = self._refresh_requested_at
+        else:
+            since = self._connect_since
+        stamp_entity = car.get(CONF_VEHICLE_LAST_UPDATE)
+        if stamp_entity:
+            state = self._raw(stamp_entity)
+            try:
+                stamp = datetime.fromisoformat(state.state) if state else None
+            except (ValueError, TypeError):
+                stamp = None
+            ready = (stamp is not None and stamp.utcoffset() is not None
+                     and stamp >= since)
+        else:
+            state = self._raw(car[CONF_SOC])
+            ready = bool(state and self._age(state) >= since)
+        if ready:
+            return True
+        if self._refresh_deadline and now >= self._refresh_deadline:
+            self._refresh_error = "car_update_not_confirmed_after_one_request"
+            self.status, self.reason = "In attesa dati auto", self._refresh_error
+            self._notify()
+        return False
+
+    async def _request_one_shot_updates(self):
+        """20 s after plug; one cloud button per selected/unknown vehicle.
+
+        The laboratory never calls this method. Failure is diagnostic only;
+        there are NO blind retries and NO electrical writes.
+        """
+        async with self._lock:
+            now = datetime.now(timezone.utc)
+            if (not self.real_enabled or self.mode != "automatic" or
+                    self._connect_since is None or
+                    self._refresh_due is None or self._refresh_issued or
+                    now < self._refresh_due or
+                    self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now) is not True):
+                return
+            self._refresh_issued = True
+            self._refresh_requested_at = now
+            self._refresh_deadline = now + timedelta(seconds=120)
+            selected = self._select_vehicle(now, True)
+            cars = [selected] if selected is not None else self.cfg[CONF_VEHICLES]
+            self._refresh_targets = tuple(c[CONF_CABLE] for c in cars)
+            for car in cars:
+                button = car.get(CONF_VEHICLE_REFRESH)
+                if not button:
+                    continue
+                # Recheck the wallbox cavo immediately before each request.
+                if self._binary(self.cfg[CONF_WALLBOX_CONNECTED],
+                                datetime.now(timezone.utc)) is not True:
+                    return
+                try:
+                    await self.hass.services.async_call(
+                        "button", "press", {"entity_id": button}, blocking=True)
+                except Exception as error:
+                    _LOGGER.warning("RC vehicle refresh rejected (%s), no retry",
+                                    type(error).__name__)
+                    self._refresh_error = "vehicle_refresh_command_failed"
+                    break
+            # Optional one-shot read of BLE registers 158/174 to refresh an
+            # old DPM0 readback. No frequent read loop or new ESPHome code.
+            wallbox_button = self.cfg.get(CONF_WALLBOX_REFRESH)
+            if (wallbox_button and self._binary(self.cfg[CONF_WALLBOX_CONNECTED],
+                                                datetime.now(timezone.utc)) is True):
+                try:
+                    await self.hass.services.async_call(
+                        "button", "press",
+                        {"entity_id": wallbox_button}, blocking=True)
+                except Exception as error:
+                    _LOGGER.warning("RC wallbox register refresh failed (%s)",
+                                    type(error).__name__)
+            self.refresh()
 
     def _house(self, now):
         values, times = [], []
@@ -560,6 +649,14 @@ class RCController:
                 self.status, self.reason = "Da riconciliare", "charging_unverified"
         self._reschedule(now, cable is True)
         self._lab(now, snapshot)
+        if (self.real_enabled and cable is True and
+                self.mode == "automatic" and
+                self._refresh_due is not None and
+                now >= self._refresh_due and not self._refresh_issued):
+            if self._refresh_task is None or self._refresh_task.done():
+                self._refresh_task = self.entry.async_create_background_task(
+                    self.hass, self._request_one_shot_updates(),
+                    "EasyWallbox RC vehicle data refresh")
         self._notify()
         if (self.real_enabled and cable is False and
                 self._disconnect_since is not None and
@@ -934,6 +1031,8 @@ class RCController:
         self.real_enabled = False
         if self._task:
             await self._task
+        if self._refresh_task:
+            await self._refresh_task
         if self._lab_write_task:
             await self._lab_write_task
         if self._lab_buffer:
