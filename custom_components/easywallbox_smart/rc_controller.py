@@ -329,7 +329,10 @@ class RCController:
                 self.target_soc, self._blocked, self._pending.kind if self._pending else None,
                 self._power_state.phase if self._power_state else "NORMAL",
                 self._power_state.cap_kw if self._power_state else None,
-                self.last_ack, self.last_command)
+                self.last_ack, self.last_command,
+                "unknown" if self.margin_minutes is None else
+                "urgent" if self.margin_minutes <= 60 else
+                "wide" if self.margin_minutes >= 75 else "medium")
 
     def _notify(self):
         key = self._fingerprint()
@@ -420,7 +423,14 @@ class RCController:
             elif self.mode == "manual" or self.explicit_pause:
                 self.status, self.reason = "Manuale", "user_owns_wallbox"
             elif snapshot["target_reached"] is True and snapshot["charging"] is not True:
-                self.status, self.reason = "Completata", "soc_target_reached"
+                cap = self._power_state.cap_kw if self._power_state else None
+                base = float(self.cfg[CONF_BASE_KW])
+                if (cap is not None and cap < base-.11 and
+                        self._owned_limit is not None):
+                    self.status, self.reason = ("Completata — limite da verificare",
+                        "car_stopped_with_earlier_owned_ev_cap_manual_attention")
+                else:
+                    self.status, self.reason = "Completata", "soc_target_reached"
             elif snapshot["charging"] is True:
                 if not snapshot["trusted"]:
                     self.status, self.reason = ("In carica — verifica dati",
@@ -461,7 +471,9 @@ class RCController:
                     or current["trusted"] is not True
                     or not self.cfg.get(CONF_LEGACY_DISABLED, False)):
                 return
-            if current["target_reached"] is True:
+            if current["target_reached"] is True and current["charging"] is not True:
+                # The car already stopped. Latest user rule explicitly
+                # forbids changing the EV number while not charging.
                 return
             if (current["dpm"] is None or current["dpm"] < 0
                     or current["actual"] is None or current["requested"] is None
@@ -482,6 +494,18 @@ class RCController:
                     self._notify()
                     return
                 base = float(self.cfg[CONF_BASE_KW])
+                if current["target_reached"] is True:
+                    # Restore ONLY an optional cap genuinely owned by this
+                    # session and only while Charging is still confirmed.
+                    if (self._owned_limit is not None
+                            and self._power_state is not None
+                            and self._power_state.phase in ("LIMITED", "BOOST")
+                            and abs(self._owned_limit-current["actual"]) <= .11
+                            and abs(base-current["actual"]) >= .11):
+                        await self._send("power", base, State(
+                            session_id=self._session_id, cap_kw=base,
+                            baseline_kw=base))
+                    return
                 if self._power_state is None:
                     self._power_state = State(session_id=self._session_id, cap_kw=base, baseline_kw=base)
                 # Initial real-mode activation assumes responsibility only
@@ -515,10 +539,17 @@ class RCController:
 
             # Only a disconnected *charging state* (cable still ON) may
             # request Start/Stop, and exclusively for scheduled waiting.
-            if not self.delay_enabled:
+            if (current["ev_kw"] is None or current["ev_kw"] >= .10):
                 return
-            if (current["ev_kw"] is None or current["ev_kw"] >= .10
-                    or self.margin_minutes is None):
+            if not self.delay_enabled:
+                # An explicit cancellation of a previously delayed, Johnny-
+                # owned pause may release that lease. This is still the
+                # delayed-start lifecycle, never a generic car start.
+                if (self._dpm_lease is not None and current["dpm"] <= .06
+                        and current["enabled"] is False):
+                    await self._send("resume", self._dpm_lease, None)
+                return
+            if self.margin_minutes is None:
                 return
             start = self._planned_start(datetime.now(timezone.utc))
             # Waiting is advisory; never deliberately miss a departure.
