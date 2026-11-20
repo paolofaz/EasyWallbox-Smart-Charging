@@ -624,7 +624,7 @@ class RCController:
                     snapshot["dpm"] is not None and
                     snapshot["dpm"] <= .06 and
                     self._dpm_lease is None and not self._park_owned and
-                    self._blocked is None):
+                    self._blocked in (None, "startup_requires_explicit_reenable")):
                 # Never inherit an ESPHome/user DPM=0 as our own pause.
                 self._blocked = "dpm_zero_without_proven_johnny_lease"
                 self.real_enabled = False
