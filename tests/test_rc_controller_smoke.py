@@ -385,6 +385,40 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await self.settle()
         self.assertFalse(any(x[0]=="switch" for x in self.hass.services.calls))
 
+    async def test_unknown_charge_rate_respects_later_preferred_start(self):
+        now=datetime.now(timezone.utc)
+        self.c.delay_enabled=True
+        self.c.charge_now=False
+        self.c.planning_rate_kw=None
+        self.c.remaining_kwh=5.0
+        self.c.departure=now+timedelta(hours=9)
+        self.c._scheduled_at=now+timedelta(hours=3)
+        self.c._connect_since=now
+        self.assertFalse(self.c._safe_start_due(now+timedelta(minutes=20)))
+        self.assertTrue(self.c._safe_start_due(now+timedelta(hours=3)))
+
+    async def test_options_vehicle_profiles_are_used_after_reload(self):
+        cfg=setup(self.hass)
+        updated=dict(cfg[const.CONF_VEHICLES][0],
+                     name="Fiat aggiornata",soc="sensor.updated_soc")
+        added={
+            const.CONF_NAME:"Terza", const.CONF_CABLE:"binary_sensor.third",
+            const.CONF_SOC:"sensor.third_soc",const.CONF_CAPACITY:60,
+            const.CONF_EFFICIENCY:.9,const.CONF_TARGET_FIXED:80,
+            const.CONF_DEPARTURE_WEEKDAY:"06:00",
+            const.CONF_DEPARTURE_WEEKEND:"08:00",
+        }
+        entry=FakeEntry(cfg)
+        entry.options={const.CONF_VEHICLES:
+                       [updated,cfg[const.CONF_VEHICLES][1],added]}
+        c=controller.RCController(self.hass,entry)
+        await c.async_load()
+        self.assertEqual(len(c.cfg[const.CONF_VEHICLES]),3)
+        self.assertEqual(c.cfg[const.CONF_VEHICLES][0]["name"],
+                         "Fiat aggiornata")
+        self.assertFalse(c.real_enabled)
+        await c.async_close()
+
     async def test_refresh_after_twenty_seconds_only_selected_car(self):
         await self.c.async_change("real", True)
         self.c._refresh_due = datetime.now(timezone.utc)-timedelta(seconds=1)
