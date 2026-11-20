@@ -259,6 +259,70 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.hass.services.calls),1)
         self.assertIsNotNone(self.c._pending)
 
+    async def test_target_reached_while_still_charging_restores_only_owned_cap(self):
+        self.hass.states["number.charge_power"].publish("2.8")
+        self.hass.states["sensor.power_set"].publish("2.8")
+        self.hass.states["sensor.fiat_soc"].publish("80")
+        self.c.refresh()
+        self.c._power_state=policy.State(
+            session_id=self.c._session_id, phase="LIMITED",
+            kind="strong", cap_kw=2.8, baseline_kw=4.0)
+        self.c._owned_limit=2.8
+        await self.c.async_change("real",True)
+        await self.settle()
+        calls=self.hass.services.calls
+        self.assertEqual(len(calls),1)
+        self.assertEqual((calls[0][0],calls[0][1],calls[0][2]["value"]),
+                         ("number","set_value",4.0))
+
+    async def test_stopped_at_target_does_not_modify_ev_number(self):
+        self.hass.states["number.charge_power"].publish("2.8")
+        self.hass.states["sensor.power_set"].publish("2.8")
+        self.hass.states["sensor.fiat_soc"].publish("80")
+        self.hass.states["sensor.ev"].publish("0")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.c.refresh()
+        self.c._power_state=policy.State(
+            session_id=self.c._session_id, phase="LIMITED",
+            kind="strong", cap_kw=2.8, baseline_kw=4.0)
+        self.c._owned_limit=2.8
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertEqual(self.hass.services.calls,[])
+        self.assertIn("limite da verificare",self.c.status)
+
+    async def test_cancel_owned_delayed_pause_proposes_resume_once(self):
+        self.hass.states["sensor.ev"].publish("0")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.c.refresh()
+        self.c._dpm_lease=4.4
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertEqual(len(self.hass.services.calls),1)
+        self.assertEqual(self.hass.services.calls[0][:2],
+                         ("switch","turn_on"))
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(len(self.hass.services.calls),1)
+
+    async def test_verified_power_status_updates_owned_limit_no_repeat(self):
+        self.hass.states["number.charge_power"].publish("3.6")
+        self.hass.states["sensor.power_set"].publish("3.6")
+        self.c.refresh()
+        await self.c.async_change("real",True)
+        await self.settle()
+        self.assertEqual(len(self.hass.services.calls),1)
+        self.hass.states["number.charge_power"].publish("4.0")
+        self.hass.states["sensor.power_set"].publish("4.0")
+        self.hass.states["sensor.command_status"].publish("Verified charge power")
+        self.c.refresh()
+        await self.settle()
+        self.assertIsNone(self.c._pending)
+        self.assertEqual(self.c._owned_limit,4.0)
+        self.assertEqual(len(self.hass.services.calls),1)
+
     async def test_lab_can_run_when_unplugged_without_switching(self):
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
         self.hass.states["binary_sensor.fiat"].publish("off")
