@@ -82,6 +82,7 @@ class RCController:
         self._park_owned = False
         self._soc_stop_done = False
         self._soc_stop_refresh_at = None
+        self._soc_stop_baseline = None
         self._soc_stop_last_error = None
         self._fixed_target_overrides = {}
         self._refresh_due = None
@@ -614,6 +615,7 @@ class RCController:
                 self._start_refresh_at = None
                 self._soc_stop_done = False
                 self._soc_stop_refresh_at = None
+                self._soc_stop_baseline = None
                 self._soc_stop_last_error = None
             elif self._last_cable is True:
                 self._disconnect_since = now
@@ -809,8 +811,18 @@ class RCController:
                 return False
         else:
             stamp = self._age(sensor)
-        if self._soc_stop_refresh_at is not None and stamp < self._soc_stop_refresh_at:
-            return False
+        if self._soc_stop_refresh_at is not None:
+            # The Fiat provider records timestamps to whole seconds. The
+            # timestamp MUST change, but a fresh second may precede the
+            # local button press by a fraction of a second.
+            if stamp + timedelta(seconds=2) < self._soc_stop_refresh_at:
+                return False
+            if self._soc_stop_baseline is not None:
+                if timestamp_source:
+                    if stamp <= self._soc_stop_baseline:
+                        return False
+                elif stamp <= self._soc_stop_baseline:
+                    return False
         return True
 
     async def _maybe_stop_at_soc(self, current, now):
@@ -831,6 +843,16 @@ class RCController:
         button = car.get(CONF_VEHICLE_REFRESH)
         if button and (self._soc_stop_refresh_at is None or
                        now-self._soc_stop_refresh_at >= SOC_STOP_REFRESH_INTERVAL):
+            source = car.get(CONF_VEHICLE_LAST_UPDATE)
+            before = self._raw(source) if source else self._raw(car[CONF_SOC])
+            if source:
+                try:
+                    self._soc_stop_baseline = (
+                        datetime.fromisoformat(before.state) if before else None)
+                except (ValueError, TypeError):
+                    self._soc_stop_baseline = None
+            else:
+                self._soc_stop_baseline = self._age(before) if before else None
             self._soc_stop_refresh_at = now
             try:
                 await self.hass.services.async_call(
