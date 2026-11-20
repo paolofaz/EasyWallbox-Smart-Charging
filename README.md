@@ -35,23 +35,56 @@ Il Config Flow crea un profilo nuovo: non è prevista la migrazione della vecchi
 
 Tre sensori: **sessione**, **pianificatore** e **stabilizzatore**, e un selettore **modalità simulata**. Le proposte `reduce`/`restore` non impostano la potenza reale. L'icona è inclusa in `custom_components/easywallbox_smart/brand/icon.png`; traduzioni IT/EN e Options Flow sono presenti.
 
-## Field test v0.2.0b4: Johnny V2 unico, due limiti DPM virtuali
+## Field test v0.2.0b5: Johnny V2 unico, modellato sui comandi BLE in ampere
 
-Il branch `stabilizzatore-m1` contiene un laboratorio **spento di default, senza comandi reali**. La beta **0.2.0b4** esegue **una sola politica Johnny V2** (non esegue più i laboratori Ampio e Intermedio), confrontandola su letture Shelly identiche con due riferimenti *puramente virtuali* di limite DPM: **4,4 e 4,6 kW**. Nessuna delle due soglie modifica la wallbox; il DPM reale conserva il suo controllo indipendente.
+Nel branch `stabilizzatore-m1` esiste un laboratorio **spento di default**
+e senza comandi reali alla wallbox o alle auto. La beta `0.2.0b5` esegue
+**una sola policy Johnny V2**, senza i due vecchi laboratori live
+Ampio/Intermedio e senza confronti fra modelli DPM multipli.
 
-Per il nuovo esperimento impostare nelle Opzioni il massimo EV **4,2 kW** (parametro virtuale: non modifica il valore reale impostato tramite ESPHome). Entrambi i modelli assumono una EV sintetica sempre in carica e senza fine batteria: la valutazione del budget SOC è disattivata **solo per questa prova**.
+**Riferimento prova**: DPM virtuale **4,4 kW** → `191` decimi di
+ampere BLE (**19,1 A**); massimo EV virtuale da configurare nelle
+Opzioni a **4,2 kW** → `183` decimi di ampere (**18,3 A**).
+Le equivalenze seguono esattamente la conversione ESPHome
+`int(kW/0.23*10+0.5)`. **Non** sono 4.400 W / 4.200 W elettrici fissi.
+Il limite reale della wallbox può differire: non viene modificato
+automaticamente e la sua fonte viene distinta nel log.
 
-Johnny V2 riutilizza l'ingresso Ampio per i carichi forti e aggiunge il cuscinetto **−0,4 kW** dopo tre minuti di pressione modesta persistente. Il cuscinetto si ripristina dopo dieci minuti di bassa pressione sulla **richiesta EV originaria**, non più dopo un'assoluta soglia di consumo domestico. In caso di pressione forte persistente anche con cap attivo, può proporre al massimo due ulteriori correzioni **−0,4 kW**, distanziate di almeno dieci minuti e dopo cinque minuti di pressione confermata. Il DPM gestisce sempre picchi e sicurezza; Johnny **non** è una protezione da sovraccarico.
+Lo Shelly EM misura **watt attivi** usando la tensione reale;
+`W/230 V` usato per la casa in Johnny è esplicitamente soltanto una
+**corrente equivalente approssimativa**, non la misura del sensore
+fisico DPM e non una garanzia sul prelievo del contatore. DPM e protezioni
+fisiche mantengono la responsabilità dei picchi.
 
-Il laboratorio registra un unico file giornaliero **`shadow_v2_compare_YYYY-MM-DD.jsonl`** nella cartella privata di HA `/config/easywallbox_smart_shadow/`, con le decisioni `v2` (DPM modello 4,4) e `v2_dpm46` (DPM modello 4,6) sugli stessi campioni Shelly. Il logger comprime le letture con riepiloghi ogni 60 secondi e registra transizioni importanti, max 2 MB al giorno. I vecchi file `shadow_v2_*.jsonl` e `shadow_*.jsonl` non vengono sovrascritti. Un solo sensore read-only Johnny V2 mostra lo stato del modello 4,4 e la diagnostica del modello 4,6; i vecchi sensori wide/medium non sono più creati, ma possono restare come entità non disponibili nel registro HA.
+**Soglie V2 sperimentali**: carico moderato della casa 0,45–1,10 kW
+con pressione equivalente almeno 0,10 kW per 3 minuti →
+un cuscinetto EV di 0,4 kW; ripristino dopo 10 minuti con
+pressione originaria <=0,18 kW, poi cooldown 10 minuti.
+Carico forte: stessa conferma Ampio di 2 minuti su pressione
+>=0,6 kW, più memoria 5 minuti dei cicli intermittenti, con
+rientro dopo 15 minuti di quiete. Massimo due correzioni da
+0,4 kW, separate da almeno 10 minuti, soltanto in presenza di
+pressione >=0,25 kW per almeno 5 minuti anche con cap attivo.
+Non inseguire i picchi, non fare polling BLE aggiuntivo.
 
-La potenza iniziale EV (default 3,6 kW) resta una **impostazione futura non operativa** nel laboratorio. L'origine del DPM fisico resta diagnostica: **non** attesta un margine automatico di 200 W. Il modello sperimentale da 4,6 kW **non** approva un DPM reale sopra la potenza continuativa del contratto.
+Il laboratorio registra `shadow_v2_amps_YYYY-MM-DD.jsonl` nella cartella
+HA privata `/config/easywallbox_smart_shadow/`: un riepilogo circa
+ogni 60 secondi e gli eventi importanti, max 2 MB/giorno.
+Riporta correnti nominali dei comandi, proxy della corrente
+domestica, origine DPM e stato virtuale. I file dei vecchi esperimenti
+`shadow_*` e `shadow_v2_*` non vengono sovrascritti.
+Le sessioni virtuali sono infinite e non usano un budget SOC reale:
+la connessione con pianificatore, stato manuale, ownership e conferma
+BLE sarà un passaggio futuro supervisionato e autorizzato separatamente.
 
-**Pacchetto manuale solo di sviluppo:** [installazione, verifica e rollback](docs/JOHNNY_SHADOW_V2_DPM_44_46_FIELD_TEST_0_2_0B4.md) tramite artifact CI `easywallbox-shadow-0.2.0b4`. Nessuna modifica a `main`, Marketplace 0.1.0, ESPHome, DPM o automazioni legacy.
+**Pacchetto manuale, non Marketplace:** [guida all'installazione,
+verifiche e rollback](docs/JOHNNY_V2_AMPERE_FIELD_TEST_0_2_0B5.md).
+GitHub Actions genera l'artifact `easywallbox-shadow-0.2.0b5`.
+Il branch `main` e la release Marketplace `0.1.0` restano invariati.
 
 ## Qualità e limiti
 
-**Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b4 sono disponibili nella CI del branch di sviluppo. **Non ancora collaudato** su una Home Assistant reale: Config Flow, Recorder, selettore, runtime con Shelly/ESPHome/auto e riavvio. Quindi questa è una **prima release di prova in sola simulazione**.
+**Verifiche per la 0.1.0 pubblicata:** 99 test offline e con mock HA su Python 3.12/3.13, validazione hassfest e HACS/Marketplace. Le verifiche della nuova 0.2.0b5 saranno disponibili nella CI del branch di sviluppo. Il precedente laboratorio 0.2.0b3 è stato provato in Home Assistant con log Shelly il 19–20 novembre; la nuova beta in ampere **non è ancora stata provata su Home Assistant reale**. Tutte le proposte restano in sola simulazione.
 
 La nuova simulazione Johnny v1 usa la **pressione dinamica sul DPM**, con conferma 2/3 minuti per carichi continui, memoria di 5 minuti per quelli intermittenti e quiete 15/10 minuti nelle fasce ampio/intermedio. Il DPM impostato a **zero** per la pausa non è trattato come limite elettrico e non causa mai un avvio automatico; Johnny richiede di conoscere l'origine della pausa prima di qualsiasi futuro controllo reale. Le vecchie soglie domestiche fisse 1,5/1,0 kW appartengono a un precedente test offline, non al supervisore collegato in Home Assistant. Tutti i parametri restano **tarature sperimentali**, non protezioni elettriche.
 
