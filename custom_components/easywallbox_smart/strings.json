@@ -22,7 +22,8 @@
           "expected_dpm_kw": "Valore DPM normale atteso (kW)",
           "base_kw": "Potenza massima normale EV (kW)",
           "boost_kw": "Potenza massima boost EV (kW)",
-          "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate"
+          "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate",
+          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)"
         }
       },
       "vehicle": {
@@ -37,7 +38,9 @@
           "efficiency": "Rendimento AC",
           "departure_weekday": "Partenza feriali (HH:MM)",
           "departure_weekend": "Partenza weekend (HH:MM)",
-          "add_another": "Aggiungi un'altra auto"
+          "add_another": "Aggiungi un'altra auto",
+          "vehicle_refresh_button": "Pulsante aggiorna dati auto (facoltativo)",
+          "vehicle_last_update": "Timestamp ultimo aggiornamento auto (facoltativo)"
         }
       },
       "target": {
@@ -90,7 +93,8 @@
           "expected_dpm_kw": "DPM normale atteso",
           "base_kw": "Potenza EV normale",
           "boost_kw": "Potenza boost",
-          "legacy_automations_disabled": "Automazioni concorrenti disabilitate"
+          "legacy_automations_disabled": "Automazioni concorrenti disabilitate",
+          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)"
         }
       },
       "vehicle": {
