@@ -92,7 +92,7 @@
         "menu_options": {
           "sources": "Power meters and session counters",
           "choose_vehicle": "Vehicle target and departure times",
-          "shadow_lab": "EV power and Johnny V2 DPM test"
+          "shadow_lab": "EV power and Johnny V2 ampere trial"
         }
       },
       "vehicle": {
@@ -130,12 +130,12 @@
         }
       },
       "shadow_lab": {
-        "title": "Field trial — Johnny V2, virtual DPM 4.4 / 4.6 kW",
-        "description": "No device commands. One Johnny V2 algorithm simulated at two explicitly virtual DPM thresholds (4.4 and 4.6 kW), regardless of the actual wallbox DPM. Set simulated EV maximum to 4.2 kW for this trial. Logs: shadow_v2_compare_YYYY-MM-DD.jsonl. The DPM reference option below does not change the two fixed virtual thresholds.",
+        "title": "Johnny V2 ampere-aware field trial (no device commands)",
+        "description": "No device commands. One Johnny V2 policy simulates DPM = 4.4 kW (19.1 A encoded in BLE) and EV maximum = 4.2 kW (18.3 A). Set the EV maximum below to 4.2 kW; no physical setpoint is changed. Shelly active W become only a nominal-current proxy, not true CT amperes. Private file: shadow_v2_amps_YYYY-MM-DD.jsonl. The editable DPM model below is not this fixed lab DPM.",
         "data": {
           "initial_charge_kw": "Future session initial power (kW)",
           "max_charge_kw": "Ordinary maximum and simulated EV power (kW)",
-          "shadow_lab_enabled": "Enable Johnny V2 read-only dual-DPM trial and JSONL log",
+          "shadow_lab_enabled": "Enable Johnny V2 ampere-aware virtual test and JSONL",
           "dpm_model_kw": "DPM reference model (kW) when the sensor is 0 or unavailable"
         }
       }
