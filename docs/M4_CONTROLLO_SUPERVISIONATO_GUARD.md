@@ -39,4 +39,4 @@ La beta 0.2.0b5 resta in sola simulazione. Nessun comando reale, nessuna nuova r
 4. Adapter HA in modalità fake/test, e solo successivamente approvazione esplicita per un collaudo supervisionato con comandi reali. Verificare prima i pattern API correnti di Home Assistant e i servizi ESPHome esposti.
 5. Evitare conflitti con le automazioni Fiat SOC e riduzione mattutina prima di qualsiasi attivazione.
 
-**Test:** 15 casi unittest locali del nuovo guard superati, ma CI GitHub e runtime HA della tappa da verificare. Nessuna validazione hardware. Rollback elettrico non necessario: il nuovo modulo è inattivo e non cambia le impostazioni della wallbox.
+**Test:** 15 casi unittest locali del nuovo guard superati. Su commit c2910b1 risultano riusciti anche tutti e quattro i workflow GitHub Actions (offline checks, Home Assistant integration validation, Marketplace/HACS validation, shadow test package). Nessuna validazione del controllo reale su HA o hardware. Rollback elettrico non necessario: il nuovo modulo è inattivo e non cambia le impostazioni della wallbox.
