@@ -445,9 +445,8 @@ class RCController:
         self._status_acks(now, cable)
         self._house_subscribe(cable is True or self.lab_enabled)
         if cable is False:
-            # A Manual/Pause/Delay override belongs to the just-finished EV
-            # session, not the next car. Do not clear preferences armed while
-            # already disconnected for a future planned session.
+            # Reset Manual to AUTO at confirmed unplug, but a session's
+            # physical actuation lease is never reconstituted from guesses.
             if self._connection:
                 changed = (self.mode == "manual" or self.delay_enabled or
                            self.departure_override is not None)
@@ -455,25 +454,35 @@ class RCController:
                 self.delay_enabled = False
                 self.departure_override = None
                 if changed:
-                    self.entry.async_create_background_task(
-                        self.hass, self._save(), "EasyWallbox RC clear session overrides")
+                    self._schedule_save()
             self._session_id = None
             self._connection = False
             self._power_state = None
             self._owned_limit = None
             self._dpm_lease = None
-            self._pending = None
             self._active_departure = None
             self._scheduled_at = None
+            self._prepared_session = None
             self.charge_now = False
             self.explicit_pause = False
-            self._blocked = None
+            # Keep pending park until verified or timed out; otherwise it
+            # would disappear before ESPHome responded with DPM=0.
+            if self._pending and self._pending.kind != "park":
+                self._blocked = "session_ended_with_pending_command"
+                self._pending = None
+                self.real_enabled = False
             if snapshot["dpm"] is not None and snapshot["dpm"] <= .06:
                 self.status = "Scollegata — DPM 0 A"
-                self.reason = "dpm_paused_check_manually_before_next_charge"
+                self.reason = ("park_confirmed" if self._park_owned
+                               else "dpm_zero_no_proven_owner")
+            elif self._disconnect_since is not None:
+                self.status = "Scollegata — attesa 30 W / 30 s"
+                self.reason = "disconnect_debounce_before_park"
             else:
                 self.status = "Scollegata"
-                self.reason = "cable_disconnected_no_commands"
+                self.reason = "no_cable_transition_to_park"
+            if self._blocked and self._blocked.startswith("unconfirmed_"):
+                self.status, self.reason = "Bloccata", self._blocked
         elif cable is None or snapshot["car"] is None:
             self.status = "Da riconciliare"
             self.reason = "cable_or_vehicle_ambiguous"
@@ -488,14 +497,19 @@ class RCController:
                                           baseline_kw=float(self.cfg[CONF_BASE_KW]))
                 self._owned_limit = None
                 self._dpm_lease = None
+                if self._pending and self._pending.kind == "park":
+                    self.real_enabled = False
+                    self._blocked = "park_command_interrupted_by_reconnection"
                 self._pending = None
                 self._active_departure = None
                 self._scheduled_at = None
+                self._prepared_session = None
                 self.charge_now = False
-            self._status_acks(now, True)
-            if (self._pending is None and self._blocked is None
-                    and snapshot["dpm"] is not None
-                    and snapshot["dpm"] <= .06 and self._dpm_lease is None):
+            if (self._pending is None and
+                    snapshot["dpm"] is not None and
+                    snapshot["dpm"] <= .06 and
+                    self._dpm_lease is None and not self._park_owned and
+                    self._blocked is None):
                 # Never inherit an ESPHome/user DPM=0 as our own pause.
                 self._blocked = "dpm_zero_without_proven_johnny_lease"
                 self.real_enabled = False
