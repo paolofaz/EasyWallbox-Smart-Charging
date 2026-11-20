@@ -1,4 +1,4 @@
-"""Johnny V2: third independent, read-only shadow candidate.
+"""Johnny V2: pure, read-only stabilizer candidate.
 
 Uses the existing wide-band entry/quiet policy as a baseline, with a
 moderate persistent-load buffer and a rare downward correction. Never sends
@@ -17,7 +17,7 @@ BUFFER_MIN_KW = 0.5
 BUFFER_MAX_KW = 1.1
 BUFFER_CONFIRM = timedelta(minutes=3)
 BUFFER_STEP_KW = 0.4
-BUFFER_QUIET_KW = 0.35
+BUFFER_QUIET_PRESSURE_KW = 0.06
 BUFFER_QUIET = timedelta(minutes=10)
 COOLDOWN = timedelta(minutes=10)
 RECHECK_PRESSURE_KW = 0.25
@@ -169,9 +169,13 @@ def evaluate_v2(now: datetime, session: SessionSnapshot,
     if st.kind == "buffer":
         if gap is not None and gap > MAX_GAP:
             st = replace(st, quiet_since=None)
-        if value > BUFFER_QUIET_KW:
+        # Judge quiet from the DPM pressure of the *original* EV request,
+        # not a fixed house-power threshold. Otherwise a steady 0.4 kW
+        # background load can keep an optional cap for hours unnecessarily.
+        baseline_pressure = max(0.0, value + st.original_kw - dpm_kw)
+        if baseline_pressure > BUFFER_QUIET_PRESSURE_KW:
             return _decision(replace(st, quiet_since=None), "hold",
-                             "buffer_house_not_quiet", now)
+                             "buffer_baseline_pressure_continues", now)
         since = st.quiet_since or at
         st = replace(st, quiet_since=since)
         if at-since >= BUFFER_QUIET:
