@@ -134,7 +134,7 @@ def evaluate_v2(now: datetime, session: SessionSnapshot,
     )
     # Translate the displayed kW into the exact one-decimal-ampere
     # commands encoded by ESPHome. The inherited wide policy receives
-    # their nominal-kW equivalents, not unrounded UI display requests.
+    # their nominal-kW equivalents, not unrounded UI display values.
     ev_nominal_kw = wallbox_requested_amps(max_ev_kw) * NOMINAL_KW_PER_AMP
     dpm_nominal_kw = wallbox_requested_amps(dpm_kw) * NOMINAL_KW_PER_AMP
     base, base_proposal = evaluate(
