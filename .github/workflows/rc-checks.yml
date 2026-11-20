@@ -1,0 +1,48 @@
+name: EasyWallbox RC quality gate
+on:
+  push:
+    branches: [RC]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-and-contract:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Check Python imports and compilation
+        run: python -m compileall -q custom_components/easywallbox_smart tests
+      - name: Offline RC tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate JSON and translation files
+        run: |
+          python -m json.tool custom_components/easywallbox_smart/manifest.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/strings.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/en.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/it.json >/dev/null
+          python -m json.tool hacs.json >/dev/null
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@master
+  marketplace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          comment: "false"
