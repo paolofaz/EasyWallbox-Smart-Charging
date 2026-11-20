@@ -397,8 +397,12 @@ class RCController:
             self.charge_now = False
             self.explicit_pause = False
             self._blocked = None
-            self.status = "Scollegata"
-            self.reason = "cable_disconnected_no_commands"
+            if snapshot["dpm"] is not None and snapshot["dpm"] <= .06:
+                self.status = "Scollegata — DPM 0 A"
+                self.reason = "dpm_paused_check_manually_before_next_charge"
+            else:
+                self.status = "Scollegata"
+                self.reason = "cable_disconnected_no_commands"
         elif cable is None or snapshot["car"] is None:
             self.status = "Da riconciliare"
             self.reason = "cable_or_vehicle_ambiguous"
@@ -418,10 +422,17 @@ class RCController:
                 self._scheduled_at = None
                 self.charge_now = False
             self._status_acks(now, True)
-            if self._blocked:
+            if (self._pending is None and self._blocked is None
+                    and snapshot["dpm"] is not None
+                    and snapshot["dpm"] <= .06 and self._dpm_lease is None):
+                # Never inherit an ESPHome/user DPM=0 as our own pause.
+                self._blocked = "dpm_zero_without_proven_johnny_lease"
+                self.real_enabled = False
+            if self.mode == "manual" or self.explicit_pause:
+                self.status = "Manuale" if self.mode == "manual" else "Pausa gestione"
+                self.reason = "user_owns_wallbox"
+            elif self._blocked:
                 self.status, self.reason = "Bloccata", self._blocked
-            elif self.mode == "manual" or self.explicit_pause:
-                self.status, self.reason = "Manuale", "user_owns_wallbox"
             elif snapshot["target_reached"] is True and snapshot["charging"] is not True:
                 cap = self._power_state.cap_kw if self._power_state else None
                 base = float(self.cfg[CONF_BASE_KW])
