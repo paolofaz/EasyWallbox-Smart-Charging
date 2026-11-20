@@ -25,10 +25,10 @@ def snapshot(minutes: int, kw: float | None, age=0):
         observed_at=NOW + timedelta(minutes=minutes, seconds=-age))
 
 
-def step(states, minute, kw, dpm=4.4, age=0):
+def step(states, minute, kw, dpm=4.4, age=0, ev_max=4.0):
     return module.simulate_shadow_v2(
         NOW + timedelta(minutes=minute), snapshot(minute, kw, age),
-        dpm, 4.0, states)
+        dpm, ev_max, states)
 
 
 class JohnnyV2ShadowTest(unittest.TestCase):
@@ -71,6 +71,29 @@ class JohnnyV2ShadowTest(unittest.TestCase):
         self.assertEqual(d.action, "restore")
         self.assertEqual(st.mode, "NORMAL")
         self.assertAlmostEqual(st.cap_kw, 4.0)
+
+    def test_buffer_restores_on_low_dpm_pressure_even_with_background_load(self):
+        st = None
+        for m in range(4):
+            st, _ = step(st, m, .65, dpm=4.4)
+        self.assertEqual(st.kind, "buffer")
+        for m in range(4, 14):
+            st, _ = step(st, m, .45, dpm=4.4)
+        self.assertEqual(st.kind, "buffer")
+        st, decision = step(st, 14, .45, dpm=4.4)
+        self.assertEqual(decision.action, "restore")
+        self.assertEqual(st.cap_kw, 4.0)
+
+    def test_same_v2_policy_differs_at_44_vs_46_with_ev_42(self):
+        results = {}
+        for dpm in (4.4, 4.6):
+            state = None
+            for minute in range(5):
+                state, decision = step(state, minute, .9, dpm=dpm, ev_max=4.2)
+            results[dpm] = (state.kind, state.cap_kw)
+        self.assertEqual(results[4.4][0], "strong")
+        self.assertEqual(results[4.6][0], "buffer")
+        self.assertLess(results[4.4][1], results[4.6][1])
 
     def test_strong_entry_then_one_limited_downward_adjustment(self):
         st = None
