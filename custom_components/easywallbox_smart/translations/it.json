@@ -1,161 +1,114 @@
 {
-  "title": "EasyWallbox Smart Charging",
+  "title": "EasyWallbox Smart Charging RC",
   "config": {
     "step": {
       "user": {
-        "title": "Consumi domestici e telemetria wallbox",
-        "description": "SOLO SIMULAZIONE. Somma i sensori domestici senza EV e seleziona lo Shelly wallbox separato. Per Johnny è consigliato il sensore ESPHome del limite DPM confermato. Nessun comando reale.",
+        "title": "Wallbox, DPM, Shelly e limiti",
+        "description": "Selezionare gli stati BLE confermati. Start-Stop usa DPM=0 A; il DPM fisico deve restare attivo.",
         "data": {
-          "ev_power": "Potenza reale wallbox — Shelly dedicato",
-          "wallbox_connected": "Cavo collegato alla wallbox",
-          "wallbox_charging": "Wallbox realmente in carica",
-          "telemetry_fresh": "Telemetria BLE ESPHome aggiornata",
-          "requested_limit": "Charge power richiesto (number, kW)",
-          "confirmed_limit": "Power set confermato (sensor, kW)",
-          "dpm_model_kw": "Limite DPM simulato (kW) — usato solo senza un sensore DPM selezionato",
-          "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
-          "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
-          "session_duration": "Durata sessione wallbox (min, facoltativo)",
-          "dpm_confirmed": "Limite DPM confermato ESPHome (sensore kW, consigliato)",
-          "initial_charge_kw": "Potenza iniziale EV (kW, futuro controllo)",
-          "max_charge_kw": "Potenza massima EV ordinaria (kW, simulazione)"
+          "house_power_sources": "Sensori consumi casa (senza wallbox)",
+          "ev_power": "Potenza Shelly wallbox",
+          "wallbox_connected": "Car Connected — wallbox",
+          "wallbox_charging": "Charging — wallbox",
+          "telemetry_fresh": "Telemetry Fresh — wallbox",
+          "dpm_active": "DPM Active — wallbox",
+          "wallbox_fault": "Wallbox Fault",
+          "charge_enabled": "Charge Enabled (DPM non zero)",
+          "start_stop_switch": "Start-Stop (DPM=0 per pausa)",
+          "command_status": "Command status — conferma BLE",
+          "requested_limit": "Charge power — number",
+          "confirmed_limit": "Power set — confermato",
+          "dpm_confirmed": "Limit house power set -DPM-",
+          "expected_dpm_kw": "Valore DPM normale atteso (kW)",
+          "base_kw": "Potenza massima normale EV (kW)",
+          "boost_kw": "Potenza massima boost EV (kW)",
+          "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate"
         }
       },
       "vehicle": {
-        "title": "Profilo automobile",
-        "description": "Imposta i dati dell'auto e scegli come leggere l'obiettivo SOC. Il valore viene richiesto nella schermata successiva. Nessun comando all'auto.",
+        "title": "Profilo auto",
+        "description": "Fiat, Kia o altre auto. Configurare una sola entità per ogni cavo.",
         "data": {
-          "name": "Nome automobile",
-          "cable": "Cavo collegato all'auto",
-          "soc": "SOC batteria (%)",
-          "capacity_kwh": "Capacità utilizzabile batteria (kWh)",
-          "efficiency": "Rendimento AC ipotizzato (0–1)",
-          "departure_weekday": "Partenza lun–ven (HH:MM)",
-          "departure_weekend": "Partenza sab–dom (HH:MM)",
-          "add_another": "Aggiungi un'altra auto",
-          "target_mode": "Metodo di lettura del target SOC"
+          "name": "Nome auto",
+          "cable": "Sensore cavo collegato",
+          "soc": "Sensore SOC",
+          "capacity_kwh": "Capacità utile batteria kWh",
+          "planning_rate_kw": "Velocità di ricarica prudenziale per pianificare (kW)",
+          "efficiency": "Rendimento AC",
+          "departure_weekday": "Partenza feriali (HH:MM)",
+          "departure_weekend": "Partenza weekend (HH:MM)",
+          "add_another": "Aggiungi un'altra auto"
         }
       },
       "target": {
-        "title": "Obiettivo SOC per questa auto",
-        "description": "È attivo UN SOLO obiettivo. Con un'entità HA, i valori unknown/unavailable NON vengono sostituiti da un vecchio valore fisso.",
+        "title": "Obiettivo SOC",
+        "description": "Scegliere una fonte: entità percentuale oppure limite fisso.",
         "data": {
-          "target_entity": "Entità HA che espone il target SOC (%)",
-          "target_default": "Obiettivo SOC fisso (%)"
+          "target_entity": "Entità obiettivo SOC",
+          "target_fixed": "Obiettivo percentuale fisso"
         }
       }
     },
     "error": {
-      "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore",
-      "duplicate_vehicle": "Nome automobile già utilizzato",
-      "duplicate_cable": "Sensore cavo già utilizzato",
-      "duplicate_sources": "Seleziona sensori distinti per piano terra, piano primo e wallbox.",
-      "invalid_mapping": "Configurazione incompleta o incoerente: verificare le entità e i parametri delle auto.",
-      "incomplete_counters": "Seleziona sia Energia sessione sia Durata sessione, oppure nessuno dei due.",
-      "invalid_power_range": "Potenza iniziale superiore al massimo ordinario."
+      "invalid_meter_sources": "Selezione sensori casa errata",
+      "duplicate_entities": "Le entità non devono essere ripetute",
+      "invalid_power": "Potenza base/boost non consentita",
+      "duplicate_vehicle": "Auto o cavo già presenti",
+      "invalid_clock": "Orario HH:MM non valido",
+      "choose_one_target": "Selezionare esattamente un target SOC",
+      "invalid_target": "Target SOC non valido"
     },
     "abort": {
-      "already_configured": "Questa wallbox è già configurata"
-    }
-  },
-  "entity": {
-    "sensor": {
-      "session": {
-        "name": "Sessione di ricarica"
-      },
-      "plan": {
-        "name": "Pianificatore partenza"
-      },
-      "stabilizer": {
-        "name": "Stabilizzatore ricarica"
-      },
-      "shadow_v2": {
-        "name": "Johnny V2 — simulazione"
-      }
-    },
-    "select": {
-      "session_mode": {
-        "name": "Modalità sessione (solo simulazione)",
-        "state": {
-          "automatic": "Automatica",
-          "manual": "Manuale",
-          "pause": "Pausa (simulata)",
-          "charge_now": "Carica subito (simulazione)"
-        }
-      }
+      "already_configured": "Wallbox già configurata"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Che cosa vuoi modificare?",
+        "title": "Opzioni RC",
         "menu_options": {
-          "sources": "Sensori consumi e contatori sessione",
-          "choose_vehicle": "Parametri veicolo e orari",
-          "shadow_lab": "Potenza EV e prova Johnny V2 in ampere"
+          "wallbox": "Wallbox e limiti",
+          "choose_vehicle": "Orari per auto"
+        }
+      },
+      "wallbox": {
+        "title": "Entità wallbox, Shelly e limiti",
+        "data": {
+          "house_power_sources": "Sensori casa",
+          "ev_power": "Shelly wallbox",
+          "wallbox_connected": "Cavo wallbox",
+          "wallbox_charging": "Charging",
+          "telemetry_fresh": "Telemetria fresca",
+          "dpm_active": "DPM attivo",
+          "wallbox_fault": "Guasto wallbox",
+          "charge_enabled": "DPM abilitazione confermata",
+          "start_stop_switch": "Switch Start-Stop",
+          "command_status": "Stato comando BLE",
+          "requested_limit": "Charge power number",
+          "confirmed_limit": "Power set",
+          "dpm_confirmed": "DPM limite confermato",
+          "expected_dpm_kw": "DPM normale atteso",
+          "base_kw": "Potenza EV normale",
+          "boost_kw": "Potenza boost",
+          "legacy_automations_disabled": "Automazioni concorrenti disabilitate"
         }
       },
       "vehicle": {
-        "title": "Modifica pianificazione automobile",
-        "description": "Modifica orari e scegli l'origine del target SOC. La selezione non modifica l'auto.",
+        "title": "Orari della partenza",
         "data": {
-          "departure_weekday": "Partenza lun–ven (HH:MM)",
-          "departure_weekend": "Partenza sab–dom (HH:MM)",
-          "efficiency": "Rendimento AC stimato",
-          "target_mode": "Origine dell'obiettivo SOC"
+          "departure_weekday": "Partenza feriali HH:MM",
+          "departure_weekend": "Partenza weekend HH:MM"
         }
       },
       "choose_vehicle": {
-        "title": "Seleziona veicolo",
+        "title": "Seleziona l'auto",
         "data": {
           "vehicle": "Veicolo"
-        }
-      },
-      "sources": {
-        "title": "Consumi domestici e sessione wallbox",
-        "description": "Scegli i sensori casa senza wallbox e, se disponibile, il limite DPM confermato dalla wallbox. Con un sensore DPM selezionato ma non disponibile Johnny non inventa un limite sostitutivo.",
-        "data": {
-          "house_power_sources": "Consumo domestico — seleziona uno o più sensori da sommare",
-          "session_energy": "Energia sessione wallbox (kWh, facoltativo)",
-          "session_duration": "Durata sessione wallbox (min, facoltativo)",
-          "dpm_confirmed": "Limite DPM confermato ESPHome (sensore kW, consigliato)"
-        }
-      },
-      "target": {
-        "title": "Seleziona l'obiettivo SOC attivo",
-        "description": "Per questa auto vale solo il campo che scegli. La lettura dell'entità HA ha priorità solo se è la modalità selezionata.",
-        "data": {
-          "target_entity": "Entità HA obiettivo SOC (%)",
-          "target_default": "Obiettivo SOC fisso (%)"
-        }
-      },
-      "shadow_lab": {
-        "title": "Prova Johnny V2 — corrente BLE, solo simulazione",
-        "description": "Nessun comando reale. Un solo Johnny V2 con DPM virtuale 4,4 kW (19,1 A BLE); imposta qui sotto il massimo EV simulato a 4,2 kW (18,3 A BLE). I watt Shelly sono convertiti soltanto in corrente equivalente nominale, non in ampere misurati dal DPM. Log: shadow_v2_amps_YYYY-MM-DD.jsonl. Il modello DPM modificabile sotto non cambia la soglia fissa di questo laboratorio.",
-        "data": {
-          "initial_charge_kw": "Potenza iniziale per futura sessione (kW)",
-          "max_charge_kw": "Massimo ordinario e potenza simulata (kW)",
-          "shadow_lab_enabled": "Attiva Johnny V2 virtuale in ampere e log JSONL",
-          "dpm_model_kw": "DPM di riferimento (kW) quando il sensore è a 0 o non disponibile"
         }
       }
     },
     "error": {
-      "invalid_clock": "Inserire l'orario HH:MM in formato 24 ore",
-      "invalid_mapping": "Sorgenti ripetute, assenti o incoerenti. Controlla la selezione.",
-      "invalid_power_range": "Potenza iniziale e massima non valide: passi 0,2 kW, iniziale non oltre massimo."
-    },
-    "abort": {
-      "no_vehicles": "Nessun profilo automobile configurato",
-      "invalid_configuration": "Configurazione non valida: verifica le entità e i parametri dell'integrazione."
-    }
-  },
-  "selector": {
-    "target_mode": {
-      "options": {
-        "entity": "Leggi da un'entità Home Assistant",
-        "fixed": "Usa una percentuale fissa"
-      }
+      "invalid_clock": "Orario non valido"
     }
   }
 }
