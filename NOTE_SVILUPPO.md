@@ -53,3 +53,5 @@ separatamente; non rimuoverle inavvertitamente dalla cronologia.
 **Da verificare in HA:** rimozione corretta dell'installazione
 precedente, caricamento del Config Flow RC e conferma di tutte
 le entità; test fisico solo successivamente e sotto supervisione.
+
+**Versione correttiva pubblicata:** `v0.3.0rc2` come prerelease GitHub. Corregge selezione target SOC, configurazione libera dei sensori domestici e rimuove completamente il laboratorio. I test CI Python 3.12/3.13, hassfest e Marketplace sono passati; non eseguito ancora collaudo sulla wallbox reale. Il branch GitHub predefinito è ancora `main` fino all'intervento dell'amministratore.
