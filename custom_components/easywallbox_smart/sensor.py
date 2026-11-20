@@ -89,7 +89,7 @@ class SimulationSensor(SensorEntity):
         if self.kind == "shadow_v2":
             shadow = self.coordinator.shadow_v2_decision
             state = self.coordinator.shadow_v2_state
-             attrs.update(
+            attrs.update(
                 hypothetical_ev_always_charging=True,
                 real_wallbox_commands=0,
                 shadow_budget_disabled=True,
