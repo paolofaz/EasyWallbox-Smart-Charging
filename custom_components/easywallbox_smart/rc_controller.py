@@ -716,6 +716,8 @@ class RCController:
                     or current["trusted"] is not True
                     or not self.cfg.get(CONF_LEGACY_DISABLED, False)):
                 return
+            if not self._car_update_ready(datetime.now(timezone.utc), current["car"]):
+                return
             if current["target_reached"] is True and current["charging"] is not True:
                 # The car already stopped. Latest user rule explicitly
                 # forbids changing the EV number while not charging.
@@ -959,9 +961,11 @@ class RCController:
     async def async_change(self, field, value):
         if field == "mode" and value in ("automatic", "manual"):
             self.mode = value
+            # Manual overrides automatic action for the ENTIRE session.
+            # Preserve consent to park after a confirmed unplug, at which
+            # point the session returns to AUTO.
             if value == "manual":
-                self.real_enabled = False
-                self._blocked = "manual_mode_no_automatic_restore"
+                self.reason = "manual_session_no_wallbox_commands"
         elif field == "real":
             if not value:
                 self.real_enabled = False
@@ -969,11 +973,17 @@ class RCController:
             elif (self.mode == "automatic"
                   and self.cfg.get(CONF_LEGACY_DISABLED, False)
                   and self._binary(self.cfg[CONF_WALLBOX_CONNECTED],
+                                   datetime.now(timezone.utc)) is not None
+                  and self._binary(self.cfg[CONF_TELEMETRY_FRESH],
+                                   datetime.now(timezone.utc)) is True
+                  and self._binary(self.cfg[CONF_DPM_ACTIVE],
                                    datetime.now(timezone.utc)) is True):
+                # It is valid to arm AUTO with the cable unplugged; only a
+                # subsequent real ON->OFF event may send the park command.
                 self.real_enabled = True
                 self._blocked = None
             else:
-                raise ValueError("Enable only in AUTO with cable connected and legacy automations disabled")
+                raise ValueError("Enable only in AUTO with valid BLE and no competing automations")
         elif field == "delay":
             self.delay_enabled = bool(value)
         elif field == "time":
@@ -1016,6 +1026,8 @@ class RCController:
             ids.extend((vehicle[CONF_CABLE], vehicle[CONF_SOC]))
             if vehicle.get(CONF_TARGET_ENTITY):
                 ids.append(vehicle[CONF_TARGET_ENTITY])
+            if vehicle.get(CONF_VEHICLE_LAST_UPDATE):
+                ids.append(vehicle[CONF_VEHICLE_LAST_UPDATE])
         self._sensor_unsub = async_track_state_change_event(
             self.hass, sorted(set(ids)), self._on_event)
         self.refresh()
