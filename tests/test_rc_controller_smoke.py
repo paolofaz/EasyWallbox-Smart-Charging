@@ -157,6 +157,13 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.c=controller.RCController(self.hass,FakeEntry(cfg))
         await self.c.async_load()
         self.c.start()
+        # Prior baseline tests exercise the ACTUATION layer, so bypass only
+        # their separate simulated 20s cloud-refresh delay. Dedicated tests
+        # below verify the delay and refresh logic.
+        self.c._refresh_due = None
+        self.c._refresh_issued = True
+        self.c._refresh_requested_at = None
+        self.c._connect_since = datetime.now(timezone.utc)-timedelta(minutes=1)
 
     async def asyncTearDown(self):
         await self.c.async_close()
@@ -174,8 +181,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
         self.hass.states["binary_sensor.fiat"].publish("off")
         self.c.refresh()
-        with self.assertRaises(ValueError):
-            await self.c.async_change("real",True)
+        await self.c.async_change("real",True)
         await self.settle()
         self.assertEqual(self.hass.services.calls,[])
 
@@ -223,9 +229,9 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await self.c.async_change("delay",True)
         await self.c.async_change("real",True)
         await self.settle()
-        self.assertEqual(len(self.hass.services.calls),1)
-        for domain,service,args,_ in self.hass.services.calls:
-            self.assertEqual((domain,service),("switch","turn_off"))
+        # Under the new approved lifecycle, an already connected idle car
+        # cannot be paused opportunistically: only unplug parks the DPM.
+        self.assertEqual(self.hass.services.calls,[])
 
     async def test_missing_dpm_readback_blocks_real_command(self):
         self.hass.states["sensor.dpm_set"].publish("unavailable")
@@ -338,6 +344,40 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await self.c.async_change("mode","manual")
         self.assertEqual(self.c.status,"Manuale")
         self.assertFalse(self.c.real_enabled)
+
+    async def test_confirmed_unplug_parks_once_after_30w_30seconds(self):
+        await self.c.async_change("real", True)
+        await self.settle()
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.c.refresh()
+        self.c._disconnect_since -= timedelta(seconds=31)
+        self.c._ev_idle_since -= timedelta(seconds=31)
+        self.c.refresh()
+        await self.settle()
+        switches=[x for x in self.hass.services.calls if x[0]=="switch"]
+        self.assertEqual(len(switches),1)
+        self.assertEqual(switches[0][:2],("switch","turn_off"))
+        self.assertIsNotNone(self.c._pending)
+        self.assertEqual(self.c._pending.kind,"park")
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(len([x for x in self.hass.services.calls if x[0]=="switch"]),1)
+
+    async def test_unplug_above_thirty_watts_never_parks(self):
+        await self.c.async_change("real", True)
+        await self.settle()
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.04")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.c.refresh()
+        self.c._disconnect_since -= timedelta(seconds=31)
+        self.c.refresh()
+        await self.settle()
+        self.assertFalse(any(x[0]=="switch" for x in self.hass.services.calls))
 
     async def test_lab_can_run_when_unplugged_without_switching(self):
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
