@@ -118,6 +118,59 @@ La dashboard personalizzata installata automaticamente dall'integrazione
 Non viene creata né alterata automaticamente una dashboard dell'utente.
 L'interfaccia integrata è un obiettivo separato da collaudare.
 
+## Limite SOC e Stop facoltativo per veicolo
+
+**Il target serve sempre al planner, ma non equivale all'autorizzazione
+a fermare fisicamente la wallbox.** Nelle opzioni di ciascun veicolo
+è disponibile **Interrompi la ricarica a target SOC**, disattivato
+per impostazione predefinita (anche sulle configurazioni preesistenti).
+
+- **Kia EV3 / auto con limite interno:** selezionare come target il
+  sensore della percentuale impostata nell'auto, lasciare Stop a target
+  DISATTIVATO; l'auto sospende autonomamente quando raggiunge il limite.
+- **Fiat 500e / auto senza stop interno:** usare l'entità esistente
+  `input_number.limite_carica_batteria_500` oppure un target fisso.
+  Abilitare Stop a target SOLO quando l'automazione legacy che
+  scrive `switch.wallbox_start_stop` è stata disabilitata e verificata.
+- Se Stop è attivo con un **target fisso**, l'integrazione espone
+  **un singolo slider 80–100%, passi di 5** per quel veicolo, sotto il
+  dispositivo logico EasyWallbox Smart Charging. Se viene scelta
+  un'entità HA preesistente non è creato alcuno slider duplicato.
+- Lo Stop per SOC è l'**unica eccezione** alla regola normale che
+  vieta Start-Stop durante una ricarica. Richiede cavo collegato,
+  auto identificata in modo univoco, Charging e Shelly EV attivi,
+  SOC pari/superiore al target con lettura aggiornata e limiti DPM
+  confermati. Vicino al target può richiedere un aggiornamento auto
+  (non più di una volta ogni 20 minuti).
+- Premere il pulsante di refresh **non** vale come lettura aggiornata:
+  se configurato, deve cambiare realmente il timestamp dell'ultimo
+  aggiornamento. In assenza di dati recenti, nessuno Stop automatico.
+- Lo Stop è impartito **una sola volta**. Solo dopo `Verified DPM`
+  o `Confirmed DPM`, DPM a zero, Charge Enabled OFF, Charging OFF
+  e Shelly EV **<30 W** è registrato come **fine carica confermata**.
+  Nessuna ripresa per la stessa sessione, nemmeno se cambia il target.
+  Se la conferma manca, blocco e **nessun retry cieco**.
+
+L'automazione Fiat che notifica la famiglia e pubblica su MQTT NON
+viene modificata o disabilitata da questa integrazione. Le notifiche
+si possono conservare separatamente dopo il collaudo. **Non attivare
+due proprietari dello stesso Start-Stop**.
+
+## Dispositivo ed entità Home Assistant
+
+Il controller è ora registrato come **un dispositivo logico
+«EasyWallbox Smart Charging»** (non sostituisce il dispositivo
+fisico ESPHome). Nella scheda Dispositivi dell'integrazione,
+controlli, orari e pulsanti sono associati allo stesso dispositivo;
+i due sensori di Stato e Pianificazione appartengono alla
+**diagnostica**. Gli `unique_id` precedenti sono conservati,
+evitando una seconda copia delle 11 entità già installate.
+Lo slider SOC opzionale appare solo quando serve.
+
+Le entità sono lasciate intatte durante questa revisione: prima
+verificare la nuova scheda Dispositivo su Home Assistant,
+poi decidere insieme se alcune siano ridondanti.
+
 ## Riavvii, installazione e rollback
 
 L'autorizzazione ai comandi reali torna **OFF** a ogni riavvio, reload
