@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time, timezone
 from zoneinfo import ZoneInfo
@@ -19,6 +20,7 @@ from homeassistant.helpers.storage import Store
 from .const import *
 from .sources import finite_number, on, power_kw, next_departure
 from .rc_policy import Observation, State, evaluate
+from .planner_rate import estimate_ac_kw, margin_minutes as estimate_margin
 
 _LOGGER = logging.getLogger(__name__)
 WALLBOX_TTL = timedelta(minutes=2)
@@ -59,6 +61,9 @@ class RCController:
         self.target_soc = None
         self.margin_minutes = None
         self.remaining_kwh = None
+        self.planning_rate_kw = None
+        self._house_history = deque(maxlen=48)
+        self._ev_history = deque(maxlen=48)
         self.house_kw = None
         self.last_command = None
         self.last_ack = None
@@ -372,6 +377,51 @@ class RCController:
         self._scheduled_at = scheduled
         return scheduled
 
+    def _record_planning_power(self, now, house, house_at, ev_kw, charging):
+        """Keep bounded samples in RAM, without additional HA entities."""
+        if house is not None and house_at is not None:
+            if (not self._house_history or
+                    house_at > self._house_history[-1][0] + timedelta(seconds=45)):
+                self._house_history.append((house_at, house))
+        if charging is True and ev_kw is not None and ev_kw >= .2:
+            state = self._fresh(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
+            if state:
+                measured_at = self._age(state)
+                if (not self._ev_history or
+                        measured_at > self._ev_history[-1][0] + timedelta(seconds=45)):
+                    self._ev_history.append((measured_at, ev_kw))
+        cutoff = now-timedelta(minutes=21)
+        for history in (self._house_history, self._ev_history):
+            while history and history[0][0] < cutoff:
+                history.popleft()
+
+    def _latest_start(self, now):
+        if (self.departure is None or self.remaining_kwh is None or
+                self.planning_rate_kw is None):
+            return None
+        return self.departure-timedelta(
+            minutes=30+60*self.remaining_kwh/self.planning_rate_kw)
+
+    def _safe_start_due(self, now):
+        """Unknown average is not silently replaced with a fixed kW."""
+        if not self.delay_enabled or self.charge_now:
+            return True
+        latest = self._latest_start(now)
+        if latest is not None:
+            return now >= min(self._planned_start(now), latest)
+        if self.departure is None or self.remaining_kwh is None:
+            return False
+        # Configured base is an optimistic physical upper bound, NOT a
+        # forecast. An unknown forecast must never delay past this bound.
+        optimistic_minutes = (
+            30+60*self.remaining_kwh/float(self.cfg[CONF_BASE_KW]))
+        if (self.departure-now).total_seconds()/60 <= optimistic_minutes:
+            return True
+        # Try to establish a real 20-min Shelly history; if insufficient,
+        # start conservatively after 15 min rather than assume a fake rate.
+        return (self._connect_since is not None and
+                now-self._connect_since >= timedelta(minutes=15))
+
     def _snapshot(self, now):
         cable = self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now)
         car = self._select_vehicle(now, cable)
@@ -390,7 +440,8 @@ class RCController:
         dpm = self._power(self.cfg[CONF_DPM_CONFIRMED], now, DPM_TTL)
         actual_limit = self._power(self.cfg[CONF_CONFIRMED_LIMIT], now)
         requested = self._power(self.cfg[CONF_REQUESTED_LIMIT], now)
-        house, house_at = self._house(now) if cable is True else (None, None)
+        house, house_at = self._house(now)
+        self._record_planning_power(now, house, house_at, ev_kw, charging)
 
         self.house_kw = round(house, 3) if house is not None else None
         self.quality = "ok" if (cable is True and car and telemetry is True and
@@ -398,6 +449,11 @@ class RCController:
                 and house is not None and dpm is not None) else "incomplete"
         self.vehicle_name = car[CONF_NAME] if car else None
         self.soc = self.target_soc = self.margin_minutes = self.remaining_kwh = None
+        self.planning_rate_kw = estimate_ac_kw(
+            now=now, dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]),
+            ev_base_kw=float(self.cfg[CONF_BASE_KW]),
+            house_samples=self._house_history,
+            charging_ev_samples=self._ev_history if charging is True else ())
         self.departure = None
         target_reached = None
         if car:
@@ -412,13 +468,9 @@ class RCController:
                 target_reached = soc >= target
                 remaining = max(0, target-soc) / 100 * float(car[CONF_CAPACITY]) / float(car[CONF_EFFICIENCY])
                 self.remaining_kwh = round(remaining, 2)
-                # User-configured conservative planning rate, NOT inferred
-                # from the instantaneous DPM-limited vehicle power.
-                rate = min(float(self.cfg[CONF_BASE_KW]), float(car["planning_rate_kw"]))
-                if departure and rate >= 1.4:
-                    duration_minutes = remaining / rate * 60
-                    self.margin_minutes = ((departure-now).total_seconds()/60
-                                           - 30 - duration_minutes)
+                self.margin_minutes = estimate_margin(
+                    now=now, departure=departure,
+                    remaining_kwh=remaining, rate_kw=self.planning_rate_kw)
         # The positive configured limit is the *mathematical* DPM reference.
         # Observed zero means parked, NOT a zero power budget for the stabilizer.
         expected_dpm = float(self.cfg[CONF_EXPECTED_DPM])
@@ -430,7 +482,7 @@ class RCController:
                       enabled is not None and
                       (dpm_normal or (dpm_parked and dpm_owned)) and
                       actual_limit is not None and requested is not None and
-                      target_reached is not None and self.margin_minutes is not None)
+                      target_reached is not None)
         return dict(cable=cable, car=car, charging=charging,
                     enabled=enabled, active=active, fault=fault,
                     telemetry=telemetry, house=house, house_at=house_at,
@@ -710,18 +762,7 @@ class RCController:
                 # a multi-hour scheduled wait. One additional BLE register
                 # read is justified precisely when starting is due.
                 now_ready = datetime.now(timezone.utc)
-                latest = (self.departure - timedelta(
-                    minutes=30 + 60 * self.remaining_kwh / max(
-                        1.4, min(float(self.cfg[CONF_BASE_KW]),
-                                 float(current["car"]["planning_rate_kw"]))))
-                    if self.departure is not None and
-                    self.remaining_kwh is not None else None)
-                if latest is None:
-                    return
-                scheduled = (self._planned_start(now_ready)
-                             if self.delay_enabled else now_ready)
-                if (self.charge_now or not self.delay_enabled or
-                        now_ready >= min(scheduled, latest)):
+                if self._safe_start_due(now_ready):
                     if not self._start_refresh_attempted:
                         self._start_refresh_attempted = True
                         self._start_refresh_at = now_ready
@@ -796,9 +837,11 @@ class RCController:
                     dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]), current_kw=current["actual"],
                     margin_minutes=self.margin_minutes,
                     remaining_budget_kwh=(
-                        max(0.0, self.margin_minutes/60 * 2.4 * .25)
-                        if self.margin_minutes is not None and self.margin_minutes > 45
-                        else 0.0),
+                        max(0.0, (self.margin_minutes-45)/60 *
+                            self.planning_rate_kw * .25)
+                        if self.margin_minutes is not None and
+                           self.margin_minutes > 45 and
+                           self.planning_rate_kw is not None else 0.0),
                     max_kw=base, boost_max_kw=float(self.cfg[CONF_BOOST_KW]),
                 )
                 state, decision = evaluate(o, self._power_state)
@@ -820,21 +863,10 @@ class RCController:
                     (self._park_owned or self._dpm_lease is not None)):
                 return
 
-            # A requested refresh is never proof that cloud telemetry arrived.
             if not self._car_update_ready(datetime.now(timezone.utc), current["car"]):
                 return
             now_decision = datetime.now(timezone.utc)
-            start = self._planned_start(now_decision) if self.delay_enabled else now_decision
-            latest = (self.departure - timedelta(
-                minutes=30 + 60 * self.remaining_kwh / max(
-                    1.4, min(float(self.cfg[CONF_BASE_KW]),
-                             float(current["car"]["planning_rate_kw"]))))
-                if self.departure is not None and
-                self.remaining_kwh is not None else None)
-            if latest is None:
-                return
-            if (self.delay_enabled and not self.charge_now and
-                    start > now_decision and latest > now_decision):
+            if not self._safe_start_due(now_decision):
                 self.status, self.reason = "In attesa", "delayed_start_ready"
                 self._notify()
                 return
