@@ -169,7 +169,7 @@ class RCOptionsFlow(OptionsFlowWithReload):
     """Editable sources, car schedules and lab; never the currently active lease."""
 
     async def async_step_init(self, user_input=None):
-        return self.async_show_menu(step_id="init", menu_options=["wallbox", "vehicle"])
+        return self.async_show_menu(step_id="init", menu_options=["wallbox", "choose_vehicle"])
 
     async def async_step_wallbox(self, user_input=None):
         existing = {**self.config_entry.data, **self.config_entry.options}
@@ -203,30 +203,34 @@ class RCOptionsFlow(OptionsFlowWithReload):
         })
         return self.async_show_form(step_id="wallbox", data_schema=schema, errors=errors)
 
-    async def async_step_vehicle(self, user_input=None):
-        """Offer one revised schedule and target per car; configured by cable ID."""
-        cars = self.config_entry.data[CONF_VEHICLES]
-        options = self.config_entry.options
+    async def async_step_choose_vehicle(self, user_input=None):
+        vehicles = self.config_entry.data[CONF_VEHICLES]
+        choices = {v[CONF_CABLE]: v[CONF_NAME] for v in vehicles}
         if user_input is not None:
-            result = {}
-            for idx, car in enumerate(cars):
-                weekday, weekend = user_input.get(f"weekday_{idx}"), user_input.get(f"weekend_{idx}")
-                if not clock(weekday) or not clock(weekend):
-                    return self.async_show_form(step_id="vehicle",
-                        data_schema=self._vehicle_schema(cars, options),
-                        errors={"base": "invalid_clock"})
-                result[car[CONF_CABLE]] = {
-                    CONF_DEPARTURE_WEEKDAY: weekday, CONF_DEPARTURE_WEEKEND: weekend}
-            return self.async_create_entry(data={**options, "vehicle_schedules": result})
-        return self.async_show_form(step_id="vehicle",
-                                    data_schema=self._vehicle_schema(cars, options))
+            self._chosen_cable = user_input["vehicle"]
+            return await self.async_step_vehicle()
+        return self.async_show_form(
+            step_id="choose_vehicle",
+            data_schema=vol.Schema({vol.Required("vehicle"): vol.In(choices)}))
 
-    @staticmethod
-    def _vehicle_schema(cars, options):
-        s = {}
-        overrides = options.get("vehicle_schedules", {})
-        for idx, car in enumerate(cars):
-            v = {**car, **overrides.get(car[CONF_CABLE], {})}
-            s[vol.Required(f"weekday_{idx}", default=v[CONF_DEPARTURE_WEEKDAY])] = TextSelector()
-            s[vol.Required(f"weekend_{idx}", default=v[CONF_DEPARTURE_WEEKEND])] = TextSelector()
-        return vol.Schema(s)
+    async def async_step_vehicle(self, user_input=None):
+        car = next((v for v in self.config_entry.data[CONF_VEHICLES]
+                    if v[CONF_CABLE] == getattr(self, "_chosen_cable", None)), None)
+        if car is None:
+            return await self.async_step_choose_vehicle()
+        options = self.config_entry.options
+        old = {**car, **options.get("vehicle_schedules", {}).get(car[CONF_CABLE], {})}
+        errors = {}
+        if user_input is not None:
+            if not clock(user_input[CONF_DEPARTURE_WEEKDAY]) or not clock(user_input[CONF_DEPARTURE_WEEKEND]):
+                errors["base"] = "invalid_clock"
+            else:
+                saved = dict(options.get("vehicle_schedules", {}))
+                saved[car[CONF_CABLE]] = dict(user_input)
+                return self.async_create_entry(data={**options, "vehicle_schedules": saved})
+        return self.async_show_form(
+            step_id="vehicle", errors=errors,
+            data_schema=vol.Schema({
+                vol.Required(CONF_DEPARTURE_WEEKDAY, default=old[CONF_DEPARTURE_WEEKDAY]): TextSelector(),
+                vol.Required(CONF_DEPARTURE_WEEKEND, default=old[CONF_DEPARTURE_WEEKEND]): TextSelector(),
+            }))
