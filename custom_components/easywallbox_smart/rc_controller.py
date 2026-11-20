@@ -411,16 +411,12 @@ class RCController:
             return now >= min(self._planned_start(now), latest)
         if self.departure is None or self.remaining_kwh is None:
             return False
-        # Configured base is an optimistic physical upper bound, NOT a
-        # forecast. An unknown forecast must never delay past this bound.
-        optimistic_minutes = (
-            30+60*self.remaining_kwh/float(self.cfg[CONF_BASE_KW]))
-        if (self.departure-now).total_seconds()/60 <= optimistic_minutes:
-            return True
-        # Try to establish a real 20-min Shelly history; if insufficient,
-        # start conservatively after 15 min rather than assume a fake rate.
-        return (self._connect_since is not None and
-                now-self._connect_since >= timedelta(minutes=15))
+        # The configured base is only an optimistic PHYSICAL upper bound,
+        # never presented as a measured sustainable rate. Do not discard
+        # the user's delayed start just because history is still building.
+        optimistic_latest = self.departure - timedelta(
+            minutes=30+60*self.remaining_kwh/float(self.cfg[CONF_BASE_KW]))
+        return now >= min(self._planned_start(now), optimistic_latest)
 
     def _snapshot(self, now):
         cable = self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now)
