@@ -835,6 +835,17 @@ class RCController:
             # On boot, a previously ACKed delayed pause may be recovered
             # only from live matching BLE/Shelly facts.
             self._recover_verified_delay_lease(snapshot)
+            # A persisted lease for another vehicle or another delay cannot
+            # legitimize the observed 0 A. Fail closed, never adopt it.
+            if (self._saved_delay_lease is not None and
+                    self._dpm_lease is None and
+                    snapshot["dpm_parked"] is True and
+                    (self._saved_delay_lease.get("vehicle") != identity or
+                     not self.delay_enabled or self._scheduled_at is None or
+                     self._saved_delay_lease.get("start") !=
+                         self._scheduled_at.isoformat())):
+                self._blocked = "saved_delay_lease_mismatch"
+                self.real_enabled = False
             if (self._pending is None and
                     snapshot["dpm"] is not None and
                     snapshot["dpm"] <= .06 and
