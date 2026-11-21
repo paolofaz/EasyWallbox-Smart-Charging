@@ -8,7 +8,7 @@ from .device import controller_device_info
 
 SWITCHES = {
     "real": ("Controllo reale", "mdi:shield-check"),
-    "delay": ("Avvio posticipato", "mdi:clock-start"),
+    "delay": ("Avvio ricarica posticipato", "mdi:clock-start"),
 }
 
 
