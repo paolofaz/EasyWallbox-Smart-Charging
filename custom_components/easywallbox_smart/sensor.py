@@ -1,27 +1,47 @@
-"""Two event-driven diagnostic entities; never mirror fast Shelly watt streams."""
-from homeassistant.components.sensor import SensorEntity
+"""Meaningful session sensors, updated on semantic changes only.
+
+These do not duplicate Shelly power/energy, BLE cable or DPM readings.
+No polling, countdown state, or high-frequency Recorder attributes.
+"""
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.core import callback
 from homeassistant.helpers.entity import EntityCategory
+
 from .const import DOMAIN
 from .device import controller_device_info
 
 
+SENSORS = {
+    "state": ("Stato ricarica", "mdi:car-electric"),
+    "planner": ("Avviso ricarica", "mdi:information-outline"),
+    "vehicle": ("Veicolo rilevato", "mdi:car"),
+    "phase": ("Stabilizzatore", "mdi:chart-bell-curve"),
+    "energy": ("Energia residua stimata", "mdi:battery-charging"),
+    "finish": ("Fine carica prevista", "mdi:clock-check-outline"),
+}
+
+
 async def async_setup_entry(hass, entry, add_entities):
     c = hass.data[DOMAIN][entry.entry_id]
-    add_entities([RCSensor(c, entry, kind) for kind in ("state", "planner")])
+    add_entities([RCSensor(c, entry, kind) for kind in SENSORS])
 
 
 class RCSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, controller, entry, kind):
         self.c, self.kind = controller, kind
         self._attr_device_info = controller_device_info(entry)
         self._attr_unique_id = entry.entry_id + "_rc_" + kind
-        self._attr_name = ("Stato ricarica" if kind == "state" else "Pianificazione ricarica")
-        self._attr_icon = ("mdi:car-electric" if kind == "state" else "mdi:calendar-clock")
+        self._attr_name, self._attr_icon = SENSORS[kind]
+        if kind in ("state", "planner"):
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        elif kind == "energy":
+            self._attr_native_unit_of_measurement = "kWh"
+            self._attr_device_class = SensorDeviceClass.ENERGY
+        elif kind == "finish":
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -33,12 +53,21 @@ class RCSensor(SensorEntity):
 
     @property
     def native_value(self):
-        return self.c.status if self.kind == "state" else (
-            "target_raggiunto" if self.c.soc is not None and
-            self.c.target_soc is not None and self.c.soc >= self.c.target_soc
-            else "stimato" if self.c.margin_minutes is not None
-            else "dati_insufficienti"
-        )
+        if self.kind == "state":
+            return self.c.status
+        if self.kind == "planner":
+            return self.c.notice
+        if self.kind == "vehicle":
+            return self.c.vehicle_name or "Nessuna"
+        if self.kind == "phase":
+            return (self.c._power_state.phase if
+                    self.c.charging_verified is True and
+                    self.c._power_state is not None else "INATTIVO")
+        if self.kind == "energy":
+            return self.c._energy_display
+        if self.kind == "finish":
+            return self.c._finish_display
+        return None
 
     @property
     def extra_state_attributes(self):
@@ -47,7 +76,7 @@ class RCSensor(SensorEntity):
                 "reason": self.c.reason,
                 "quality": self.c.quality,
                 "mode": self.c.mode,
-                "real_control_armed": self.c.real_enabled,
+                "automatic_control_configured": self.c.real_enabled,
                 "session_vehicle": self.c.vehicle_name,
                 "soc_stop_enabled_for_vehicle": self.c.stop_at_target_enabled,
                 "soc_stop_verified_this_session": self.c._soc_stop_done,
@@ -55,23 +84,5 @@ class RCSensor(SensorEntity):
                 "last_verified_command": self.c.last_ack,
                 "pending_command": self.c._pending.kind if self.c._pending else None,
                 "reconciliation_required": self.c._blocked,
-                "charging_phase": self.c._power_state.phase if self.c._power_state else None,
-                "charging_limit_kw": self.c._power_state.cap_kw if self.c._power_state else None,
-                "hardware_safety": "physical_DPM_always_active",
             }
-        return {
-            "target_soc": self.c.target_soc,
-            "departure_at": self.c.departure.isoformat() if self.c.departure else None,
-            "departure_override": self.c.departure_override.isoformat()
-                if self.c.departure_override else None,
-            "remaining_grid_kwh": self.c.remaining_kwh,
-            # Slack is intentionally not exposed as a constantly changing
-            # attribute: Recorder only gets semantic transitions.
-            "margin_band": ("unknown" if self.c.margin_minutes is None
-                            else "urgent" if self.c.margin_minutes <= 60
-                            else "wide" if self.c.margin_minutes >= 75
-                            else "medium"),
-            "delayed_start_enabled": self.c.delay_enabled,
-            "preferred_start_time": self.c.preferred_start.isoformat(timespec="minutes"),
-            "model_not_guarantee": True,
-        }
+        return {}
