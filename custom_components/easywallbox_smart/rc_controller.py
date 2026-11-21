@@ -65,6 +65,10 @@ class RCController:
         self.target_soc = None
         self.margin_minutes = None
         self.remaining_kwh = None
+        self.charging_verified = None
+        self.notice = "Nessun avviso"
+        self._finish_display = None
+        self._energy_display = None
         self.planning_rate_kw = None
         self._house_history = deque(maxlen=48)
         self._ev_history = deque(maxlen=48)
@@ -491,8 +495,11 @@ class RCController:
                 fault is False and active is True and charging is not None
                 and house is not None and dpm is not None) else "incomplete"
         self.vehicle_name = car[CONF_NAME] if car else None
+        self.charging_verified = charging
         self.stop_at_target_enabled = bool(car.get(CONF_STOP_AT_TARGET)) if car else None
         self.soc = self.target_soc = self.margin_minutes = self.remaining_kwh = None
+        self._energy_display = None
+        self._finish_display = None
         self.planning_rate_kw = estimate_ac_kw(
             now=now, dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]),
             ev_base_kw=float(self.cfg[CONF_BASE_KW]),
@@ -515,6 +522,15 @@ class RCController:
                 self.margin_minutes = estimate_margin(
                     now=now, departure=departure,
                     remaining_kwh=remaining, rate_kw=self.planning_rate_kw)
+                self._energy_display = round(remaining, 1)
+                if self.planning_rate_kw is not None:
+                    estimate = now + timedelta(hours=remaining/self.planning_rate_kw)
+                    # 10-minute publication buckets, no per-minute countdown.
+                    rounded = round(estimate.timestamp()/600)*600
+                    self._finish_display = datetime.fromtimestamp(
+                        rounded, timezone.utc)
+                else:
+                    self._finish_display = None
         # The positive configured limit is the *mathematical* DPM reference.
         # Observed zero means parked, NOT a zero power budget for the stabilizer.
         expected_dpm = float(self.cfg[CONF_EXPECTED_DPM])
@@ -538,7 +554,11 @@ class RCController:
 
     def _fingerprint(self):
         # Recorder: publish only status/decision transitions, never raw 1s watts.
-        return (self.status, self.reason, self.mode, self.real_enabled,
+        return (self.status, self.reason, self.notice,
+                self._energy_display,
+                self._finish_display.isoformat() if self._finish_display else None,
+                self.charging_verified,
+                self.mode, self.real_enabled,
                 self.delay_enabled,
                 self.vehicle_name, self.quality, self.stop_at_target_enabled, self._soc_stop_done,
                 self.departure.isoformat() if self.departure else None,
@@ -556,6 +576,26 @@ class RCController:
             self._last_key = key
             for listener in tuple(self._listeners):
                 listener()
+
+    def _update_notice(self, now):
+        if self._blocked:
+            self.notice = "Controllo sospeso: " + self._blocked
+            return
+        if self.delay_enabled and self._scheduled_at is not None:
+            target = self._scheduled_at.astimezone(
+                ZoneInfo(self.hass.config.time_zone))
+            latest = self._latest_start(now)
+            if latest is not None and target > latest:
+                self.notice = (
+                    "Avvio scelto " + target.strftime("%H:%M")
+                    + "; per il target entro la partenza serviva iniziare "
+                    + latest.astimezone(target.tzinfo).strftime("%H:%M")
+                    + ". Non anticipo l'avvio.")
+            else:
+                self.notice = ("Posticipo richiesto per le "
+                               + target.strftime("%H:%M"))
+        else:
+            self.notice = "Nessun avviso"
 
     def _house_subscribe(self, on_now):
         if on_now and self._house_unsub is None:
@@ -604,6 +644,11 @@ class RCController:
             self._status_acks(now, None)
             self.status, self.reason = ("Wallbox non disponibile",
                                         "ble_offline_normal")
+            self.notice = "Wallbox spenta o BLE non collegato"
+            self.charging_verified = None
+            self._finish_display = None
+            self._energy_display = None
+            self.vehicle_name = None
             self.quality = "offline"
             self._reschedule(now, False)
             self._notify()
@@ -774,6 +819,7 @@ class RCController:
                 self.reason = "waiting_or_stopped"
             else:
                 self.status, self.reason = "Da riconciliare", "charging_unverified"
+        self._update_notice(now)
         self._reschedule(now, cable is True)
         if (self.real_enabled and cable is True and
                 self.mode == "automatic" and
