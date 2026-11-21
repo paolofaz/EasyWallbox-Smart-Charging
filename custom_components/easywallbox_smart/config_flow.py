@@ -45,6 +45,7 @@ WALLBOX = vol.Schema({
     vol.Required(CONF_HOUSE_SOURCES): entity("sensor", True),
     vol.Required(CONF_EV_POWER): entity("sensor"),
     vol.Required(CONF_WALLBOX_CONNECTED): entity("binary_sensor"),
+    vol.Optional(CONF_BLE_CONNECTED): entity("binary_sensor"),
     vol.Required(CONF_WALLBOX_CHARGING): entity("binary_sensor"),
     vol.Required(CONF_TELEMETRY_FRESH): entity("binary_sensor"),
     vol.Required(CONF_DPM_ACTIVE): entity("binary_sensor"),
@@ -60,6 +61,7 @@ WALLBOX = vol.Schema({
     vol.Required(CONF_BASE_KW, default=DEFAULT_BASE_KW): number(1.4, 6.0, .2),
     vol.Required(CONF_BOOST_KW, default=DEFAULT_BOOST_KW): number(1.4, 6.0, .2),
     vol.Required(CONF_LEGACY_DISABLED, default=False): bool,
+    vol.Required(CONF_AUTOMATIC_CONTROL_ENABLED, default=False): bool,
 })
 VEHICLE = vol.Schema({
     vol.Required(CONF_NAME): TextSelector(),
@@ -90,8 +92,12 @@ def check_wallbox(x):
     ]
     if x.get(CONF_WALLBOX_REFRESH):
         other.append(x[CONF_WALLBOX_REFRESH])
+    if x.get(CONF_BLE_CONNECTED):
+        other.append(x[CONF_BLE_CONNECTED])
     if len(set(other)) != len(other) or set(ids) & set(other):
         return "duplicate_entities"
+    if x.get(CONF_AUTOMATIC_CONTROL_ENABLED) and not x.get(CONF_LEGACY_DISABLED):
+        return "competing_controller_not_disabled"
     if (not power_step(x.get(CONF_BASE_KW))
             or not power_step(x.get(CONF_BOOST_KW))
             or float(x[CONF_BOOST_KW]) < float(x[CONF_BASE_KW])
@@ -231,6 +237,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             vol.Required(CONF_HOUSE_SOURCES, default=existing[CONF_HOUSE_SOURCES]): entity("sensor", True),
             vol.Required(CONF_EV_POWER, default=existing[CONF_EV_POWER]): entity("sensor"),
             vol.Required(CONF_WALLBOX_CONNECTED, default=existing[CONF_WALLBOX_CONNECTED]): entity("binary_sensor"),
+            vol.Optional(CONF_BLE_CONNECTED): entity("binary_sensor"),
             vol.Required(CONF_WALLBOX_CHARGING, default=existing[CONF_WALLBOX_CHARGING]): entity("binary_sensor"),
             vol.Required(CONF_TELEMETRY_FRESH, default=existing[CONF_TELEMETRY_FRESH]): entity("binary_sensor"),
             vol.Required(CONF_DPM_ACTIVE, default=existing[CONF_DPM_ACTIVE]): entity("binary_sensor"),
@@ -246,6 +253,7 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             vol.Required(CONF_BASE_KW, default=existing[CONF_BASE_KW]): number(1.4, 6, .2),
             vol.Required(CONF_BOOST_KW, default=existing[CONF_BOOST_KW]): number(1.4, 6, .2),
             vol.Required(CONF_LEGACY_DISABLED, default=existing.get(CONF_LEGACY_DISABLED, False)): bool,
+            vol.Required(CONF_AUTOMATIC_CONTROL_ENABLED, default=existing.get(CONF_AUTOMATIC_CONTROL_ENABLED, False)): bool,
         })
         return self.async_show_form(step_id="wallbox", data_schema=schema, errors=errors)
 
