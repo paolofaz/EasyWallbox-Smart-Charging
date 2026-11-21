@@ -12,6 +12,7 @@ from homeassistant.helpers.selector import (
 )
 from .const import *
 from .vehicle_profiles import configured_vehicles, upsert_vehicle, remove_vehicle
+from .wallbox_discovery import discover_from_start_stop, DiscoveryError
 
 
 def entity(domains, multiple=False):
@@ -60,8 +61,6 @@ WALLBOX = vol.Schema({
     vol.Required(CONF_EXPECTED_DPM, default=DEFAULT_DPM_KW): number(1.4, 6.0, .1),
     vol.Required(CONF_BASE_KW, default=DEFAULT_BASE_KW): number(1.4, 6.0, .2),
     vol.Required(CONF_BOOST_KW, default=DEFAULT_BOOST_KW): number(1.4, 6.0, .2),
-    vol.Required(CONF_LEGACY_DISABLED, default=False): bool,
-    vol.Required(CONF_AUTOMATIC_CONTROL_ENABLED, default=False): bool,
 })
 VEHICLE = vol.Schema({
     vol.Required(CONF_NAME): TextSelector(),
@@ -76,6 +75,49 @@ VEHICLE = vol.Schema({
     vol.Required(CONF_DEPARTURE_WEEKEND, default="08:00"): TextSelector(),
     vol.Required(CONF_ADD_ANOTHER, default=False): bool,
 })
+
+
+# Basic first: the firmware reports everything else via the same ESPHome device.
+# The full manual mapping remains available for alternate firmware revisions.
+BASIC_WALLBOX = vol.Schema({
+    vol.Required(CONF_HOUSE_SOURCES): entity("sensor", True),
+    vol.Required(CONF_EV_POWER): entity("sensor"),
+    vol.Required(CONF_START_STOP): entity("switch"),
+    vol.Required(CONF_EXPECTED_DPM, default=DEFAULT_DPM_KW): number(1.4, 6.0, .1),
+    vol.Required(CONF_BASE_KW, default=DEFAULT_BASE_KW): number(1.4, 6.0, .2),
+    vol.Required(CONF_BOOST_KW, default=DEFAULT_BOOST_KW): number(1.4, 6.0, .2),
+})
+
+
+def _full_basic(hass, data, previous=None):
+    """Compose minimal user input with unambiguous ESPHome registry evidence."""
+    result = dict(data)
+    anchor = data[CONF_START_STOP]
+    try:
+        resolved = discover_from_start_stop(hass, anchor)
+    except DiscoveryError:
+        # Existing verified mappings may be retained only if the SAME
+        # Start-Stop entity is selected; never cross-match another device.
+        if previous is None or previous.get(CONF_START_STOP) != anchor:
+            raise
+        required = [k for k in (
+            CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING,
+            CONF_TELEMETRY_FRESH, CONF_DPM_ACTIVE, CONF_WALLBOX_FAULT,
+            CONF_CHARGE_ENABLED, CONF_COMMAND_STATUS, CONF_REQUESTED_LIMIT,
+            CONF_CONFIRMED_LIMIT, CONF_DPM_CONFIRMED, CONF_WALLBOX_REFRESH,
+        ) if not previous.get(k)]
+        if required:
+            raise
+        resolved = {k: previous[k] for k in (
+            CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING,
+            CONF_TELEMETRY_FRESH, CONF_DPM_ACTIVE, CONF_WALLBOX_FAULT,
+            CONF_CHARGE_ENABLED, CONF_COMMAND_STATUS, CONF_REQUESTED_LIMIT,
+            CONF_CONFIRMED_LIMIT, CONF_DPM_CONFIRMED, CONF_WALLBOX_REFRESH,
+        )}
+        if previous.get(CONF_BLE_CONNECTED):
+            resolved[CONF_BLE_CONNECTED] = previous[CONF_BLE_CONNECTED]
+    result.update(resolved)
+    return result
 
 
 def check_wallbox(x):
@@ -96,8 +138,6 @@ def check_wallbox(x):
         other.append(x[CONF_BLE_CONNECTED])
     if len(set(other)) != len(other) or set(ids) & set(other):
         return "duplicate_entities"
-    if x.get(CONF_AUTOMATIC_CONTROL_ENABLED) and not x.get(CONF_LEGACY_DISABLED):
-        return "competing_controller_not_disabled"
     if (not power_step(x.get(CONF_BASE_KW))
             or not power_step(x.get(CONF_BOOST_KW))
             or float(x[CONF_BOOST_KW]) < float(x[CONF_BASE_KW])
@@ -119,20 +159,45 @@ class EasyWallboxSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry: ConfigEntry):
         return EasyWallboxSmartOptionsFlow()
 
+    async def _accept_wallbox(self, config):
+        reason = check_wallbox(config)
+        if reason:
+            return reason
+        await self.async_set_unique_id("easywallbox_rc_local")
+        self._abort_if_unique_id_configured()
+        self._wallbox = config
+        return None
+
     async def async_step_user(self, user_input=None):
         if self._async_current_entries():
             return self.async_abort(reason="already_configured")
         errors = {}
         if user_input is not None:
-            reason = check_wallbox(user_input)
-            if reason:
-                errors["base"] = reason
+            try:
+                resolved = _full_basic(self.hass, user_input)
+            except DiscoveryError:
+                # Alternate ESPHome builds can still be configured explicitly.
+                return await self.async_step_advanced_user()
+            failure = await self._accept_wallbox(resolved)
+            if failure:
+                errors["base"] = failure
             else:
-                await self.async_set_unique_id("easywallbox_rc_local")
-                self._abort_if_unique_id_configured()
-                self._wallbox = dict(user_input)
                 return await self.async_step_vehicle()
-        return self.async_show_form(step_id="user", data_schema=WALLBOX, errors=errors)
+        return self.async_show_form(
+            step_id="user", data_schema=BASIC_WALLBOX, errors=errors)
+
+    async def async_step_advanced_user(self, user_input=None):
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
+        errors = {}
+        if user_input is not None:
+            failure = await self._accept_wallbox(dict(user_input))
+            if failure:
+                errors["base"] = failure
+            else:
+                return await self.async_step_vehicle()
+        return self.async_show_form(
+            step_id="advanced_user", data_schema=WALLBOX, errors=errors)
 
     async def async_step_vehicle(self, user_input=None):
         errors = {}
@@ -219,11 +284,50 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
     async def async_step_init(self, user_input=None):
         return self.async_show_menu(
             step_id="init",
-            menu_options=["wallbox", "choose_vehicle",
+            menu_options=["wallbox", "advanced_wallbox", "choose_vehicle",
                           "add_vehicle", "remove_vehicle"])
 
+    def _wallbox_settings(self):
+        return {**self.config_entry.data, **self.config_entry.options}
+
+    def _without_old_flags(self):
+        return {k: v for k, v in self.config_entry.options.items()
+                if k not in (CONF_LEGACY_DISABLED, CONF_AUTOMATIC_CONTROL_ENABLED)}
+
     async def async_step_wallbox(self, user_input=None):
-        existing = {**self.config_entry.data, **self.config_entry.options}
+        existing = self._wallbox_settings()
+        errors = {}
+        if user_input is not None:
+            try:
+                resolved = _full_basic(self.hass, user_input, existing)
+            except DiscoveryError:
+                errors["base"] = "automatic_detection_failed"
+            else:
+                reason = check_wallbox(resolved)
+                if reason:
+                    errors["base"] = reason
+                else:
+                    return self.async_create_entry(
+                        data={**self._without_old_flags(), **resolved})
+        schema = vol.Schema({
+            vol.Required(CONF_HOUSE_SOURCES,
+                         default=existing[CONF_HOUSE_SOURCES]): entity("sensor", True),
+            vol.Required(CONF_EV_POWER,
+                         default=existing[CONF_EV_POWER]): entity("sensor"),
+            vol.Required(CONF_START_STOP,
+                         default=existing[CONF_START_STOP]): entity("switch"),
+            vol.Required(CONF_EXPECTED_DPM,
+                         default=existing[CONF_EXPECTED_DPM]): number(1.4, 6.0, .1),
+            vol.Required(CONF_BASE_KW,
+                         default=existing[CONF_BASE_KW]): number(1.4, 6.0, .2),
+            vol.Required(CONF_BOOST_KW,
+                         default=existing[CONF_BOOST_KW]): number(1.4, 6.0, .2),
+        })
+        return self.async_show_form(
+            step_id="wallbox", data_schema=schema, errors=errors)
+
+    async def async_step_advanced_wallbox(self, user_input=None):
+        existing = self._wallbox_settings()
         errors = {}
         if user_input is not None:
             combined = {**existing, **user_input}
@@ -232,12 +336,12 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
                 errors["base"] = reason
             else:
                 return self.async_create_entry(
-                    data={**self.config_entry.options, **user_input})
+                    data={**self._without_old_flags(), **user_input})
         schema = vol.Schema({
             vol.Required(CONF_HOUSE_SOURCES, default=existing[CONF_HOUSE_SOURCES]): entity("sensor", True),
             vol.Required(CONF_EV_POWER, default=existing[CONF_EV_POWER]): entity("sensor"),
             vol.Required(CONF_WALLBOX_CONNECTED, default=existing[CONF_WALLBOX_CONNECTED]): entity("binary_sensor"),
-            vol.Optional(CONF_BLE_CONNECTED): entity("binary_sensor"),
+            vol.Optional(CONF_BLE_CONNECTED, default=existing.get(CONF_BLE_CONNECTED)): entity("binary_sensor"),
             vol.Required(CONF_WALLBOX_CHARGING, default=existing[CONF_WALLBOX_CHARGING]): entity("binary_sensor"),
             vol.Required(CONF_TELEMETRY_FRESH, default=existing[CONF_TELEMETRY_FRESH]): entity("binary_sensor"),
             vol.Required(CONF_DPM_ACTIVE, default=existing[CONF_DPM_ACTIVE]): entity("binary_sensor"),
@@ -252,10 +356,9 @@ class EasyWallboxSmartOptionsFlow(OptionsFlowWithReload):
             vol.Required(CONF_EXPECTED_DPM, default=existing[CONF_EXPECTED_DPM]): number(1.4, 6, .1),
             vol.Required(CONF_BASE_KW, default=existing[CONF_BASE_KW]): number(1.4, 6, .2),
             vol.Required(CONF_BOOST_KW, default=existing[CONF_BOOST_KW]): number(1.4, 6, .2),
-            vol.Required(CONF_LEGACY_DISABLED, default=existing.get(CONF_LEGACY_DISABLED, False)): bool,
-            vol.Required(CONF_AUTOMATIC_CONTROL_ENABLED, default=existing.get(CONF_AUTOMATIC_CONTROL_ENABLED, False)): bool,
         })
-        return self.async_show_form(step_id="wallbox", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="advanced_wallbox", data_schema=schema, errors=errors)
 
     async def async_step_choose_vehicle(self, user_input=None):
         if user_input is not None:
