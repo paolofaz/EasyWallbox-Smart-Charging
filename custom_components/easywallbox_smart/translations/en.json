@@ -23,7 +23,9 @@
           "base_kw": "Potenza massima normale EV (kW)",
           "boost_kw": "Potenza massima boost EV (kW)",
           "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate",
-          "wallbox_refresh_button": "ESPHome BLE refresh button"
+          "wallbox_refresh_button": "ESPHome BLE refresh button",
+          "ble_connected": "ESPHome BLE Connection (optional; recommended)",
+          "automatic_control_enabled": "Authorize automatic real control after verification (default OFF)"
         }
       },
       "vehicle": {
@@ -71,7 +73,8 @@
       "invalid_power": "Potenza base/boost non consentita",
       "duplicate_vehicle": "Auto o cavo già presenti",
       "invalid_clock": "Orario HH:MM non valido",
-      "invalid_target": "Target SOC non valido"
+      "invalid_target": "Target SOC non valido",
+      "competing_controller_not_disabled": "Disable competing automations on Start-Stop and Charge power before enabling automatic control"
     },
     "abort": {
       "already_configured": "Wallbox già configurata"
@@ -108,7 +111,9 @@
           "base_kw": "Potenza EV normale",
           "boost_kw": "Potenza boost",
           "legacy_automations_disabled": "Automazioni concorrenti disabilitate",
-          "wallbox_refresh_button": "ESPHome Refresh data (optional)"
+          "wallbox_refresh_button": "ESPHome Refresh data (optional)",
+          "ble_connected": "ESPHome BLE Connection (recommended)",
+          "automatic_control_enabled": "Enable real automatic control (only when competing automations are disabled)"
         }
       },
       "choose_vehicle": {
@@ -171,7 +176,8 @@
       "invalid_clock": "Enter departure times as HH:MM",
       "duplicate_vehicle": "Name or cable sensor already assigned to another car",
       "invalid_vehicle": "Incomplete or invalid vehicle profile",
-      "vehicle_missing": "Vehicle no longer exists"
+      "vehicle_missing": "Vehicle no longer exists",
+      "competing_controller_not_disabled": "Disable competing automations on Start-Stop and Charge power before enabling automatic control"
     },
     "abort": {
       "cannot_remove_last": "Cannot remove the only configured vehicle"
