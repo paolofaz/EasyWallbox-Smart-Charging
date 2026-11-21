@@ -21,6 +21,7 @@ from .const import *
 from .sources import finite_number, on, power_kw, next_departure
 from .rc_policy import Observation, State, evaluate
 from .planner_rate import estimate_ac_kw, margin_minutes as estimate_margin
+from .delay_window import validate_delay
 
 _LOGGER = logging.getLogger(__name__)
 WALLBOX_TTL = timedelta(minutes=2)
@@ -75,6 +76,7 @@ class RCController:
         self._seq = 0
         self._active_departure = None
         self._scheduled_at = None
+        self._delay_pause_attempted = False
         self._last_cable = None
         self._connect_since = None
         self._disconnect_since = None
@@ -115,6 +117,14 @@ class RCController:
         saved = await self._store.async_load() or {}
         self.mode = saved.get("mode") if saved.get("mode") in ("automatic", "manual") else "automatic"
         self.delay_enabled = bool(saved.get("delay", False))
+        try:
+            saved_schedule = saved.get("scheduled_at")
+            value = datetime.fromisoformat(saved_schedule) if saved_schedule else None
+            self._scheduled_at = value if value and value.utcoffset() is not None else None
+        except (ValueError, TypeError):
+            self._scheduled_at = None
+        if self.delay_enabled and self._scheduled_at is None:
+            self.delay_enabled = False
         self._fixed_target_overrides = (saved.get("fixed_target_overrides", {})
                                         if isinstance(saved.get("fixed_target_overrides", {}), dict)
                                         else {})
@@ -141,6 +151,8 @@ class RCController:
             "park_owned": self._park_owned,
             "fixed_target_overrides": self._fixed_target_overrides,
             "start": self.preferred_start.isoformat(timespec="minutes"),
+            "scheduled_at": (self._scheduled_at.isoformat()
+                             if self.delay_enabled and self._scheduled_at else None),
             "departure": self.departure_override.isoformat()
             if self.departure_override else None,
         })
@@ -404,24 +416,8 @@ class RCController:
         return self._active_departure
 
     def _planned_start(self, now):
-        local = now.astimezone(ZoneInfo(self.hass.config.time_zone))
-        if self._scheduled_at is not None:
-            return self._scheduled_at
-        connected_local = (self._connect_since or now).astimezone(
-            ZoneInfo(self.hass.config.time_zone))
-        scheduled = datetime.combine(connected_local.date(),
-                                     self.preferred_start,
-                                     tzinfo=connected_local.tzinfo)
-        if scheduled <= connected_local:
-            # 22:00 -> 02:00 is tomorrow; 23:30 -> 23:00 already
-            # passed and must never defer 24 hours by accident.
-            if (connected_local.hour >= 17 and
-                    self.preferred_start.hour <= 8):
-                scheduled += timedelta(days=1)
-            else:
-                scheduled = connected_local
-        self._scheduled_at = scheduled
-        return scheduled
+        """Read the validated absolute date/time saved with the session."""
+        return self._scheduled_at
 
     def _record_planning_power(self, now, house, house_at, ev_kw, charging):
         """Keep bounded samples in RAM, without additional HA entities."""
@@ -449,20 +445,9 @@ class RCController:
             minutes=30+60*self.remaining_kwh/self.planning_rate_kw)
 
     def _safe_start_due(self, now):
-        """Unknown average is not silently replaced with a fixed kW."""
-        if not self.delay_enabled or self.charge_now:
-            return True
-        latest = self._latest_start(now)
-        if latest is not None:
-            return now >= min(self._planned_start(now), latest)
-        if self.departure is None or self.remaining_kwh is None:
-            return False
-        # The configured base is only an optimistic PHYSICAL upper bound,
-        # never presented as a measured sustainable rate. Do not discard
-        # the user's delayed start just because history is still building.
-        optimistic_latest = self.departure - timedelta(
-            minutes=30+60*self.remaining_kwh/float(self.cfg[CONF_BASE_KW]))
-        return now >= min(self._planned_start(now), optimistic_latest)
+        """Explicit start time has priority over a departure estimate."""
+        return (not self.delay_enabled or
+                (self._scheduled_at is not None and now >= self._scheduled_at))
 
     def _snapshot(self, now):
         cable = self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now)
