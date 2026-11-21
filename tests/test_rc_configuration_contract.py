@@ -59,7 +59,7 @@ class RCConfigContract(unittest.TestCase):
                 self.assertNotIn("johnny", content)
                 self.assertNotIn("solo simulazione", content)
         switches=(COMP/"switch.py").read_text(encoding="utf-8")
-        self.assertEqual(switches.count('"real": ('),1)
+        self.assertEqual(switches.count('"real": ('),0)
         self.assertEqual(switches.count('"delay": ('),1)
 
     def test_config_labels_describe_target_and_planner_rate(self):
