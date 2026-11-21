@@ -1,6 +1,7 @@
-"""Preferred start clock for the current/next delayed session."""
+"""User-selected not-before time for a one-shot delayed charge."""
 from homeassistant.components.time import TimeEntity
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN
 from .device import controller_device_info
 
@@ -11,7 +12,7 @@ async def async_setup_entry(hass, entry, add_entities):
 
 class PreferredStartTime(TimeEntity):
     _attr_has_entity_name = True
-    _attr_name = "Ora inizio ricarica preferita"
+    _attr_name = "Inizia non prima delle"
     _attr_icon = "mdi:clock-outline"
     _attr_should_poll = False
 
@@ -33,4 +34,7 @@ class PreferredStartTime(TimeEntity):
         return self.controller.preferred_start
 
     async def async_set_value(self, value):
-        await self.controller.async_change("time", value)
+        try:
+            await self.controller.async_change("time", value)
+        except ValueError as error:
+            raise HomeAssistantError(str(error)) from error
