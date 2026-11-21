@@ -148,9 +148,9 @@ class RCController:
             self.departure_override = value if value and value.utcoffset() is not None else None
         except (TypeError, ValueError):
             self.departure_override = None
-        # Opt-in is persistent in HA config, not an extra UI switch.
-        # A restart changes no physical wallbox state: read it back first.
-        self.real_enabled = bool(self.cfg.get(CONF_AUTOMATIC_CONTROL_ENABLED, False))
+        # Installing the integration starts automatic management by default.
+        # No electrical command is allowed without fresh BLE/EV/Shelly facts.
+        self.real_enabled = True
         self._owned_limit = self._dpm_lease = self._pending = None
         self._blocked = None
 
@@ -923,7 +923,6 @@ class RCController:
         async with self._lock:
             now = datetime.now(timezone.utc)
             if (not self.real_enabled or self._park_attempted or
-                    not self.cfg.get(CONF_LEGACY_DISABLED, False) or
                     self._pending is not None or self._blocked or
                     self._disconnect_since is None or self._ev_idle_since is None or
                     now-self._disconnect_since < timedelta(seconds=30) or
@@ -1042,8 +1041,7 @@ class RCController:
             if (self.mode != "automatic" or not self.real_enabled
                     or self.explicit_pause or self._pending is not None
                     or self._blocked or current["cable"] is not True
-                    or current["car"] is None or current["charging"] is None
-                    or not self.cfg.get(CONF_LEGACY_DISABLED, False)):
+                    or current["car"] is None or current["charging"] is None):
                 return
             if (current["dpm"] is None and
                     (self._park_owned or self._dpm_lease is not None) and
@@ -1227,7 +1225,6 @@ class RCController:
                 if (not car.get(CONF_STOP_AT_TARGET, False) or
                         self._soc_stop_done or
                         self.mode != "automatic" or self.explicit_pause or
-                        not self.cfg.get(CONF_LEGACY_DISABLED, False) or
                         observed_charging is not True or
                         ev_kw is None or ev_kw < .10 or
                         self._binary(self.cfg[CONF_CHARGE_ENABLED], now) is not True or
@@ -1296,7 +1293,6 @@ class RCController:
                 self.real_enabled = False
                 self._blocked = None
             elif (self.mode == "automatic"
-                  and self.cfg.get(CONF_LEGACY_DISABLED, False)
                   and self._binary(self.cfg[CONF_WALLBOX_CONNECTED],
                                    datetime.now(timezone.utc)) is not None
                   and self._binary(self.cfg[CONF_TELEMETRY_FRESH],
