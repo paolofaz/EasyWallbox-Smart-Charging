@@ -613,6 +613,17 @@ class RCController:
                 self._refresh_deadline = None
             self._last_cable = cable
         self._status_acks(now, cable)
+        # The user-facing delayed-start switch is a ONE-SHOT request:
+        # clear only after the scheduled time AND confirmed charging,
+        # or when the cable is unplugged (handled above).
+        if (self.delay_enabled and self._scheduled_at is not None
+                and now >= self._scheduled_at and
+                snapshot["charging"] is True and self._pending is None
+                and self._dpm_lease is None):
+            self.delay_enabled = False
+            self._scheduled_at = None
+            self._delay_pause_attempted = False
+            self._schedule_save()
         if cable is False and self._disconnect_since is not None:
             if snapshot["ev_kw"] is not None and snapshot["ev_kw"] < .03:
                 if self._ev_idle_since is None:
@@ -621,6 +632,12 @@ class RCController:
                 self._ev_idle_since = None
         self._house_subscribe(cable is True)
         if cable is False:
+            # A delayed start belongs to one connection, not a future EV.
+            if self.delay_enabled and not self._connection:
+                self.delay_enabled = False
+                self._scheduled_at = None
+                self._delay_pause_attempted = False
+                self._schedule_save()
             # Reset Manual to AUTO at confirmed unplug, but a session's
             # physical actuation lease is never reconstituted from guesses.
             if self._connection:
@@ -628,6 +645,8 @@ class RCController:
                            self.departure_override is not None)
                 self.mode = "automatic"
                 self.delay_enabled = False
+                self._scheduled_at = None
+                self._delay_pause_attempted = False
                 self.departure_override = None
                 if changed:
                     self._schedule_save()
@@ -678,7 +697,9 @@ class RCController:
                     self._blocked = "park_command_interrupted_by_reconnection"
                 self._pending = None
                 self._active_departure = None
-                self._scheduled_at = None
+                if not self.delay_enabled:
+                    self._scheduled_at = None
+                self._delay_pause_attempted = False
                 self._prepared_session = None
                 self._soc_stop_done = False
                 self.charge_now = False
@@ -924,6 +945,14 @@ class RCController:
             # A charge in progress may ONLY change the EV limit, NEVER
             # operate the Start/Stop switch, including for a delayed start.
             if current["charging"] is True:
+                # Explicit user command, not a planner-generated pause.
+                # This is a separate exception from opt-in SOC stop.
+                if (self.delay_enabled and self._scheduled_at is not None
+                        and datetime.now(timezone.utc) < self._scheduled_at):
+                    if self._dpm_lease is None and not self._delay_pause_attempted:
+                        self._delay_pause_attempted = True
+                        await self._send("delay_pause", current["dpm"], None)
+                    return
                 if self._dpm_lease is not None:
                     self._blocked = "unexpected_charge_during_owned_pause"
                     self.status, self.reason = "Bloccata", self._blocked
@@ -1134,6 +1163,9 @@ class RCController:
             else:
                 raise ValueError("Enable only in AUTO with valid BLE and no competing automations")
         elif field == "delay":
+            if value and self.delay_enabled:
+                self.refresh()
+                return
             if value:
                 candidate = validate_delay(
                     datetime.now(timezone.utc), self.preferred_start,
