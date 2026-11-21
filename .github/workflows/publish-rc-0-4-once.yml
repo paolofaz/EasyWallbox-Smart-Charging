@@ -1,0 +1,100 @@
+name: Publish verified 0.4.0rc1
+on:
+  push:
+    branches: [RC]
+    paths: [".github/workflows/publish-rc-0-4-once.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.version }}
+      - run: python -m pip install "voluptuous>=0.15,<1"
+      - run: python -m compileall -q custom_components/easywallbox_smart tests
+      - run: python -m unittest discover -s tests -v
+      - run: |
+          python -m json.tool custom_components/easywallbox_smart/manifest.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/strings.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/it.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/en.json >/dev/null
+          python -m json.tool hacs.json >/dev/null
+
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@master
+
+  marketplace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          comment: "false"
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [python, hassfest, marketplace]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Reject partial or inconsistent RC builds
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("custom_components/easywallbox_smart")
+          assert json.loads((root/"manifest.json").read_text())["version"]=="0.4.0rc1"
+          assert not (root/"button.py").exists()
+          assert not (root/"datetime.py").exists()
+          fromcode=(root/"rc_controller.py").read_text()
+          assert "validate_delay(" in fromcode
+          assert '"delay_pause"' in fromcode
+          assert "self._saved_delay_lease" in fromcode
+          assert "self._wallbox_cable(now)" in fromcode
+          assert "current" in fromcode
+          timecode=(root/"time.py").read_text()
+          assert "ReadyByTime" in timecode
+          switch=(root/"switch.py").read_text()
+          assert '"real": (' not in switch
+          assert '"delay": (' in switch
+          sensors=(root/"sensor.py").read_text()
+          for key in ('"state":','"planner":','"vehicle":','"phase":','"energy":','"finish":'):
+              assert key in sensors, key
+          PY
+      - name: Create immutable GitHub prerelease from the tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.4.0rc1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists, refusing to overwrite"
+            exit 1
+          fi
+          gh release create v0.4.0rc1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "EasyWallbox Smart Charging v0.4.0rc1 — sessione e posticipo" \
+            --notes-file docs/RELEASE_RC_0_4_0rc1.md \
+            --prerelease
+          gh release edit v0.4.0rc1 --repo "$GITHUB_REPOSITORY" --prerelease
+          gh release view v0.4.0rc1 --repo "$GITHUB_REPOSITORY" \
+            --json isPrerelease --jq '.isPrerelease' | grep -x true
