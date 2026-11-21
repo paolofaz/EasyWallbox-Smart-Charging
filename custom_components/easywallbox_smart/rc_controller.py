@@ -247,10 +247,10 @@ class RCController:
             valid = (flag in ("Verified charge power", "Confirmed charge power") and confirmed_ev is not None
                      and requested is not None and abs(confirmed_ev-p.target) <= .11
                      and abs(requested-p.target) <= .11)
-        elif p.kind in ("pause", "park", "soc_stop"):
+        elif p.kind in ("pause", "park", "soc_stop", "delay_pause"):
             valid = (flag in ("Verified DPM", "Confirmed DPM") and confirmed_dpm is not None
                      and confirmed_dpm <= .06 and charge_enabled is False)
-            if p.kind == "soc_stop":
+            if p.kind in ("soc_stop", "delay_pause"):
                 observed = self._binary(self.cfg[CONF_WALLBOX_CHARGING], now)
                 ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
                 valid = valid and observed is False and ev is not None and ev < .03
@@ -264,7 +264,7 @@ class RCController:
                     self._power_state = p.next_state
                 if p.kind == "prepare":
                     self._prepared_session = self._session_id
-            elif p.kind == "pause":
+            elif p.kind in ("pause", "delay_pause"):
                 self._dpm_lease = p.target  # remembers ORIGINAL positive DPM
             elif p.kind == "soc_stop":
                 self._soc_stop_done = True
@@ -1036,6 +1036,17 @@ class RCController:
             car = self._select_vehicle(now, True)
             if cable is not True or car is None:
                 return
+            if kind == "delay_pause":
+                if (not self.delay_enabled or self._scheduled_at is None or
+                        now >= self._scheduled_at or
+                        self.mode != "automatic" or
+                        observed_charging is not True or ev_kw is None or
+                        ev_kw < .10 or
+                        self._binary(self.cfg[CONF_CHARGE_ENABLED], now) is not True):
+                    return
+                dpm = self._power(self.cfg[CONF_DPM_CONFIRMED], now, DPM_TTL)
+                if dpm is None or abs(dpm-float(self.cfg[CONF_EXPECTED_DPM])) > .11:
+                    return
             if kind == "soc_stop":
                 if (not car.get(CONF_STOP_AT_TARGET, False) or
                         self._soc_stop_done or
@@ -1074,7 +1085,7 @@ class RCController:
                     {"entity_id": self.cfg[CONF_REQUESTED_LIMIT], "value": target},
                     blocking=True,
                 )
-            elif kind in ("pause", "park", "soc_stop"):
+            elif kind in ("pause", "park", "soc_stop", "delay_pause"):
                 await self.hass.services.async_call(
                     "switch", "turn_off",
                     {"entity_id": self.cfg[CONF_START_STOP]}, blocking=True,
@@ -1123,12 +1134,28 @@ class RCController:
             else:
                 raise ValueError("Enable only in AUTO with valid BLE and no competing automations")
         elif field == "delay":
-            self.delay_enabled = bool(value)
+            if value:
+                candidate = validate_delay(
+                    datetime.now(timezone.utc), self.preferred_start,
+                    self.hass.config.time_zone)
+                if not self.delay_enabled:
+                    self._scheduled_at = candidate
+                    self._delay_pause_attempted = False
+                self.delay_enabled = True
+            else:
+                self.delay_enabled = False
+                self._scheduled_at = None
+                self._delay_pause_attempted = False
         elif field == "time":
             if not isinstance(value, time):
                 raise ValueError("time required")
+            appointment = (validate_delay(
+                datetime.now(timezone.utc), value,
+                self.hass.config.time_zone) if self.delay_enabled else None)
             self.preferred_start = value
-            self._scheduled_at = None
+            if self.delay_enabled:
+                self._scheduled_at = appointment
+                self._delay_pause_attempted = False
         elif field == "departure":
             if value is not None and (not isinstance(value, datetime)
                                        or value.utcoffset() is None):
