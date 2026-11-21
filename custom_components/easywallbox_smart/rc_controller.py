@@ -599,7 +599,9 @@ class RCController:
                 self.notice = (
                     "Avvio scelto " + target.strftime("%H:%M")
                     + "; per il target entro la partenza serviva iniziare "
-                    + latest.astimezone(target.tzinfo).strftime("%H:%M")
+                    + datetime.fromtimestamp(
+                        round(latest.timestamp()/600)*600,
+                        timezone.utc).astimezone(target.tzinfo).strftime("%H:%M")
                     + ". Non anticipo l'avvio.")
             else:
                 self.notice = ("Posticipo richiesto per le "
