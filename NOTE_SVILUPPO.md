@@ -205,3 +205,5 @@ ACK, scollegamento e ripresa dopo reboot.
 **Non ancora verificato**: sequenza BLE fisica in carica su
 impianto domestico; serve collaudo supervisionato e rollback
 documentato. Fonte di progetto da aggiornare con queste decisioni.
+
+**Rilascio verificato:** GitHub prerelease `v0.4.0rc1` dal commit `407aed0e5b74be395bffa17c8a21580ea8198152` (branch `RC`), 109 test Python 3.12/3.13, hassfest e validazione HACS superati; `prerelease=true` confermato dalla API GitHub. Nessun test elettrico reale effettuato; `main` e firmware ESPHome invariati. Per installazione aggiornamento via Marketplace e verifica in HA di Connection BLE e autorizzazione nelle Opzioni.
