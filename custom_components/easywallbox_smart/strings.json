@@ -23,7 +23,9 @@
           "base_kw": "Potenza massima normale EV (kW)",
           "boost_kw": "Potenza massima boost EV (kW)",
           "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate",
-          "wallbox_refresh_button": "Pulsante ESPHome aggiorna dati BLE"
+          "wallbox_refresh_button": "Pulsante ESPHome aggiorna dati BLE",
+          "ble_connected": "Connessione BLE ESPHome (facoltativa; consigliata)",
+          "automatic_control_enabled": "Autorizza controllo automatico reale dopo le verifiche (default OFF)"
         }
       },
       "vehicle": {
@@ -71,7 +73,8 @@
       "invalid_power": "Potenza base/boost non consentita",
       "duplicate_vehicle": "Auto o cavo già presenti",
       "invalid_clock": "Orario HH:MM non valido",
-      "invalid_target": "Target SOC non valido"
+      "invalid_target": "Target SOC non valido",
+      "competing_controller_not_disabled": "Disabilitare le automazioni che comandano Start-Stop e Charge power prima di abilitare il controllo automatico"
     },
     "abort": {
       "already_configured": "Wallbox già configurata"
@@ -108,7 +111,9 @@
           "base_kw": "Potenza EV normale",
           "boost_kw": "Potenza boost",
           "legacy_automations_disabled": "Automazioni concorrenti disabilitate",
-          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)"
+          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)",
+          "ble_connected": "Connessione BLE ESPHome (consigliata)",
+          "automatic_control_enabled": "Controllo automatico reale abilitato (solo con automazioni concorrenti disabilitate)"
         }
       },
       "choose_vehicle": {
@@ -171,7 +176,8 @@
       "invalid_clock": "Inserisci gli orari nel formato HH:MM",
       "duplicate_vehicle": "Nome o sensore cavo già utilizzato da un'altra auto",
       "invalid_vehicle": "Profilo incompleto o non valido",
-      "vehicle_missing": "L'auto non esiste più"
+      "vehicle_missing": "L'auto non esiste più",
+      "competing_controller_not_disabled": "Disabilitare le automazioni che comandano Start-Stop e Charge power prima di abilitare il controllo automatico"
     },
     "abort": {
       "cannot_remove_last": "Non puoi eliminare l'unica auto configurata"
