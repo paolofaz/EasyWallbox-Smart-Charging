@@ -660,6 +660,12 @@ class RCController:
                 self._ev_idle_since = None
         self._house_subscribe(cable is True)
         if cable is False:
+            # Session-only departure never carries over to another car,
+            # even when HA restarted with the cable already unplugged.
+            if self.departure_override is not None:
+                self.departure_override = None
+                self._active_departure = None
+                self._schedule_save()
             # Reset Manual to AUTO at confirmed unplug, but a session's
             # physical actuation lease is never reconstituted from guesses.
             if self._connection:
@@ -1211,6 +1217,25 @@ class RCController:
             if self.delay_enabled:
                 self._scheduled_at = appointment
                 self._delay_pause_attempted = False
+        elif field == "ready_by":
+            if not isinstance(value, time):
+                raise ValueError("orario HH:MM richiesto")
+            now_utc = datetime.now(timezone.utc)
+            snap = self._snapshot(now_utc)
+            if snap["cable"] is not True or snap["car"] is None:
+                raise ValueError("Collega e identifica un'auto prima di scegliere la partenza")
+            base = self._departure(now_utc, snap["car"])
+            if base is None:
+                raise ValueError("orario base dell'auto non disponibile")
+            # A clock edit changes the deadline of the CURRENT session,
+            # not the next day or the saved weekday/weekend car profile.
+            local_base = base.astimezone(ZoneInfo(self.hass.config.time_zone))
+            override = datetime.combine(
+                local_base.date(), value.replace(tzinfo=None),
+                tzinfo=local_base.tzinfo)
+            if override <= now_utc.astimezone(local_base.tzinfo):
+                raise ValueError("L'orario Auto pronta entro deve essere futuro")
+            self.departure_override = override
         elif field == "departure":
             if value is not None and (not isinstance(value, datetime)
                                        or value.utcoffset() is None):
@@ -1228,7 +1253,7 @@ class RCController:
             self.explicit_pause = False
         else:
             raise ValueError("invalid RC control")
-        if field in ("mode", "delay", "time", "departure"):
+        if field in ("mode", "delay", "time", "departure", "ready_by"):
             await self._save()
         self.refresh()
 
