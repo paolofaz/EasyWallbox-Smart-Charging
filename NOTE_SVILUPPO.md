@@ -153,3 +153,55 @@ eseguito. Consentire il primo controllo SOC Fiat soltanto dopo
 disattivazione del vecchio proprietario Start-Stop, sotto supervisione.
 La nuova registrazione del dispositivo logico deve essere verificata
 sulla pagina Dispositivi di HA dopo l'aggiornamento.
+
+
+## 21 novembre 2026 — Ripartenza su richiesta, finestra 12 ore e UI essenziale
+
+**Decisione finale dell'utente:**
+- L'orario di Avvio posticipato è **vincolante**. Non anticipare mai
+  per assicurare Auto pronta entro; indicare nell'Avviso ricarica
+  l'eventuale orario che sarebbe servito.
+- Il valore HH:MM indica la **prossima occorrenza** futura,
+  in una finestra di 12 ore reali. Es. 20:00→19:00 =
+  domani 19:00/23h, **rifiutare** switch ON e non fermare l'auto;
+  20:00→01:00 = domani 01:00/5h, consentire.
+  Validazione anche sui cambi del campo quando il posticipo è ON.
+- Su richiesta volontaria durante Charging, è ammesso un
+  solo `Start-Stop OFF`/DPM0, con ACK BLE e cessazione Shelly
+  confermata. Mai convertirlo in una pausa autonoma del planner.
+- Lo switch Posticipo torna OFF **dopo la ripresa elettricamente
+  confermata**, non allo scoccare dell'ora; torna OFF anche dopo
+  disconnessione del cavo. La richiesta si conserva se preparata
+  prima di collegare l'auto.
+- «Auto pronta entro» è un `time` di sessione compilato dal
+  profilo veicolo e dal giorno di partenza, sovrascrivibile durante
+  la carica, resettato allo scollegamento. L'orario del profilo
+  non viene modificato.
+- Eliminati i pulsanti ridondanti e il controllo reale quotidiano.
+  Nuovo opt-in **nelle Opzioni**, inizialmente OFF per gli utenti
+  che aggiornano; dopo un riavvio resta abilitato ma nessuna azione
+  prima della riconciliazione. Le automazioni concorrenti vanno
+  disabilitate prima dell'attivazione.
+- Wallbox frequentemente alimentata con teleruttore: BLE OFF è
+  normale, lo stato è «Wallbox non disponibile», niente timer o
+  polling aggiuntivi. Evento BLE ON risveglia il controller.
+  Cavo OFF rimasto invariato non va considerato stale se BLE
+  conferma connessione.
+- Sensori semantici: stato, avviso, veicolo, fase, kWh residui e
+  fine stimata arrotondata a 10 min. Nessuna duplicazione di
+  misure Shelly/ESPHome, nessun countdown o attributo Recorder
+  aggiornato ogni secondo.
+- Nuova conferma di proprietà per ripresa DPM0 dopo restart:
+  solo pause già ACKate e salvate, identica auto e orario,
+  verificando BLE, DPM0, Charge Enabled OFF, Charging OFF,
+  Shelly EV <30 W. Senza evidenza, nessun tentativo cieco.
+
+**Implementazione**: branch `RC` soltanto. Nessuna modifica a
+`main`, al firmware, a credenziali e file `.storage`.
+Test locali via GitHub Actions Python 3.12/3.13, hassfest,
+HACS Marketplace, test orari tra giorno e notte/DST, pausa,
+ACK, scollegamento e ripresa dopo reboot.
+
+**Non ancora verificato**: sequenza BLE fisica in carica su
+impianto domestico; serve collaudo supervisionato e rollback
+documentato. Fonte di progetto da aggiornare con queste decisioni.
