@@ -140,10 +140,11 @@ class RCController:
             self.departure_override = value if value and value.utcoffset() is not None else None
         except (TypeError, ValueError):
             self.departure_override = None
-        # Never resurrect permission or an electrical lease across a restart.
-        self.real_enabled = False
+        # Opt-in is persistent in HA config, not an extra UI switch.
+        # A restart changes no physical wallbox state: read it back first.
+        self.real_enabled = bool(self.cfg.get(CONF_AUTOMATIC_CONTROL_ENABLED, False))
         self._owned_limit = self._dpm_lease = self._pending = None
-        self._blocked = "startup_requires_explicit_reenable"
+        self._blocked = None
 
     async def _save(self):
         await self._store.async_save({
@@ -202,6 +203,23 @@ class RCController:
     def _binary(self, entity, now, ttl=WALLBOX_TTL):
         state = self._fresh(entity, now, ttl)
         return on(state.state) if state else None
+
+    def _ble_online(self, now):
+        """BLE OFF is normal: ESPHome/wallbox can be unpowered for days."""
+        connection = self.cfg.get(CONF_BLE_CONNECTED)
+        if connection:
+            state = self._raw(connection)
+            return on(state.state) if state and state.state not in (
+                "unavailable", "unknown", "") else None
+        return self._binary(self.cfg[CONF_TELEMETRY_FRESH], now)
+
+    def _wallbox_cable(self, now):
+        """A stable OFF remains valid while an independent BLE ON confirms it."""
+        if self._ble_online(now) is not True:
+            return None
+        state = self._raw(self.cfg[CONF_WALLBOX_CONNECTED])
+        return on(state.state) if state and state.state not in (
+            "unavailable", "unknown", "") else None
 
     def _power(self, entity, now, ttl=WALLBOX_TTL):
         state = self._fresh(entity, now, ttl)
@@ -352,7 +370,7 @@ class RCController:
                     self._connect_since is None or
                     self._refresh_due is None or self._refresh_issued or
                     now < self._refresh_due or
-                    self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now) is not True):
+                    self._wallbox_cable(now) is not True):
                 return
             self._refresh_issued = True
             self._refresh_requested_at = now
@@ -365,8 +383,7 @@ class RCController:
                 if not button:
                     continue
                 # Recheck the wallbox cavo immediately before each request.
-                if self._binary(self.cfg[CONF_WALLBOX_CONNECTED],
-                                datetime.now(timezone.utc)) is not True:
+                if self._wallbox_cable(datetime.now(timezone.utc)) is not True:
                     return
                 try:
                     await self.hass.services.async_call(
@@ -379,8 +396,7 @@ class RCController:
             # Optional one-shot read of BLE registers 158/174 to refresh an
             # old DPM0 readback. No frequent read loop or new ESPHome code.
             wallbox_button = self.cfg.get(CONF_WALLBOX_REFRESH)
-            if (wallbox_button and self._binary(self.cfg[CONF_WALLBOX_CONNECTED],
-                                                datetime.now(timezone.utc)) is True):
+            if (wallbox_button and self._wallbox_cable(datetime.now(timezone.utc)) is True):
                 try:
                     await self.hass.services.async_call(
                         "button", "press",
@@ -450,7 +466,7 @@ class RCController:
                 (self._scheduled_at is not None and now >= self._scheduled_at))
 
     def _snapshot(self, now):
-        cable = self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now)
+        cable = self._wallbox_cable(now)
         car = self._select_vehicle(now, cable)
         enabled = self._binary(self.cfg[CONF_CHARGE_ENABLED], now)
         active = self._binary(self.cfg[CONF_DPM_ACTIVE], now)
@@ -580,6 +596,18 @@ class RCController:
 
     def refresh(self):
         now = datetime.now(timezone.utc)
+        if self._ble_online(now) is not True:
+            # Do not interpret physical power-off as an unplug or a fault.
+            # A fresh BLE ON event will trigger a new full snapshot.
+            self._last_cable = None
+            self._house_subscribe(False)
+            self._status_acks(now, None)
+            self.status, self.reason = ("Wallbox non disponibile",
+                                        "ble_offline_normal")
+            self.quality = "offline"
+            self._reschedule(now, False)
+            self._notify()
+            return
         snapshot = self._snapshot(now)
         cable = snapshot["cable"]
         # Only a true ON->OFF transition may arm one delayed parked command.
@@ -779,7 +807,7 @@ class RCController:
                     now-self._ev_idle_since < timedelta(seconds=30)):
                 return
             # Never trust a cached "zero watt" or an uncertain cable state.
-            if (self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now) is not False or
+            if (self._wallbox_cable(now) is not False or
                     self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL) is None or
                     self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL) >= .03 or
                     self._binary(self.cfg[CONF_TELEMETRY_FRESH], now) is not True or
@@ -1040,8 +1068,9 @@ class RCController:
             return
         # Double-check one last time before every irreversible request.
         now = datetime.now(timezone.utc)
-        cable = self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now)
-        if (self._binary(self.cfg[CONF_TELEMETRY_FRESH], now) is not True or
+        cable = self._wallbox_cable(now)
+        if (self._ble_online(now) is not True or
+                self._binary(self.cfg[CONF_TELEMETRY_FRESH], now) is not True or
                 self._binary(self.cfg[CONF_DPM_ACTIVE], now) is not True or
                 self._binary(self.cfg[CONF_WALLBOX_FAULT], now) is not False):
             return
@@ -1211,6 +1240,8 @@ class RCController:
             CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT, CONF_DPM_CONFIRMED,
         )
         ids = [self.cfg[k] for k in keys]
+        if self.cfg.get(CONF_BLE_CONNECTED):
+            ids.append(self.cfg[CONF_BLE_CONNECTED])
         for vehicle in self.cfg[CONF_VEHICLES]:
             ids.extend((vehicle[CONF_CABLE], vehicle[CONF_SOC]))
             if vehicle.get(CONF_TARGET_ENTITY):
