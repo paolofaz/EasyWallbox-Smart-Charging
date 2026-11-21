@@ -653,6 +653,54 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c._blocked)
         await c.async_close()
 
+    async def test_verified_delay_lease_reconciles_after_reboot_without_starting(self):
+        now=datetime.now(timezone.utc)
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.c.real_enabled=False
+        car=self.c.cfg[const.CONF_VEHICLES][0]
+        self.c.delay_enabled=True
+        self.c._scheduled_at=now+timedelta(hours=1)
+        lease={"vehicle": car[const.CONF_CABLE], "start":
+               self.c._scheduled_at.isoformat(), "dpm":4.4}
+        other=controller.RCController(self.hass,FakeEntry(self.c.cfg))
+        await other.async_load()
+        other.real_enabled=True
+        other.delay_enabled=True
+        other._scheduled_at=self.c._scheduled_at
+        other._saved_delay_lease=lease
+        other.refresh()
+        await asyncio.sleep(.05)
+        self.assertEqual(other._dpm_lease,4.4)
+        self.assertEqual(self.hass.services.calls,[])
+        await other.async_close()
+
+    async def test_saved_delay_lease_for_other_car_is_never_adopted(self):
+        now=datetime.now(timezone.utc)
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.kia"].publish("on")
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.c.real_enabled=False
+        other=controller.RCController(self.hass,FakeEntry(self.c.cfg))
+        await other.async_load()
+        other.real_enabled=True
+        other.delay_enabled=True
+        other._scheduled_at=now+timedelta(hours=1)
+        other._saved_delay_lease={
+            "vehicle":"binary_sensor.fiat",
+            "start":other._scheduled_at.isoformat(),"dpm":4.4}
+        other.refresh()
+        await asyncio.sleep(.05)
+        self.assertIsNone(other._dpm_lease)
+        self.assertEqual(other._blocked,"saved_delay_lease_mismatch")
+        self.assertEqual(self.hass.services.calls,[])
+        await other.async_close()
+
     async def test_refresh_after_twenty_seconds_only_selected_car(self):
         await self.c.async_change("real", True)
         self.c._refresh_due = datetime.now(timezone.utc)-timedelta(seconds=1)
