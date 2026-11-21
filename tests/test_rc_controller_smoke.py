@@ -211,11 +211,69 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(blocking)
         self.assertEqual(args["value"],4.0)
 
-    async def test_charging_never_pauses_even_when_schedule_on(self):
-        await self.c.async_change("delay",True)
+    async def test_user_explicit_delay_pauses_charging_once_with_confirmed_ack(self):
+        local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
+        future=(local+timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        await self.c.async_change("time",future)
         await self.c.async_change("real",True)
+        await self.c.async_change("delay",True)
         await self.settle()
-        self.assertFalse(any(x[0]=="switch" for x in self.hass.services.calls))
+        switches=[c for c in self.hass.services.calls if c[0]=="switch"]
+        self.assertEqual(len(switches),1)
+        self.assertEqual(switches[0][:2],("switch","turn_off"))
+        self.assertEqual(self.c._pending.kind,"delay_pause")
+        self.c.refresh()
+        await self.settle()
+        self.assertEqual(len([c for c in self.hass.services.calls
+                              if c[0]=="switch"]),1)
+        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["sensor.command_status"].publish("Verified DPM")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.c.refresh()
+        await self.settle()
+        self.assertIsNone(self.c._pending)
+        self.assertEqual(self.c._dpm_lease,4.4)
+        self.assertTrue(self.c.delay_enabled)
+
+    async def test_invalid_twenty_three_hour_delay_does_not_change_switch_or_charge(self):
+        local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
+        old=(local-timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        await self.c.async_change("time",old)
+        await self.c.async_change("real",True)
+        with self.assertRaisesRegex(ValueError,"within_12_hours"):
+            await self.c.async_change("delay",True)
+        await self.settle()
+        self.assertFalse(self.c.delay_enabled)
+        self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
+
+    async def test_delay_switch_turns_off_after_verified_start_not_at_clock_alone(self):
+        now=datetime.now(timezone.utc)
+        self.c.delay_enabled=True
+        self.c._scheduled_at=now-timedelta(seconds=1)
+        self.hass.states["sensor.ev"].publish("0.01")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.c.refresh()
+        self.assertTrue(self.c.delay_enabled)
+        self.hass.states["sensor.ev"].publish("3.4")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("on")
+        self.c.refresh()
+        self.assertFalse(self.c.delay_enabled)
+        self.assertIsNone(self.c._scheduled_at)
+
+    async def test_unplug_clears_delayed_switch_only_after_real_connection(self):
+        local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
+        future=(local+timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        await self.c.async_change("time",future)
+        await self.c.async_change("delay",True)
+        self.assertTrue(self.c.delay_enabled)
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0")
+        self.c.refresh()
+        self.assertFalse(self.c.delay_enabled)
 
     async def test_connected_not_charging_without_delay_does_nothing(self):
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
