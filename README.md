@@ -1,191 +1,148 @@
 # EasyWallbox Smart Charging — Release Candidate
 
-**Integrazione Home Assistant nativa, con controllo reale della wallbox.**
-Nessun container, nessuna automazione esterna necessaria e nessuna modifica
-al firmware ESPHome. Il **DPM fisico resta sempre attivo** e gestisce i
-picchi rapidi: questa integrazione pianifica e regola lentamente il limite EV.
+Custom integration nativa Home Assistant con **controllo reale** della
+wallbox tramite le entità ESPHome esistenti. Nessun container, nessuna
+modifica al firmware e nessuna dipendenza da dashboard di terze parti.
+La wallbox conserva il **DPM attivo** per limitare i picchi elettrici;
+Home Assistant esegue soltanto decisioni lente e verificate.
 
-**Stato:** codice RC destinato a collaudo supervisionato. I test Python e le
-verifiche del manifest non certificano gli effetti elettrici. Il controllo
-reale è **disabilitato a ogni avvio o reload** finché l'utente non lo abilita.
-Non consentire a due automazioni di comandare gli stessi elementi.
+> **RC sperimentale**: test automatici e hassfest non equivalgono a
+> collaudo elettrico. Prima del primo utilizzo reale verificare i sensori
+> e disabilitare le automazioni HA che comandano indipendentemente
+> `Charge power` o `Start-Stop`, in particolare lo Stop SOC Fiat
+> legacy se si abilita lo Stop SOC dell'integrazione.
 
-## Configurazione interamente grafica
+## Configurazione iniziale e autorizzazione
 
-In **Impostazioni → Dispositivi e servizi → Aggiungi integrazione →
-EasyWallbox Smart Charging** si configurano:
+Menu **Impostazioni → Dispositivi e servizi → EasyWallbox Smart Charging →
+Configura**. L'integrazione supporta:
 
-- **Da uno a N sensori di potenza domestica**, selezionati liberamente:
-  la somma rappresenta la potenza di casa, **escludendo il circuito EV**.
-  Può essere uno Shelly o una combinazione di sensori indipendenti,
-  non necessariamente due piani o due dispositivi.
-- **Un sensore di potenza wallbox separato**, usato per confermare
-  assorbimento EV e verificare la soglia di parcheggio di **30 W**.
-- Wallbox ESPHome: sensori cavo e Charging, Telemetry Fresh,
-  DPM Active, Fault, Charge Enabled, limite DPM confermato,
-  `Power set` confermato, `Charge power` (entità number),
-  `Start-Stop` (entità switch), `Command status` e
-  il pulsante `Refresh data`.
-- **Limite DPM positivo di riferimento**, normalmente **4,4 kW**,
-  potenza EV ordinaria **4,0 kW**, boost **4,2 kW**.
-- **Uno o più profili veicolo**: nome, sensore cavo, SOC, capacità
-  utilizzabile della batteria in kWh, rendimento AC, orari di
-  partenza feriali e weekend, eventuale pulsante aggiornamento dati e
-  timestamp dell'ultimo aggiornamento.
+- **Uno o più** sensori di potenza domestica selezionati liberamente,
+  escludendo il ramo wallbox; Shelly wallbox separato per verificare
+  assorbimento e arresto, senza creare sensori watt duplicati.
+- ESPHome wallbox: sensori cavo, Charging, Telemetry Fresh, DPM Active,
+  Fault, Charge Enabled, potenza EV richiesta e confermata, DPM
+  confermato, Command status, switch Start-Stop e pulsante Refresh data.
+- **Connessione BLE** ESPHome, facoltativa ma **fortemente consigliata**:
+  con `Connection=OFF` la wallbox è semplicemente non disponibile,
+  normalmente perché è spenta col teleruttore. L'integrazione resta
+  caricata e si risveglia sugli eventi BLE ON, senza ricaricare HA o
+  interrogare BLE continuamente.
+- DPM positivo configurato (es. 4,4 kW), limite EV ordinario 4,0 kW
+  e boost condizionato 4,2 kW. Il sensore DPM può riportare 0 A
+  quando è in pausa; **nei calcoli si usa il DPM positivo configurato**.
+- Profili auto aggiungibili, modificabili e rimovibili dalle Opzioni:
+  SOC, target da entità o fisso, sensore cavo, capacità, rendimento,
+  pulsante/tempo aggiornamento e orario feriale/weekend.
+  **Nessuna potenza media AC manuale**: il planner la stima dai
+  campioni Shelly e dalle letture EV, senza valori arbitrari.
 
-**Dopo la configurazione puoi gestire le auto senza reinstallare:**
-`Impostazioni → Dispositivi e servizi → EasyWallbox Smart Charging →
-Configura` apre le **Opzioni**, da cui puoi **modificare tutti i campi
-di un'auto**, **aggiungere una nuova auto** o **rimuoverne una con
-conferma** (l'ultima auto non può essere rimossa). Il profilo SOC,
-la sua sorgente target, sensori, refresh, capacità, rendimento e orari
-sono tutti modificabili. Salvare le Opzioni ricarica l'integrazione
-e disabilita per sicurezza il controllo reale, da riabilitare
-soltanto dopo aver verificato la nuova configurazione.
+**Abilita controllo automatico reale** è una singola autorizzazione
+nelle **Opzioni**, **OFF per le installazioni precedenti**. Quando
+abilitata e le automazioni concorrenti sono state disattivate,
+il controllo rimane abilitato dopo il riavvio di HA ma **non invia
+comandi prima di leggere dati coerenti**. Non esiste più lo switch
+quotidiano «Controllo reale». Errori e ACK mancanti arrestano
+le nuove azioni senza retry ciechi.
 
-Ogni veicolo richiede una **sola fonte per il SOC obiettivo**:
-**Target fisso** (esempio 80%) oppure **Target da entità Home Assistant**
-(esempio sensore del limite impostato in auto). È una scelta guidata
-in due passaggi, non occorre compilare entrambe le opzioni.
+## Comandi quotidiani
 
-La **potenza disponibile per pianificare viene calcolata dall'integrazione**:
-non esiste un campo manuale "potenza AC media" o un valore fisso presunto
-di 2,4 kW. Un breve storico Shelly domestico (finestra fino a 20 minuti,
-75° percentile) permette di stimare il margine sotto il limite DPM
-positivo configurato; durante la ricarica, uno storico valido della
-potenza EV effettiva può correggere la previsione verso il basso.
-Le letture sono mantenute temporaneamente **in RAM**, non trasformate in
-nuovi sensori o scritte continuamente nel Recorder. Se mancano campioni
-affidabili, la durata stimata è **sconosciuta**: non inventiamo un valore.
-L'avvio posticipato rimane rispettato; per evitare di superare la
-partenza si usa soltanto il limite EV configurato come **massimo
-fisicamente possibile**, mai come media dichiarata. Il DPM continua
-a proteggere l'impianto.
-
-## Comandi reali: sequenza di sicurezza
-
-| Evento | Azione |
+| Entità | Significato |
 |---|---|
-| HA avviato con cavo già scollegato | Nessun comando automatico |
-| Cavo wallbox **ON → OFF** verificato | Dopo **30 s** con Shelly EV **sotto 30 W**, una sola richiesta `Start-Stop OFF` → DPM 0 A, se autorizzata e confermata |
-| Manuale → scollegamento | La modalità torna **Automatica** al termine della sessione |
-| Cavo **OFF → ON** | Attende **20 s**, identifica l'auto e richiede il refresh dati una sola volta; non interpreta il pulsante premuto come dati confermati |
-| Auto con SOC/target aggiornati | Calcola energia necessaria, ora di partenza e ultimo avvio utile |
-| Partenza posticipata | Mantiene DPM 0 A finché l'ultimo avvio utile lo consente |
-| Avvio consentito | Prima imposta/verifica il limite EV ordinario (es. 4,0 kW); **solo dopo** richiede `Start-Stop ON` |
-| Ricarica effettivamente in corso | Cambia soltanto il numero `Charge power`, mai lo switch Start-Stop |
-| Fine carica | Nessun avvio automatico; prepara la sessione successiva allo scollegamento |
-| Dati incompleti, incoerenti o obsoleti | Nessuna nuova scrittura, blocco diagnosticato e **nessun retry cieco** |
+| Modalità di ricarica | **Automatico** (gestisce) oppure **Manuale** (nessun comando dell'integrazione; usare ESPHome); torna Automatico alla disconnessione confermata |
+| **Avvio ricarica posticipato** | Switch **di una sola sessione**. ON richiede una pausa fino all'orario scelto |
+| **Inizia non prima delle** | Orario HH:MM associato allo switch; la prossima occorrenza deve essere nel futuro ed entro **12 ore** quando lo switch viene attivato o modificato |
+| **Auto pronta entro** | Caricato automaticamente dall'orario feriale/weekend dell'auto riconosciuta; modificabile durante la sessione. Non interrompe la carica all'ora richiesta; è una scadenza da rispettare se possibile |
+| Limite SOC (ove presente) | Slider 80–100% a passi di 5 solo per veicoli con target fisso e Stop SOC abilitato; se si usa un'entità target HA non si duplica |
 
-**Start-Stop OFF non disattiva il DPM hardware.** Il firmware usa DPM
-0 A per la pausa e conserva il limite positivo da ripristinare con
-Start-Stop ON. È un comportamento già verificato sul firmware ESPHome.
-La chiamata HA non è una conferma elettrica: il controller verifica
-riscontri BLE, stato Charging e potenza Shelly.
+**Esempio:** alle 20:00 il valore 19:00 significherebbe domani
+alle 19:00, cioè 23 ore. **ON viene rifiutato**, non modifica
+lo switch fisico e il sensore **Avviso ricarica** mostra il motivo.
+Alle 20:00 scegliere 01:00 significa **domani alle 01:00**:
+5 ore, richiesta valida. Sono ammesse fino a 12 ore **effettive**
+di attesa, anche attraversando mezzanotte.
 
-**Il planner usa il limite DPM positivo configurato (es. 4,4 kW)
-anche durante la pausa**. Il sensore DPM può allora indicare 0 A:
-serve a confermare lo stato reale, non come riferimento matematico.
+Se abiliti il posticipo **mentre l'auto sta già caricando**,
+l'integrazione può richiedere **una sola volta Start-Stop OFF**
+(DPM 0 A) dopo tutte le verifiche; non presume una pausa
+elettrica riuscita senza BLE, Charging e Shelly <30 W.
+All'ora programmata prepara e conferma il limite EV, poi
+richiede Start-Stop ON e verifica il DPM positivo. Lo switch
+**Avvio posticipato torna OFF soltanto quando Charging è
+effettivamente confermato**, oppure allo scollegamento del cavo.
+Non si disattiva automaticamente allo scoccare dell'ora se l'auto
+non sta ancora caricando.
 
-## Regole dello stabilizzatore
+**L'orario posticipato esplicito non viene anticipato dal planner.**
+Se l'ultima partenza utile stimata è 00:15 ma hai chiesto 01:00,
+l'integrazione mantiene 01:00 e produce un avviso leggibile
+del possibile mancato completamento entro la scadenza.
 
-| Regola | Criterio |
-|---|---|
-| Carico forte | Pressione nominale ≥0,6 kW per 2 minuti, oppure cicli intermittenti significativi; cap basato sul 75° percentile dei campioni recenti |
-| Carico moderato | Casa tra 450 e 1.100 W con pressione ≥100 W, per 10 minuti osservati negli ultimi 12 |
-| Già in LIMITED | Ulteriore correzione di 0,4 kW quando pressione ≥250 W è stata osservata per 5 minuti su 7 ed è ancora presente |
-| Recupero | Ripristino diretto al limite ordinario dopo 15 minuti di quiete documentata |
-| Boost | +0,2 kW solo con casa <150 W per 15 min e **margine alla partenza ≤60 minuti** |
-| Isteresi boost | Uscita con casa >200 W; uscita per margine recuperato solo quando ≥75 minuti stabili |
-| Sicurezza | Nessuna regolazione continua dei picchi: li governa il DPM fisico |
+Se disattivi il posticipo prima dell'orario, il controller può
+riprendere la ricarica appena la pausa DPM precedentemente
+richiesta e **confermata da lui** è stata riconciliata.
+Non riprende pause impostate manualmente o da altre automazioni.
 
-I livelli iniziali sono configurabili nei passi consentiti dal firmware;
-le riduzioni non possono scendere sotto il minimo EV supportato.
+## Preparazione, ricarica e fine sessione
 
-## Controlli e diagnostica
+1. Prima della ricarica il controller identifica un'unica auto,
+   aggiorna i suoi dati una volta dopo 20 secondi dalla connessione
+   (entrambe solo se non ancora identificata) e verifica SOC e target.
+2. In Automatica, con DPM 0 A effettivamente gestito da questa
+   integrazione, conferma **Charge power 4,0 kW** prima di riprendere
+   con Start-Stop ON. La wallbox/DPM provvede ai picchi.
+3. Durante Charging stabilizza l'EV lentamente: forte, moderato,
+   finestra 5/7 min, ripristino su quiete 15 min; boost a 4,2 solo
+   con marginalità <=60 min e isteresi fino a >=75 min.
+4. Lo **Stop SOC facoltativo** è l'altra eccezione a Start-Stop
+   durante Charging, solo per veicoli senza stop autonomo
+   (es. Fiat). Per Kia, che gestisce il limite internamente,
+   lasciarlo OFF. Non ci sono retry e si verifica fine carica
+   tramite DPM 0 A, Charging OFF e Shelly <30 W.
+5. Dopo cavo ON→OFF verificato e Shelly <30 W per almeno 30 s,
+   una singola richiesta di parcheggio **Start-Stop OFF → DPM 0 A**.
+   In Manuale il profilo ritorna Automatico al termine della sessione.
 
-L'integrazione espone modalità **Automatica/Manuale**, abilitazione
-esplicita del controllo reale, **Avvio posticipato**, ora preferita,
-override della prossima partenza e pulsanti Carica subito, pausa/ripresa
-della gestione e annullamento override.
+## Stati informativi e Recorder
 
-Sono presenti soltanto **due sensori diagnostici** per stato della
-sessione e pianificazione. Non ripubblicano ogni watt Shelly e non
-producono un countdown al secondo nel Recorder.
+- **Stato ricarica** (diagnostica)
+- **Avviso ricarica** (testo: avvio rinviato, rischio orario, problema BLE;
+  nessun messaggio aggiornato ogni secondo)
+- **Veicolo rilevato** (nome o Nessuna)
+- **Stabilizzatore** (INATTIVO/NORMAL/LIMITED/BOOST)
+- **Energia residua stimata** (kWh AC fino al target, da SOC/capacità/rendimento)
+- **Fine carica prevista** (stima arrotondata a blocchi di **10 minuti**)
 
-La dashboard personalizzata installata automaticamente dall'integrazione
-**non è ancora presente**: i controlli sono accessibili dalle entità HA.
-Non viene creata né alterata automaticamente una dashboard dell'utente.
-L'interfaccia integrata è un obiettivo separato da collaudare.
+Nessuna entità dedicata a watt, cavo, DPM o Bluetooth già esposti
+dalla wallbox. Non vengono replicati nel Recorder i campioni dei
+sensori Shelly: gli storici brevi del planner restano in RAM.
+Lo stato viene pubblicato soltanto quando cambiano valori/decisioni
+significative, non tramite un timer che aggiorna gli attributi
+ogni minuto.
 
-## Limite SOC e Stop facoltativo per veicolo
+Le entità appartengono al dispositivo logico
+**EasyWallbox Smart Charging**; ESPHome rimane il dispositivo
+fisico separato. I vecchi pulsanti Carica subito, Pausa gestione,
+Riprendi gestione, Annulla eccezione, Controllo reale e la
+precedente data/ora eccezionale vengono rimossi dal registro
+dell'integrazione senza toccare entità di terze parti.
 
-**Il target serve sempre al planner, ma non equivale all'autorizzazione
-a fermare fisicamente la wallbox.** Nelle opzioni di ciascun veicolo
-è disponibile **Interrompi la ricarica a target SOC**, disattivato
-per impostazione predefinita (anche sulle configurazioni preesistenti).
+## Sicurezza e rollback
 
-- **Kia EV3 / auto con limite interno:** selezionare come target il
-  sensore della percentuale impostata nell'auto, lasciare Stop a target
-  DISATTIVATO; l'auto sospende autonomamente quando raggiunge il limite.
-- **Fiat 500e / auto senza stop interno:** usare l'entità esistente
-  `input_number.limite_carica_batteria_500` oppure un target fisso.
-  Abilitare Stop a target SOLO quando l'automazione legacy che
-  scrive `switch.wallbox_start_stop` è stata disabilitata e verificata.
-- Se Stop è attivo con un **target fisso**, l'integrazione espone
-  **un singolo slider 80–100%, passi di 5** per quel veicolo, sotto il
-  dispositivo logico EasyWallbox Smart Charging. Se viene scelta
-  un'entità HA preesistente non è creato alcuno slider duplicato.
-- Lo Stop per SOC è l'**unica eccezione** alla regola normale che
-  vieta Start-Stop durante una ricarica. Richiede cavo collegato,
-  auto identificata in modo univoco, Charging e Shelly EV attivi,
-  SOC pari/superiore al target con lettura aggiornata e limiti DPM
-  confermati. Vicino al target può richiedere un aggiornamento auto
-  (non più di una volta ogni 20 minuti).
-- Premere il pulsante di refresh **non** vale come lettura aggiornata:
-  se configurato, deve cambiare realmente il timestamp dell'ultimo
-  aggiornamento. In assenza di dati recenti, nessuno Stop automatico.
-- Lo Stop è impartito **una sola volta**. Solo dopo `Verified DPM`
-  o `Confirmed DPM`, DPM a zero, Charge Enabled OFF, Charging OFF
-  e Shelly EV **<30 W** è registrato come **fine carica confermata**.
-  Nessuna ripresa per la stessa sessione, nemmeno se cambia il target.
-  Se la conferma manca, blocco e **nessun retry cieco**.
+- Modalità Manuale **non** cambia lo stato elettrico della carica:
+  per fermare o regolare manualmente si usano i comandi ESPHome.
+- BLE OFF / wallbox senza alimentazione è **normale**: nessuna
+  azione e nessun polling aggiuntivo. Su BLE ON, riconciliazione
+  prima di scrivere; un sensore cavo che rimane OFF per ore non
+  diventa errore per il solo trascorrere del tempo.
+- Se mancano dati, i sensori sono contraddittori, la carica non è
+  verificata o manca un ACK, **nessun nuovo comando**. Nessun
+  retry cieco di Start/Stop o disattivazione del DPM di sicurezza.
+- Conservare la precedente release per rollback e fare un backup
+  di HA prima dell'aggiornamento; non modificare mai manualmente
+  `.storage` e non committare credenziali.
+- La dashboard Lovelace auto-installata è un lavoro separato:
+  questa RC usa le entità native nel dispositivo Home Assistant.
 
-L'automazione Fiat che notifica la famiglia e pubblica su MQTT NON
-viene modificata o disabilitata da questa integrazione. Le notifiche
-si possono conservare separatamente dopo il collaudo. **Non attivare
-due proprietari dello stesso Start-Stop**.
-
-## Dispositivo ed entità Home Assistant
-
-Il controller è ora registrato come **un dispositivo logico
-«EasyWallbox Smart Charging»** (non sostituisce il dispositivo
-fisico ESPHome). Nella scheda Dispositivi dell'integrazione,
-controlli, orari e pulsanti sono associati allo stesso dispositivo;
-i due sensori di Stato e Pianificazione appartengono alla
-**diagnostica**. Gli `unique_id` precedenti sono conservati,
-evitando una seconda copia delle 11 entità già installate.
-Lo slider SOC opzionale appare solo quando serve.
-
-Le entità sono lasciate intatte durante questa revisione: prima
-verificare la nuova scheda Dispositivo su Home Assistant,
-poi decidere insieme se alcune siano ridondanti.
-
-## Riavvii, installazione e rollback
-
-L'autorizzazione ai comandi reali torna **OFF** a ogni riavvio, reload
-o reinstallazione; il riavvio HA non cambia da sé lo stato elettrico
-della wallbox. Preferenze e orari possono essere recuperati, ma lo
-stato fisico viene sempre verificato prima di una nuova azione.
-
-Per passare dalla precedente beta occorre installare una prerelease
-della RC tramite Home Assistant Marketplace e poi riavviare HA.
-Se in Config Flow compaiono `house_downstairs`,
-`house_upstairs`, `target_default` o `sustainable_kw`,
-**non è stata caricata questa RC**: verificare i file effettivamente
-presenti in `custom_components/easywallbox_smart` e l'entry esistente.
-Non correggere direttamente i file `.storage`.
-
-Leggere [la checklist dei collaudi](docs/CHECKLIST_COLLAUDO_RC.md)
-prima di abilitare i comandi; per rollback disabilitare Controllo reale,
-controllare il DPM e ripristinare la versione precedente.
+Per il primo collaudo supervisionato:
+[`docs/CHECKLIST_COLLAUDO_RC.md`](docs/CHECKLIST_COLLAUDO_RC.md).
