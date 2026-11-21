@@ -1,7 +1,7 @@
-"""Home Assistant RC adapter: one owner, event-driven, fail-closed actuation.
+"""Event-driven real charging controller with one exclusive command owner.
 
-Hardware writes are intentionally opt-in (never enabled on boot/reload).
-No action without positive and unique cable confirmation; no rapid DPM control.
+Automatic control is opt-in via integration Options and can survive reboot.
+All electrical writes still require current BLE, cable and meter validation.
 A Home Assistant service success is not a BLE acknowledgement.
 """
 from __future__ import annotations
@@ -49,7 +49,7 @@ class RCController:
         self.cfg = {**entry.data, **entry.options}
         self.house_ids = tuple(self.cfg[CONF_HOUSE_SOURCES])
         self.mode = "automatic"
-        self.real_enabled = False        # NEVER persist automatic authorization
+        self.real_enabled = False        # loaded from explicit config opt-in
         self.delay_enabled = False
         self.preferred_start = time(23, 0)
         self.departure_override = None
@@ -278,8 +278,9 @@ class RCController:
                 ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
                 valid = valid and observed is False and ev is not None and ev < .03
         elif p.kind == "resume":
-            valid = (flag == "Verified DPM" and confirmed_dpm is not None
-                     and abs(confirmed_dpm-p.target) <= .11 and charge_enabled is True)
+            valid = (flag in ("Verified DPM", "Confirmed DPM") and
+                     confirmed_dpm is not None and
+                     abs(confirmed_dpm-p.target) <= .11 and charge_enabled is True)
         if valid:
             if p.kind in ("power", "prepare"):
                 self._owned_limit = p.target
@@ -983,7 +984,8 @@ class RCController:
                     or current["car"] is None or current["charging"] is None
                     or not self.cfg.get(CONF_LEGACY_DISABLED, False)):
                 return
-            if (current["dpm"] is None and self._park_owned and
+            if (current["dpm"] is None and
+                    (self._park_owned or self._dpm_lease is not None) and
                     current["charging"] is False and
                     self._car_update_ready(datetime.now(timezone.utc), current["car"])):
                 # A readback from the initial plug-in would be stale after
