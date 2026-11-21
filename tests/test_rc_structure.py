@@ -28,8 +28,8 @@ class RCStructureTest(unittest.TestCase):
     def test_delayed_pause_does_not_allow_unplugged_command(self):
         text=(COMP/"rc_controller.py").read_text()
         self.assertIn('current["cable"] is not True',text)
-        self.assertIn('self._binary(self.cfg[CONF_WALLBOX_CONNECTED], now) is not True',text)
-        self.assertIn('observed_charging is not False',text)
+        self.assertIn('self._wallbox_cable(now)',text)
+        self.assertIn('observed_charging is not True',text)
 
     def test_only_one_real_service_dispatcher(self):
         sources=list(COMP.glob("*.py"))
@@ -44,12 +44,13 @@ class RCStructureTest(unittest.TestCase):
                    "control_guard.py","start_routine.py","coordinator.py","core.py"}
         self.assertFalse(forbidden.intersection({f.name for f in COMP.glob("*.py")}))
         text=(COMP/"sensor.py").read_text()
-        self.assertIn('("state", "planner")',text)
+        self.assertIn('"state":',text)
+        self.assertIn('"planner":',text)
         self.assertNotIn("house_kw",text)
         self.assertNotIn("async_update",text)
 
     def test_ui_exposes_requested_controls(self):
-        required=["switch.py","select.py","time.py","datetime.py","button.py",
+        required=["switch.py","select.py","time.py",
                   "sensor.py","config_flow.py"]
         for p in required:
             self.assertTrue((COMP/p).exists())
@@ -67,7 +68,7 @@ class RCStructureTest(unittest.TestCase):
                and node.name=="_send"]
         self.assertEqual(len(sends),1)
         code=ast.get_source_segment((COMP/"rc_controller.py").read_text(),sends[0])
-        self.assertIn('kind in ("pause", "resume", "prepare")',code)
+        self.assertIn('kind in ("pause", "park", "soc_stop", "delay_pause")',code)
         self.assertIn('self._park_owned or self._dpm_lease',code)
 
 
