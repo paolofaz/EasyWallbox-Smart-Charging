@@ -577,6 +577,82 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.c.async_set_fixed_target(car[const.CONF_CABLE],87)
 
+    async def test_explicit_start_never_anticipated_even_when_target_impossible(self):
+        now=datetime.now(timezone.utc)
+        self.c.delay_enabled=True
+        self.c._scheduled_at=now+timedelta(hours=3)
+        self.c.remaining_kwh=12.0
+        self.c.planning_rate_kw=2.0
+        self.c.departure=now+timedelta(hours=4)
+        self.assertLess(self.c._latest_start(now),now)
+        self.assertFalse(self.c._safe_start_due(now+timedelta(hours=2)))
+        self.assertTrue(self.c._safe_start_due(now+timedelta(hours=3)))
+
+    async def test_time_change_while_delay_on_rejects_more_than_twelve_hours(self):
+        local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
+        future=(local+timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        old=(local-timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        await self.c.async_change("time",future)
+        await self.c.async_change("delay",True)
+        original=self.c._scheduled_at
+        with self.assertRaises(ValueError):
+            await self.c.async_change("time",old)
+        self.assertTrue(self.c.delay_enabled)
+        self.assertEqual(self.c._scheduled_at,original)
+        self.assertIn("rifiutato",self.c.notice.lower())
+
+    async def test_posticipo_cannot_be_lost_when_armed_while_disconnected(self):
+        local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
+        clock=(local+timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.c.refresh()
+        await self.c.async_change("time",clock)
+        await self.c.async_change("delay",True)
+        self.c.refresh()
+        self.assertTrue(self.c.delay_enabled)
+
+    async def test_ble_off_is_normal_no_command_and_stable_off_is_valid(self):
+        self.c.cfg[const.CONF_BLE_CONNECTED]="binary_sensor.ble_connection"
+        self.hass.states["binary_sensor.ble_connection"]=FakeState("off")
+        self.c.refresh()
+        self.assertEqual(self.c.status,"Wallbox non disponibile")
+        self.assertEqual(self.hass.services.calls,[])
+        self.hass.states["binary_sensor.ble_connection"].publish("on")
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.c.refresh()
+        self.hass.states["binary_sensor.wallbox_cable"].last_reported-=timedelta(days=7)
+        self.c.refresh()
+        self.assertEqual(self.c._wallbox_cable(datetime.now(timezone.utc)),False)
+        self.assertEqual(self.c.status,"Scollegata")
+
+    async def test_auto_ready_by_populates_and_resets_on_disconnection(self):
+        self.c.refresh()
+        self.assertIsNotNone(self.c.departure)
+        default=self.c.departure
+        local=default.astimezone(ZoneInfo("Europe/Rome"))
+        new=(local+timedelta(hours=1)).time().replace(second=0,microsecond=0)
+        await self.c.async_change("ready_by",new)
+        self.assertIsNotNone(self.c.departure_override)
+        self.assertEqual(self.c.departure_override.date(),local.date())
+        self.hass.states["binary_sensor.wallbox_cable"].publish("off")
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.wallbox_charging"].publish("off")
+        self.hass.states["sensor.ev"].publish("0")
+        self.c.refresh()
+        self.assertIsNone(self.c.departure_override)
+
+    async def test_real_control_optin_persists_through_boot_but_not_without_consent(self):
+        cfg=setup(self.hass)
+        entry=FakeEntry(cfg)
+        entry.options={const.CONF_AUTOMATIC_CONTROL_ENABLED: True}
+        c=controller.RCController(self.hass,entry)
+        await c.async_load()
+        self.assertTrue(c.real_enabled)
+        self.assertIsNone(c._blocked)
+        await c.async_close()
+
     async def test_refresh_after_twenty_seconds_only_selected_car(self):
         await self.c.async_change("real", True)
         self.c._refresh_due = datetime.now(timezone.utc)-timedelta(seconds=1)
