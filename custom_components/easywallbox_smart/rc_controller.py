@@ -623,11 +623,11 @@ class RCController:
                 listener()
 
     def _update_notice(self, now):
-        if self._user_warning:
-            self.notice = self._user_warning
-            return
         if self._blocked:
             self.notice = "Controllo sospeso: " + self._blocked
+            return
+        if self._user_warning:
+            self.notice = self._user_warning
             return
         if self.delay_enabled and self._scheduled_at is not None:
             target = self._scheduled_at.astimezone(
