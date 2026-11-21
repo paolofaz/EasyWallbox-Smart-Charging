@@ -67,6 +67,7 @@ class RCController:
         self.remaining_kwh = None
         self.charging_verified = None
         self.notice = "Nessun avviso"
+        self._user_warning = None
         self._finish_display = None
         self._energy_display = None
         self.planning_rate_kw = None
@@ -578,6 +579,9 @@ class RCController:
                 listener()
 
     def _update_notice(self, now):
+        if self._user_warning:
+            self.notice = self._user_warning
+            return
         if self._blocked:
             self.notice = "Controllo sospeso: " + self._blocked
             return
@@ -585,7 +589,12 @@ class RCController:
             target = self._scheduled_at.astimezone(
                 ZoneInfo(self.hass.config.time_zone))
             latest = self._latest_start(now)
-            if latest is not None and target > latest:
+            if self.charging_verified is True and now < self._scheduled_at:
+                self.notice = ("Posticipo richiesto: "
+                               + ("attesa conferma pausa DPM 0 A"
+                                  if self.real_enabled else
+                                  "controllo automatico non abilitato"))
+            elif latest is not None and target > latest:
                 self.notice = (
                     "Avvio scelto " + target.strftime("%H:%M")
                     + "; per il target entro la partenza serviva iniziare "
@@ -1242,23 +1251,40 @@ class RCController:
                 self.refresh()
                 return
             if value:
-                candidate = validate_delay(
-                    datetime.now(timezone.utc), self.preferred_start,
-                    self.hass.config.time_zone)
+                try:
+                    candidate = validate_delay(
+                        datetime.now(timezone.utc), self.preferred_start,
+                        self.hass.config.time_zone)
+                except ValueError:
+                    self._user_warning = (
+                        "Posticipo rifiutato: seleziona un orario futuro "
+                        "non oltre 12 ore. Nessuna pausa inviata.")
+                    self.refresh()
+                    raise
+                self._user_warning = None
                 if not self.delay_enabled:
                     self._scheduled_at = candidate
                     self._delay_pause_attempted = False
                 self.delay_enabled = True
             else:
+                self._user_warning = None
                 self.delay_enabled = False
                 self._scheduled_at = None
                 self._delay_pause_attempted = False
         elif field == "time":
             if not isinstance(value, time):
                 raise ValueError("time required")
-            appointment = (validate_delay(
-                datetime.now(timezone.utc), value,
-                self.hass.config.time_zone) if self.delay_enabled else None)
+            try:
+                appointment = (validate_delay(
+                    datetime.now(timezone.utc), value,
+                    self.hass.config.time_zone) if self.delay_enabled else None)
+            except ValueError:
+                self._user_warning = (
+                    "Nuovo orario rifiutato: deve essere futuro entro "
+                    "12 ore. Posticipo precedente invariato.")
+                self.refresh()
+                raise
+            self._user_warning = None
             self.preferred_start = value
             if self.delay_enabled:
                 self._scheduled_at = appointment
