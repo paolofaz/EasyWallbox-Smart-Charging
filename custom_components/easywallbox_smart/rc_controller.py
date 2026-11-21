@@ -632,12 +632,6 @@ class RCController:
                 self._ev_idle_since = None
         self._house_subscribe(cable is True)
         if cable is False:
-            # A delayed start belongs to one connection, not a future EV.
-            if self.delay_enabled and not self._connection:
-                self.delay_enabled = False
-                self._scheduled_at = None
-                self._delay_pause_attempted = False
-                self._schedule_save()
             # Reset Manual to AUTO at confirmed unplug, but a session's
             # physical actuation lease is never reconstituted from guesses.
             if self._connection:
