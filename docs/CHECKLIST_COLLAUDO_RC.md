@@ -1,111 +1,99 @@
-# Checklist di prima installazione e collaudo supervisionato
+# Checklist RC — primo collaudo supervisionato
 
-Questa checklist si riferisce alla **Release Candidate reale**. Nessuna
-funzione di laboratorio è installata.
+**Questa è una custom integration che può inviare comandi elettrici reali**.
+Il DPM hardware ESPHome/wallbox rimane attivo. L'integrazione non sostituisce
+le protezioni elettriche e non è ancora collaudata su un'auto reale.
 
-## Prima dell'installazione
+## Prima dell'aggiornamento
 
-1. Eseguire un backup di Home Assistant.
-2. Disabilitare le automazioni legacy che comandano gli stessi
-   `Charge power` e `Start-Stop`. Non bastano due interruttori
-   visivamente ON/OFF per dimostrare l'assenza di altri scrittori.
-3. Verificare sul dispositivo ESPHome che il DPM sia **attivo** e che
-   Start-Stop OFF→DPM 0 A e ON→ripristino DPM positivo funzionino.
-4. Conservare una copia della vecchia integrazione, senza modificare
-   manualmente `.storage`.
-5. Verificare la **versione effettivamente caricata**, non il solo tag
-   GitHub: la vecchia configurazione aveva `house_downstairs`,
-   `house_upstairs`, `target_default`, `sustainable_kw`. La RC
-   deve invece mostrare **Sensori potenza domestica (1..N)**,
-   **Target fisso/da entità** e **Potenza prudenziale per il planner**.
+1. Backup Home Assistant. Non modificare manualmente `.storage`.
+2. Installare la **versione RC corrispondente al tag** da Marketplace con
+   prerelease attive; riavviare HA. La Config Entry precedente è conservata.
+3. Verificare in **Configura → Wallbox**:
+   - sensori domestici 1..N, Shelly EV separato;
+   - sensori ESPHome cavo, Charging, Telemetry Fresh, DPM Active, Fault,
+     Charge Enabled, Command status, DPM positivo/zero confermato,
+     Charge power richiesto/riscontrato, Start-Stop e Refresh data;
+   - collegare il binary sensor **Connection BLE**, consigliato;
+   - DPM positivo riferimento (es. 4,4 kW), limite EV ordinario 4,0 kW,
+     boost 4,2 kW.
+4. **Controllo automatico reale** nelle Opzioni resta inizialmente **OFF**
+   per chi aggiorna da RC precedenti; abilitarlo soltanto dopo avere
+   disabilitato tutte le automazioni concorrenti.
+5. Se utilizzi Stop SOC Fiat nella nuova integrazione, rimuovere
+   preventivamente il comando Start-Stop dall'automazione Fiat legacy.
+   Conservare le notifiche/MQTT soltanto senza doppio controllo.
+6. Nel dispositivo logico EasyWallbox Smart Charging controllare che
+   siano spariti i vecchi pulsanti e lo switch «Controllo reale»;
+   **restano** Modalità Automatico/Manuale, Avvio posticipato,
+   Inizia non prima delle, Auto pronta entro, e i sensori di stato.
+   Nessuna duplicazione di entity_id Shelly, ESPHome o target SOC.
 
-## Configurazione
+## Test senza comandi elettrici
 
-- Selezionare liberamente uno o più sensori domestici con unità W/kW,
-  senza includere la wallbox. Selezionare separatamente lo Shelly EV.
-- Selezionare tutte le conferme ESPHome (cavo, Charging, Telemetry Fresh,
-  DPM Active, Fault, Charge Enabled, DPM set, Power set, Command status)
-  e le due entità di comando (Charge power number, Start-Stop switch).
-- Configurare DPM positivo di riferimento (tipicamente 4,4 kW),
-  limite EV ordinario (tipicamente 4,0 kW) e boost (tipicamente 4,2 kW).
-- Per ogni auto scegliere SOC, cavo, capacità utile, rendimento,
-  orari e **un solo target**: percentuale fissa oppure entità HA.
-  La potenza prudenziale per stimare i tempi non è un comando EV.
-- Il refresh dati auto viene richiesto al massimo una volta a cavo ON
-  (dopo 20 s). Il pulsante non vale come dato aggiornato.
-- Dopo il riavvio verificare che **Controllo reale sia OFF**.
+- Con wallbox **spenta e Connection BLE OFF**, lo stato deve essere
+  «Wallbox non disponibile», senza tentativi di comando né polling BLE.
+  Quando riaccendi la wallbox e Connection torna ON, verificare letture
+  coerenti; l'integrazione non va ricaricata manualmente.
+- Cavo scollegato per ore: OFF resta legittimo e non diventa
+  `cable_or_vehicle_ambiguous` solo perché il sensore è invariato.
+- Con auto riconosciuta deve compilarsi «Auto pronta entro» dall'orario
+  feriale/weekend del **giorno di partenza**; modificarlo nella sessione,
+  verificare il ricalcolo e scollegare: deve tornare vuoto. Il default
+  salvato per l'auto non deve cambiare.
+- Nessun nuovo sensore per Shelly watt, DPM o cavo. Avviso ricarica
+  cambia solo quando cambia il messaggio significativo. Fine prevista
+  ha granularità di 10 minuti, non countdown al secondo.
 
-## Collaudo a step
+## Test avvio posticipato (senza riavvi ciechi)
 
-1. Con cavo scollegato all'avvio HA, non deve partire alcun comando.
-2. Monitorare la disconnessione da una sessione nota e verificare
-   sensore wallbox OFF + Shelly EV <30 W per 30 secondi.
-   Solo in controllo reale abilitato può partire un singolo
-   `switch.turn_off`; confermare DPM 0 A e Charge Enabled OFF.
-3. Collegare la vettura, aspettare 20 s e controllare che l'aggiornamento
-   richiesto riguardi la vettura riconosciuta, oppure entrambe quando
-   ancora ignota. Nessun loop di refresh.
-4. Con refresh riuscito, verificare SOC, target, energia residua,
-   partenza e ultimo inizio utile. Senza dati attendibili
-   **nessun avvio**.
-5. Con avvio posticipato attivo, la wallbox deve restare a DPM 0 A
-   fino all'ora consentita. Alla partenza, il valore Charge power deve
-   essere confermato al limite ordinario prima di Start-Stop ON.
-6. Durante Charging confermato, nessun `switch.turn_on/off`
-   automatico: soltanto eventuali `number.set_value`.
-7. Provare le riduzioni lente con carichi domestici reali e
-   verificare che sia il DPM fisico a occuparsi dei picchi.
-8. Provare modalità Manuale, ritorno ad Automatico allo scollegamento,
-   target raggiunto, SOC obsoleto, errore BLE, DPM differente,
-   cavo in stato `unknown` e riavvio con DPM 0 A.
-   Vietati retry ciechi.
+1. Alle **20:00**, selezionando **19:00** la prossima occorrenza
+   sarebbe domani alle 19:00 (23h): lo switch ON deve essere
+   **rifiutato**, senza inviare Start-Stop OFF. Avviso ricarica
+   segnala che l'ora è fuori dalla finestra di **12 ore**.
+2. Alle 20:00, selezionare 01:00 significa **domani 01:00**:
+   richiesta valida. Orario e data assoluta vengono persistiti.
+3. Se l'auto **sta già caricando**: una sola richiesta Start-Stop
+   OFF (DPM 0 A), con ACK BLE, Charge Enabled OFF, Charging OFF
+   e Shelly EV <30 W. Se la conferma manca, blocco e **nessun retry**.
+4. Se il planner reputa necessario iniziare alle 00:15 per essere
+   pronti alle 08:00, ma il posticipo è fissato alle 01:00,
+   **non anticipare**. Mostrare l'avviso di rischio.
+5. All'ora selezionata, con auto e dati verificati, preparare
+   e confermare **4,0 kW** (o base configurata), poi un solo
+   Start-Stop ON. Confermare DPM positivo e Charging/Shelly.
+6. Lo switch Avvio posticipato rimane ON finché **Charging non
+   è realmente confermato**. Non spegnerlo solo perché è passata
+   l'ora. Dopo la ripresa confermata va OFF automaticamente.
+7. In caso di scollegamento reale durante attesa, lo switch torna
+   OFF e non resta programmato per l'auto successiva.
+8. Annullare posticipo mentre DPM 0 A è già confermato e posseduto
+   dalla RC: può riprendere dopo le stesse verifiche, senza adottare
+   pause poste da altre automazioni.
+9. Riavviare HA in ambiente isolato mentre è **pausata una sessione**
+   confermata e salvata: proprietà recuperabile solo con stessa auto,
+   stesso appuntamento, BLE/DPM0/Charging OFF/Shelly <30 W. Con
+   dati discordanti, nessun comando di ripresa.
 
-## Test della nuova gestione SOC (prima senza comandi reali)
+## Test in carica e fine
 
-1. Aprire **Dispositivi e servizi → EasyWallbox Smart Charging →
-   Dispositivi**. Deve comparire il dispositivo logico
-   EasyWallbox Smart Charging con le entità associate, i due sensori
-   collocati in diagnostica e **nessun duplicato** degli ID esistenti.
-2. In **Configura → Modifica auto**, verificare che l'opzione
-   **Stop a target SOC** sia inizialmente disattivata per entrambe
-   le auto già configurate.
-3. Per Fiat: target da entità HA esistente **oppure** target fisso
-   80–100% con slider nativo a passi di 5. Non creare un secondo
-   slider quando già esiste un `input_number` di target.
-4. Per Kia: mantenere Stop a target OFF e lasciare che sia l'auto
-   ad interrompere al limite impostato internamente; la RC deve
-   osservare la fine e **non** emettere uno Stop né uno Start.
-5. Prima di un test elettrico dello Stop Fiat, **disabilitare
-   l'automazione legacy che scrive Start-Stop**. Non toccare
-   le notifiche e gli eventi MQTT finché non si concorda
-   la loro migrazione.
-6. Con Fiat in carica, SOC sotto target e Stop attivato,
-   nessuno Stop sulla wallbox. Vicino al target il refresh auto
-   è al massimo ogni 20 minuti, non una sequenza veloce.
-7. Dopo un refresh Fiat, verificare che il timestamp originario
-   `last_info_update_at` sia realmente cambiato; se non cambia,
-   **nessuno Stop**. Premere il pulsante non equivale a conferma.
-8. Soltanto con SOC >= limite, cavo ON, Charging ON e Shelly
-   positivo, il controller può richiedere **un solo** Start-Stop OFF.
-   DPM confermato a 0 A, Charge Enabled OFF, Charging OFF
-   e Shelly EV <30 W sono necessari per dichiarare fine carica.
-9. Se manca un ACK BLE o il consumo EV resta sopra 30 W,
-   blocco diagnosticato e **nessun retry**.
-10. Finché la Fiat resta collegata, cambiare il target NON deve
-    far ripartire la ricarica una volta fermata per SOC.
-
-**Attenzione:** i primi test di carica reale devono essere
-supervisionati. Disabilitare l'automazione legacy solo quando
-la sostituzione è verificata; se la RC non è ancora collaudata
-mantenere Controllo reale OFF.
+- Johnny/algoritmo stabilizzatore: varia solo **number.Charge power**,
+  carichi forti/moderati, LIMITED, ritorno dopo 15 min di quiete,
+  boost soltanto con urgenza e regole 60/75.
+- Kia con stop gestito dall'auto: **Stop SOC integrato OFF**, nessuno
+  Stop/Start automatico se la Kia ha già raggiunto il proprio target.
+- Fiat con Stop SOC integrato esplicitamente abilitato, automazione
+  legacy esclusa: refresh dati recente, un solo Start-Stop OFF a target,
+  verifica fisica e nessuna ripresa nella stessa connessione.
+- Dopo ON→OFF di cavo e Shelly <30 W per 30 secondi, una sola
+  richiesta Start-Stop OFF di parcheggio, se i dati sono affidabili.
+- Manuale non ferma elettricamente la carica. Lo switch ESPHome
+  rimane utilizzabile per gli interventi dell'utente.
 
 ## Rollback
 
-Portare **Controllo reale su OFF**, selezionare Manuale,
-controllare l'ultima conferma del DPM e fermare gli eventuali
-controllori concorrenti. Ripristinare la release precedente e riavviare
-Home Assistant. Una lettura DPM 0 A richiede verifica sul firmware;
-non richiedere Start-Stop ON senza conoscere lo stato elettrico.
-
-Questa procedura **non prova la sicurezza elettrica**. Nessuna
-modifica al firmware, alle credenziali BLE o ai file `.storage`.
+Disabilitare il controllo automatico nelle Opzioni (con reload),
+verificare sul firmware ESPHome lo stato DPM e Start-Stop, quindi
+ripristinare il precedente tag dal Marketplace e riavviare.
+**Non premere Start-Stop ON alla cieca** per recuperare una ricarica
+interrotta. Annotare le letture BLE e Shelly nella diagnosi.
