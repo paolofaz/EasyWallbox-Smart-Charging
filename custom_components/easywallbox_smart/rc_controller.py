@@ -1351,6 +1351,11 @@ class RCController:
             self.preferred_start = value
             if self.delay_enabled:
                 self._scheduled_at = appointment
+                if (self._dpm_lease is not None and
+                        isinstance(self._saved_delay_lease, dict)):
+                    # The same confirmed pause has a new explicit resume
+                    # appointment; keep its persisted provenance consistent.
+                    self._saved_delay_lease["start"] = appointment.isoformat()
                 self._delay_pause_attempted = False
         elif field == "ready_by":
             if not isinstance(value, time):
