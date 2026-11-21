@@ -7,7 +7,6 @@ from .device import controller_device_info
 
 
 SWITCHES = {
-    "real": ("Controllo reale", "mdi:shield-check"),
     "delay": ("Avvio ricarica posticipato", "mdi:clock-start"),
 }
 
@@ -37,8 +36,7 @@ class RCSwitch(SwitchEntity):
 
     @property
     def is_on(self):
-        return {"real": self.controller.real_enabled,
-                "delay": self.controller.delay_enabled}[self.kind]
+        return self.controller.delay_enabled
 
     async def async_turn_on(self, **kwargs):
         try:
