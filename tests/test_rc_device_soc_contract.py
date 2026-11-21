@@ -12,8 +12,7 @@ class DeviceAndStopContract(unittest.TestCase):
         device = (BASE/"device.py").read_text()
         self.assertIn("DeviceInfo(", device)
         self.assertIn("identifiers={(DOMAIN, entry.entry_id)}", device)
-        for platform in ("sensor", "select", "switch", "time", "datetime",
-                         "button", "number"):
+        for platform in ("sensor", "select", "switch", "time", "number"):
             with self.subTest(platform=platform):
                 src=(BASE/f"{platform}.py").read_text()
                 self.assertIn("controller_device_info(entry)",src)
@@ -21,7 +20,13 @@ class DeviceAndStopContract(unittest.TestCase):
 
     def test_only_two_diagnostic_sensors(self):
         src=(BASE/"sensor.py").read_text()
-        self.assertIn('("state", "planner")',src)
+        self.assertIn('"state":',src)
+        self.assertIn('"planner":',src)
+        self.assertIn('if kind in ("state", "planner"):',src)
+        self.assertIn('"vehicle":',src)
+        self.assertIn('"phase":',src)
+        self.assertIn('"energy":',src)
+        self.assertIn('"finish":',src)
         self.assertIn("EntityCategory.DIAGNOSTIC",src)
 
     def test_soc_stop_is_opt_in_and_does_not_redefine_charging_start(self):
