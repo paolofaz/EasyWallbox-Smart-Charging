@@ -106,6 +106,7 @@ class RCController:
         self._power_state: State | None = None
         self._owned_limit: float | None = None
         self._dpm_lease: float | None = None
+        self._saved_delay_lease = None
         self._pending: Pending | None = None
         self._blocked = None
         self._last_key = None
@@ -135,6 +136,8 @@ class RCController:
                                         else {})
         # A persisted proven parking intent is not a fresh DPM readback.
         self._park_owned = saved.get("park_owned") is True
+        lease = saved.get("delayed_lease")
+        self._saved_delay_lease = lease if isinstance(lease, dict) else None
         try:
             self.preferred_start = time.fromisoformat(saved.get("start", "23:00"))
         except (TypeError, ValueError):
@@ -155,6 +158,7 @@ class RCController:
         await self._store.async_save({
             "mode": self.mode, "delay": self.delay_enabled,
             "park_owned": self._park_owned,
+            "delayed_lease": self._saved_delay_lease,
             "fixed_target_overrides": self._fixed_target_overrides,
             "start": self.preferred_start.isoformat(timespec="minutes"),
             "scheduled_at": (self._scheduled_at.isoformat()
@@ -289,7 +293,14 @@ class RCController:
                 if p.kind == "prepare":
                     self._prepared_session = self._session_id
             elif p.kind in ("pause", "delay_pause"):
-                self._dpm_lease = p.target  # remembers ORIGINAL positive DPM
+                self._dpm_lease = p.target
+                if p.kind == "delay_pause" and self._scheduled_at is not None:
+                    self._saved_delay_lease = {
+                        "vehicle": self._connection,
+                        "start": self._scheduled_at.isoformat(),
+                        "dpm": p.target,
+                    }
+                    self._schedule_save()
             elif p.kind == "soc_stop":
                 self._soc_stop_done = True
                 self._park_owned = True
@@ -299,6 +310,7 @@ class RCController:
                 self._schedule_save()
             elif p.kind == "resume":
                 self._dpm_lease = None
+                self._saved_delay_lease = None
                 self._park_owned = False
                 self._schedule_save()
             self.last_ack = now.isoformat(timespec="seconds")
@@ -325,6 +337,37 @@ class RCController:
                 any(v is None for v in observed) or profile is False):
             return None
         return profile
+
+    def _recover_verified_delay_lease(self, snapshot):
+        """Restore previous ownership only from matching, current BLE facts.
+
+        A saved lease is not evidence: cable, EV identity, DPM0,
+        Charge Enabled OFF, Charging OFF and Shelly idle are required.
+        Never adopt an external/manual DPM0 pause.
+        """
+        saved = self._saved_delay_lease
+        if not isinstance(saved, dict) or self._dpm_lease is not None:
+            return False
+        car = snapshot["car"]
+        if not self.delay_enabled or self._scheduled_at is None or car is None:
+            return False
+        try:
+            valid = (saved.get("vehicle") == car[CONF_CABLE] and
+                     saved.get("start") == self._scheduled_at.isoformat() and
+                     abs(float(saved.get("dpm")) -
+                         float(self.cfg[CONF_EXPECTED_DPM])) <= .11 and
+                     snapshot["dpm_parked"] is True and
+                     snapshot["charging"] is False and
+                     snapshot["ev_kw"] is not None and
+                     snapshot["ev_kw"] < .03 and
+                     snapshot["telemetry"] is True and
+                     snapshot["active"] is True and snapshot["fault"] is False)
+        except (ValueError, TypeError):
+            return False
+        if valid:
+            self._dpm_lease = float(saved["dpm"])
+            return True
+        return False
 
     def _car_update_ready(self, now, car):
         """A refresh button press is NOT new vehicle data.
@@ -740,6 +783,7 @@ class RCController:
             self._power_state = None
             self._owned_limit = None
             self._dpm_lease = None
+            self._saved_delay_lease = None
             self._active_departure = None
             self._scheduled_at = None
             self._prepared_session = None
@@ -788,10 +832,14 @@ class RCController:
                 self._prepared_session = None
                 self._soc_stop_done = False
                 self.charge_now = False
+            # On boot, a previously ACKed delayed pause may be recovered
+            # only from live matching BLE/Shelly facts.
+            self._recover_verified_delay_lease(snapshot)
             if (self._pending is None and
                     snapshot["dpm"] is not None and
                     snapshot["dpm"] <= .06 and
                     self._dpm_lease is None and not self._park_owned and
+                    self._saved_delay_lease is None and
                     self._blocked in (None, "startup_requires_explicit_reenable")):
                 # Never inherit an ESPHome/user DPM=0 as our own pause.
                 self._blocked = "dpm_zero_without_proven_rc_lease"
