@@ -3,8 +3,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Wallbox e misure elettriche",
-        "description": "Selezionare gli stati BLE confermati. Start-Stop usa DPM=0 A; il DPM fisico deve restare attivo.",
+        "title": "Configurazione essenziale",
+        "description": "Seleziona i consumi casa, lo Shelly della wallbox e lo switch Start-Stop ESPHome. Gli altri sensori BLE/DPM vengono individuati automaticamente dallo stesso dispositivo.",
         "data": {
           "house_power_sources": "Sensori potenza domestica (seleziona 1 o più, esclusa la wallbox)",
           "ev_power": "Potenza Shelly wallbox",
@@ -22,10 +22,8 @@
           "expected_dpm_kw": "Valore DPM normale atteso (kW)",
           "base_kw": "Potenza massima normale EV (kW)",
           "boost_kw": "Potenza massima boost EV (kW)",
-          "legacy_automations_disabled": "Confermo che le automazioni concorrenti sono disabilitate",
           "wallbox_refresh_button": "Pulsante ESPHome aggiorna dati BLE",
-          "ble_connected": "Connessione BLE ESPHome (facoltativa; consigliata)",
-          "automatic_control_enabled": "Autorizza controllo automatico reale dopo le verifiche (default OFF)"
+          "ble_connected": "Connessione BLE ESPHome (facoltativa; consigliata)"
         }
       },
       "vehicle": {
@@ -65,34 +63,9 @@
         "data": {
           "target_entity": "Entità limite SOC"
         }
-      }
-    },
-    "error": {
-      "invalid_meter_sources": "Selezione sensori casa errata",
-      "duplicate_entities": "Le entità non devono essere ripetute",
-      "invalid_power": "Potenza base/boost non consentita",
-      "duplicate_vehicle": "Auto o cavo già presenti",
-      "invalid_clock": "Orario HH:MM non valido",
-      "invalid_target": "Target SOC non valido",
-      "competing_controller_not_disabled": "Disabilitare le automazioni che comandano Start-Stop e Charge power prima di abilitare il controllo automatico"
-    },
-    "abort": {
-      "already_configured": "Wallbox già configurata"
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Impostazioni EasyWallbox Smart Charging",
-        "menu_options": {
-          "wallbox": "Wallbox, sensori e potenze",
-          "choose_vehicle": "Modifica un'auto esistente",
-          "add_vehicle": "Aggiungi una nuova auto",
-          "remove_vehicle": "Rimuovi un'auto"
-        }
       },
-      "wallbox": {
-        "title": "Entità wallbox, Shelly e limiti",
+      "advanced_user": {
+        "title": "Configurazione avanzata ESPHome",
         "data": {
           "house_power_sources": "Sensori casa",
           "ev_power": "Shelly wallbox",
@@ -110,11 +83,61 @@
           "expected_dpm_kw": "DPM normale atteso",
           "base_kw": "Potenza EV normale",
           "boost_kw": "Potenza boost",
-          "legacy_automations_disabled": "Automazioni concorrenti disabilitate",
           "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)",
-          "ble_connected": "Connessione BLE ESPHome (consigliata)",
-          "automatic_control_enabled": "Controllo automatico reale abilitato (solo con automazioni concorrenti disabilitate)"
+          "ble_connected": "Connessione BLE ESPHome (consigliata)"
+        },
+        "description": "Usa questo percorso soltanto se il riconoscimento automatico non ha trovato tutti i sensori. I controlli di sicurezza non vengono saltati."
+      }
+    },
+    "error": {
+      "invalid_meter_sources": "Selezione sensori casa errata",
+      "duplicate_entities": "Le entità non devono essere ripetute",
+      "invalid_power": "Potenza base/boost non consentita",
+      "duplicate_vehicle": "Auto o cavo già presenti",
+      "invalid_clock": "Orario HH:MM non valido",
+      "invalid_target": "Target SOC non valido",
+      "competing_controller_not_disabled": "Disabilitare le automazioni che comandano Start-Stop e Charge power prima di abilitare il controllo automatico",
+      "automatic_detection_failed": "Impossibile individuare in modo univoco tutti i sensori dello stesso dispositivo ESPHome. Usa Associazione avanzata."
+    },
+    "abort": {
+      "already_configured": "Wallbox già configurata"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Impostazioni EasyWallbox Smart Charging",
+        "menu_options": {
+          "wallbox": "Wallbox, sensori e potenze",
+          "choose_vehicle": "Modifica un'auto esistente",
+          "add_vehicle": "Aggiungi una nuova auto",
+          "remove_vehicle": "Rimuovi un'auto",
+          "advanced_wallbox": "Associazione avanzata sensori ESPHome"
         }
+      },
+      "wallbox": {
+        "title": "Configurazione essenziale wallbox",
+        "data": {
+          "house_power_sources": "Sensori casa",
+          "ev_power": "Shelly wallbox",
+          "wallbox_connected": "Cavo wallbox",
+          "wallbox_charging": "Charging",
+          "telemetry_fresh": "Telemetria fresca",
+          "dpm_active": "DPM attivo",
+          "wallbox_fault": "Guasto wallbox",
+          "charge_enabled": "DPM abilitazione confermata",
+          "start_stop_switch": "Switch Start-Stop",
+          "command_status": "Stato comando BLE",
+          "requested_limit": "Charge power number",
+          "confirmed_limit": "Power set",
+          "dpm_confirmed": "DPM limite confermato",
+          "expected_dpm_kw": "DPM normale atteso",
+          "base_kw": "Potenza EV normale",
+          "boost_kw": "Potenza boost",
+          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)",
+          "ble_connected": "Connessione BLE ESPHome (consigliata)"
+        },
+        "description": "Tre scelte di entità, tre limiti. Tutte le verifiche BLE e DPM restano attive."
       },
       "choose_vehicle": {
         "title": "Seleziona l'auto da modificare",
@@ -170,6 +193,30 @@
         "data": {
           "confirm": "Confermo la rimozione"
         }
+      },
+      "advanced_wallbox": {
+        "title": "Configurazione avanzata ESPHome",
+        "data": {
+          "house_power_sources": "Sensori casa",
+          "ev_power": "Shelly wallbox",
+          "wallbox_connected": "Cavo wallbox",
+          "wallbox_charging": "Charging",
+          "telemetry_fresh": "Telemetria fresca",
+          "dpm_active": "DPM attivo",
+          "wallbox_fault": "Guasto wallbox",
+          "charge_enabled": "DPM abilitazione confermata",
+          "start_stop_switch": "Switch Start-Stop",
+          "command_status": "Stato comando BLE",
+          "requested_limit": "Charge power number",
+          "confirmed_limit": "Power set",
+          "dpm_confirmed": "DPM limite confermato",
+          "expected_dpm_kw": "DPM normale atteso",
+          "base_kw": "Potenza EV normale",
+          "boost_kw": "Potenza boost",
+          "wallbox_refresh_button": "ESPHome Refresh data (facoltativo)",
+          "ble_connected": "Connessione BLE ESPHome (consigliata)"
+        },
+        "description": "Usa questo percorso soltanto se il riconoscimento automatico non ha trovato tutti i sensori. I controlli di sicurezza non vengono saltati."
       }
     },
     "error": {
@@ -177,7 +224,8 @@
       "duplicate_vehicle": "Nome o sensore cavo già utilizzato da un'altra auto",
       "invalid_vehicle": "Profilo incompleto o non valido",
       "vehicle_missing": "L'auto non esiste più",
-      "competing_controller_not_disabled": "Disabilitare le automazioni che comandano Start-Stop e Charge power prima di abilitare il controllo automatico"
+      "competing_controller_not_disabled": "Disabilitare le automazioni che comandano Start-Stop e Charge power prima di abilitare il controllo automatico",
+      "automatic_detection_failed": "Impossibile individuare in modo univoco tutti i sensori dello stesso dispositivo ESPHome. Usa Associazione avanzata."
     },
     "abort": {
       "cannot_remove_last": "Non puoi eliminare l'unica auto configurata"
