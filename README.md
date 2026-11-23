@@ -1,6 +1,6 @@
 # EasyWallbox Smart Charging
 
-**0.9 beta — Home Assistant custom integration.** Non ancora collaudata con una ricarica completa su auto reale: la prima prova dev'essere supervisionata.
+**0.9 beta — Home Assistant custom integration.** 
 
 L'integrazione gestisce la pianificazione della carica e una stabilizzazione *lenta* del limite EV tramite le entità del firmware EasyWallbox ESPHome. Non sostituisce il **DPM della wallbox**, che deve rimanere attivo e continua a occuparsi dei picchi elettrici e delle protezioni.
 
@@ -19,8 +19,6 @@ Nessun Docker aggiuntivo, script esterno, fotovoltaico, tariffe dinamiche o deci
 
 Richiede una versione di Home Assistant compatibile con **2026.11** (quality gate su **2026.11.1**) e una EasyWallbox ESPHome già funzionante. Installare tramite HACS/Marketplace come integrazione personalizzata da questo repository, oppure copiare `custom_components/easywallbox_smart` in `config/custom_components/` e riavviare HA.
 
-Per aggiornare da un'installazione esistente, **non eliminare l'integrazione né i suoi dati**: dominio `easywallbox_smart`, config entry ed entità restano gli stessi. Prima dell'aggiornamento fare un backup Home Assistant. La versione manifest è `0.9.0b1`; la release GitHub è una **prerelease beta**, non la v1.0.
-
 Aprire *Impostazioni → Dispositivi e servizi → Aggiungi integrazione → EasyWallbox Smart Charging* e completare il config flow grafico. In caso di installazione preesistente, usare le Opzioni.
 
 ### Entità richieste
@@ -28,8 +26,6 @@ Aprire *Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Eas
 Selezionare le sette entità obbligatorie della **stessa** wallbox ESPHome: Connection BLE, Car Connected, Charging, Start-Stop, Charge power richiesto, limite EV confermato e DPM confermato. Specificare il valore DPM normale atteso, la potenza EV predefinita, le sorgenti Shelly del consumo domestico **senza EV** e lo Shelly EV separato. Sono disponibili fonti opzionali per Charge State, Session Energy, Session Duration e relè fisico di alimentazione.
 
 Configurare uno o più profili auto con sensore cavo, SOC, capacità batteria, rendimento AC, orari feriali/festivi e target SOC da entità o fisso. È possibile selezionare un pulsante di aggiornamento dati veicolo e, se voluto, lo Stop SOC gestito da questa integrazione. Nel setup di riferimento: Fiat 500e e Kia EV3.
-
-**Valori predefiniti per nuove installazioni:** 4,2 kW per la sessione e 4,4 kW come DPM configurato. Non sono un dimensionamento per altri impianti; verificare sempre limiti e dati reali. Le configurazioni esistenti non vengono sovrascritte.
 
 ### Evitare comandi concorrenti
 
@@ -67,6 +63,4 @@ Questa impostazione è destinata a rimanere disponibile anche dopo la beta, senz
 
 La beta è passata attraverso prove automatiche del controller, del config flow, della logica di potenza, dei blocchi di sicurezza e dei riavvii, nonché verifiche Hassfest e su Home Assistant. **Un test automatico non conferma un effetto elettrico**.
 
-La prima ricarica deve essere supervisionata, con DPM attivo, misure ESPHome/Shelly attendibili e senza automazioni concorrenti. Dopo la carica analizzare il diario JSONL e gli eventuali dati esportati dagli Shelly: ingressi/uscite LIMITED, guadagno di energia utile, frequenza di comandi BLE, gap nei report e freschezza SOC. Solo dopo i test reali sarà valutata la promozione a **1.0 stabile**.
-
-[Checklist del primo collaudo](docs/COLLAUDO_BETA.md) · [Licenza](LICENSE)
+[Licenza](LICENSE)
