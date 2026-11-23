@@ -1798,9 +1798,11 @@ class ChargingController:
         # The pre-plug delayed-start flag is retired by verified DPM
         # release, never by the wall-clock alone or cloud vehicle identity.
         self._house_subscribe(snapshot["charging"] is True)
-        if self._session_id is None:
-            # Wallbox+Shelly establish a charging session independently
-            # of the car's cloud service. Never infer its SOC or departure.
+        if (self._session_id is None and snapshot["charging"] is True
+                and self._restart_power is None):
+            # New physical charge: cloud identity is not needed for power
+            # stabilization. An unresolved previous owned cap, however,
+            # must be reconciled before starting a new controller session.
             self._session_id = self._trace_session
             self._power_state = State(
                 session_id=self._session_id,
