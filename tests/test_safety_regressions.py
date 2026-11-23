@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import test_controller_smoke as rig
 import test_power_policy as policy_rig
@@ -140,6 +141,115 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.02)
         self.assertFalse(self.c._standby_restore_due)
         self.assertFalse(any(x[:2] == ("switch", "turn_on") for x in self.hass.services.calls))
+
+
+    async def test_shelly_on_ble_reconnect_waits_for_valid_switch_then_one_on(self):
+        """Power-on needs a real relay edge, BLE off->on, and fresh DPM0."""
+        relay = "switch.shelly_wallbox"
+        self.c.cfg[C.CONF_WALLBOX_POWER_SWITCH] = relay
+        self.hass.states[relay] = rig.FakeState("off")
+        self.report(C.CONF_BLE_CONNECTED, "off")
+        self.c.refresh()
+        self.c.mode = "automatic"
+        self.report(C.CONF_WALLBOX_CONNECTED, "off")
+        self.report(C.CONF_WALLBOX_CHARGING, "off")
+        self.report(C.CONF_EV_POWER, "0")
+        self.hass.states[relay].publish("on")
+        self.c._on_event(SimpleNamespace(data={
+            "entity_id": relay, "old_state": rig.FakeState("off"),
+            "new_state": rig.FakeState("on")}))
+        self.assertIsNotNone(self.c._supply_restore_candidate)
+        self.report(C.CONF_BLE_CONNECTED, "on")
+        self.c.refresh()
+        self.report(C.CONF_WALLBOX_CONNECTED, "off")
+        self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
+        self.report(C.CONF_WALLBOX_CHARGING, "off")
+        self.report(C.CONF_EV_POWER, "0")
+        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_START_STOP, "unavailable")
+        self.c.refresh()
+        await asyncio.sleep(.02)
+        self.assertFalse(any(x[:2] == ("switch", "turn_on")
+                             for x in self.hass.services.calls))
+        self.report(C.CONF_START_STOP, "off")
+        self.c.refresh()
+        await asyncio.sleep(.03)
+        self.assertEqual(self.c._pending.kind, "supply_restore")
+        self.assertEqual([x[:2] for x in self.hass.services.calls
+                          if x[0] == "switch"], [("switch", "turn_on")])
+        self.report(C.CONF_DPM_CONFIRMED, "4.4")
+        self.report(C.CONF_START_STOP, "on")
+        self.c.refresh()
+        self.assertIsNone(self.c._pending)
+        self.c.refresh()
+        await asyncio.sleep(.02)
+        self.assertEqual(len([x for x in self.hass.services.calls
+                              if x[:2] == ("switch", "turn_on")]), 1)
+
+    async def test_shelly_power_on_without_ble_edge_or_after_deadline_does_not_write(self):
+        relay = "switch.shelly_wallbox"
+        self.c.cfg[C.CONF_WALLBOX_POWER_SWITCH] = relay
+        self.hass.states[relay] = rig.FakeState("on")
+        self.report(C.CONF_WALLBOX_CONNECTED, "off")
+        self.report(C.CONF_WALLBOX_CHARGING, "off")
+        self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
+        self.report(C.CONF_EV_POWER, "0")
+        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_START_STOP, "off")
+        self.c._on_event(SimpleNamespace(data={
+            "entity_id": relay, "old_state": rig.FakeState("off"),
+            "new_state": rig.FakeState("on")}))
+        self.c.refresh()  # BLE was already ON: no OFF->ON seen.
+        await asyncio.sleep(.02)
+        self.assertFalse(self.c._supply_ble_rejoined)
+        self.assertFalse(any(x[0] == "switch" for x in self.hass.services.calls))
+        self.report(C.CONF_BLE_CONNECTED, "off")
+        self.c.refresh()
+        self.c._supply_restore_candidate = (
+            datetime.now(timezone.utc) - timedelta(seconds=121))
+        self.report(C.CONF_BLE_CONNECTED, "on")
+        self.c.refresh()
+        await asyncio.sleep(.02)
+        self.assertFalse(any(x[0] == "switch" for x in self.hass.services.calls))
+
+    async def test_manual_to_auto_issues_one_verified_on_if_off(self):
+        self.report(C.CONF_WALLBOX_CHARGING, "off")
+        self.report(C.CONF_CHARGE_STATE, "Vehicle ready")
+        self.report(C.CONF_EV_POWER, "0")
+        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_START_STOP, "off")
+        await self.c.async_change("mode", "manual")
+        await self.c.async_change("mode", "automatic")
+        self.assertEqual([x[:2] for x in self.hass.services.calls
+                          if x[0] == "switch"], [("switch", "turn_on")])
+        self.assertEqual(self.c._pending.kind, "mode_auto_on")
+        self.report(C.CONF_DPM_CONFIRMED, "4.4")
+        self.report(C.CONF_START_STOP, "on")
+        self.c.refresh()
+        self.assertIsNone(self.c._pending)
+        await self.c.async_change("mode", "automatic")
+        self.assertEqual(len([x for x in self.hass.services.calls
+                              if x[:2] == ("switch", "turn_on")]), 1)
+
+    async def test_manual_mode_returns_auto_on_unplug_then_on_after_69s(self):
+        await self.c.async_change("mode", "manual")
+        self.report(C.CONF_WALLBOX_CHARGING, "off")
+        self.report(C.CONF_EV_POWER, "0")
+        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_START_STOP, "off")
+        self.report(C.CONF_WALLBOX_CONNECTED, "off")
+        self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
+        self.c.refresh()
+        self.assertEqual(self.c.mode, "automatic")
+        self.assertIsNotNone(self.c._unplug_since)
+        self.assertIsNone(self.c._pending)
+        self.c._unplug_since = datetime.now(timezone.utc)-timedelta(seconds=70)
+        self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
+        self.c.refresh()
+        await asyncio.sleep(.03)
+        self.assertEqual(self.c._pending.kind, "normalize_on")
+        self.assertEqual([x[:2] for x in self.hass.services.calls
+                          if x[0] == "switch"], [("switch", "turn_on")])
 
 
 class RC7Policy(unittest.TestCase):
