@@ -1654,8 +1654,15 @@ class ChargingController:
             self._supply_ble_rejoined = False
             self._record("power_supply", "physical_relay_went_off")
         elif before is False and after is True:
-            eligible = (self.mode == "automatic" and self.real_enabled
-                        and not self.explicit_pause and not self._blocked
+            # A power cut during a previously owned charging session can
+            # temporarily disable real control as 'continuity_unverified'.
+            # The physical OFF->ON may still arm restoration: the later
+            # VERIFIED unplug clears that fence before any ON is dispatched.
+            interrupted = self._blocked == "session_continuity_unverified"
+            eligible = (self.mode == "automatic"
+                        and (self.real_enabled or interrupted)
+                        and not self.explicit_pause
+                        and (not self._blocked or interrupted)
                         and self._saved_attempt is None and self._pending is None)
             self._supply_restore_candidate = (
                 datetime.now(timezone.utc) if eligible else None)
