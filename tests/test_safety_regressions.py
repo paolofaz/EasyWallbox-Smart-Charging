@@ -247,6 +247,16 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
         self.c.refresh()
         await asyncio.sleep(.03)
+        self.assertIsNotNone(self.c._pending, (
+            "state=" + repr({
+                "mode": self.c.mode, "real": self.c.real_enabled,
+                "blocked": self.c._blocked, "standby_due": self.c._standby_restore_due,
+                "unplug_since": self.c._unplug_restore_since,
+                "cable": self.c._wallbox_cable(datetime.now(timezone.utc)),
+                "switch": self.c._reported_binary(self.c.cfg[C.CONF_START_STOP]),
+                "dpm": self.c._setting(C.CONF_DPM_CONFIRMED, datetime.now(timezone.utc)),
+                "park_task": str(self.c._park_task), "calls": self.hass.services.calls,
+            })))
         self.assertEqual(self.c._pending.kind, "normalize_on")
         self.assertEqual([x[:2] for x in self.hass.services.calls
                           if x[0] == "switch"], [("switch", "turn_on")])
