@@ -159,7 +159,7 @@ class TestVehicleConfigUI(unittest.IsolatedAsyncioTestCase):
                     "confirmed_limit"}
         self.assertEqual(set(self.app.WALLBOX_ENTITIES), expected)
         expected.update({"house_power_sources", "ev_power", "expected_dpm_kw",
-                         "base_kw", "charge_state",
+                         "base_kw", "charge_state", "telemetry_fresh",
                          "session_energy", "session_duration",
                          "wallbox_power_switch"})
         self.assertEqual({key.schema for key in self.app.WALLBOX.schema}, expected)
