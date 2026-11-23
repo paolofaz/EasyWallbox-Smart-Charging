@@ -800,7 +800,14 @@ class ChargingController:
                     return
             else:
                 car = self._select_vehicle(now, cable)
-                if car is None or car[CONF_CABLE] != self._connection:
+                if (p.kind == "power" and
+                        (self._vehicle_conflict(now, cable) or
+                         (p.cable_marker and
+                          p.cable_marker != self._continuity_marker(CONF_WALLBOX_CONNECTED)))):
+                    self._fail_command(p, "power_command_physical_continuity_lost")
+                    return
+                if p.kind != "power" and (
+                        car is None or car[CONF_CABLE] != self._connection):
                     self._fail_command(p, "pending_vehicle_unverified")
                     return
         if now - p.since >= ACK_TIMEOUT:
@@ -1111,55 +1118,66 @@ class ChargingController:
         return False
 
     async def _request_one_shot_updates(self):
-        """Once per real charging start; never on cable insertion alone.
+        """Best-effort cloud identification: +15s, +1m..+4m, stop at +5m.
 
-        A fresh wallbox Charging flag plus real Shelly EV power are the
-        independent evidence. Never depend on Fiat cloud cable freshness.
-        No blind retries and no electrical writes.
+        A cloud failure never disables charging or electrical stabilization.
+        An already identified vehicle gets just the initial data refresh.
         """
         async with self._lock:
             now = datetime.now(timezone.utc)
+            start, due, deadline = (self._refresh_start_at,
+                                     self._refresh_due, self._refresh_deadline)
             if (not self.real_enabled or self.mode != "automatic" or
-                    self._connect_since is None or
-                    self._refresh_due is None or self._refresh_issued or
-                    now < self._refresh_due or
+                    self._closed or start is None or due is None or
+                    deadline is None or now < due or
                     self._wallbox_cable(now) is not True or
                     self._wallbox_flag(CONF_WALLBOX_CHARGING) is not True or
                     (self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
                      or 0.0) < .10):
                 return
-            self._refresh_issued = True
-            self._refresh_requested_at = now
-            self._refresh_deadline = now + timedelta(seconds=120)
+            if now >= deadline:
+                self._refresh_due = None
+                self._record("vehicle_refresh", "five_minute_identification_expired")
+                return
             selected = self._select_vehicle(now, True)
-            cars = [selected] if selected is not None else self.cfg[CONF_VEHICLES]
+            if self._refresh_issued and selected is not None:
+                self._refresh_due = None
+                return
             session = self._trace_session
+            self._refresh_issued = True
+            self._refresh_count += 1
+            self._refresh_requested_at = now
+            cars = [selected] if selected is not None else self.cfg[CONF_VEHICLES]
+            # Anchor each retry to the ORIGINAL charging start, not to the
+            # completion of a slow cloud call. No calls after +5 minutes.
+            retry_at = start + timedelta(minutes=self._refresh_count)
+            self._refresh_due = (
+                retry_at if selected is None and retry_at < deadline else None)
             for car in cars:
                 button = car.get(CONF_VEHICLE_REFRESH)
                 if not button:
                     continue
-                # Cloud buttons are not BLE commands, but never call them if
-                # the physically verified charging session has disappeared.
                 check = datetime.now(timezone.utc)
                 if (self._closed or session != self._trace_session or
-                        not self.real_enabled or self.mode != "automatic" or
+                        check >= deadline or not self.real_enabled or
+                        self.mode != "automatic" or
                         self._wallbox_cable(check) is not True or
                         self._wallbox_flag(CONF_WALLBOX_CHARGING) is not True or
                         (self._power(self.cfg[CONF_EV_POWER], check, SHELLY_TTL)
                          or 0.0) < .10):
                     return
+                # The other car may be disconnected: its cloud provider may
+                # reject refresh; record that fact and carry on.
                 try:
-                    self._record("vehicle_refresh", "charging_started_data_request",
+                    self._record("vehicle_refresh", "identification_attempt",
+                                 attempt=self._refresh_count,
                                  vehicle_slot=self.cfg[CONF_VEHICLES].index(car) + 1)
                     await self.hass.services.async_call(
                         "button", "press", {"entity_id": button}, blocking=True)
                 except Exception as error:
-                    _LOGGER.warning("beta vehicle refresh rejected (%s), no retry",
-                                    type(error).__name__)
-                    self._refresh_error = "vehicle_refresh_command_failed"
-                    self._record("vehicle_refresh_error", self._refresh_error)
-                    # Failure of the Fiat refresh must not skip the Kia.
-                    continue
+                    self._record("vehicle_refresh_error", "provider_refresh_failed",
+                                 vehicle_slot=self.cfg[CONF_VEHICLES].index(car) + 1,
+                                 error_type=type(error).__name__)
             self.refresh()
 
     def _house(self, now):
@@ -1780,8 +1798,18 @@ class ChargingController:
         # The pre-plug delayed-start flag is retired by verified DPM
         # release, never by the wall-clock alone or cloud vehicle identity.
         self._house_subscribe(snapshot["charging"] is True)
+        if self._session_id is None:
+            # Wallbox+Shelly establish a charging session independently
+            # of the car's cloud service. Never infer its SOC or departure.
+            self._session_id = self._trace_session
+            self._power_state = State(
+                session_id=self._session_id,
+                cap_kw=self.session_power_kw, baseline_kw=self.session_power_kw)
         if snapshot["car"] is None:
-            if (self._soc_stop_latch is not None and
+            if snapshot["charging"] is True and not self._vehicle_conflict(now, cable):
+                self.status, self.reason = ("In carica — veicolo non identificato",
+                                            "guest_vehicle_unlimited_planning_budget")
+            elif (self._soc_stop_latch is not None and
                     snapshot["charging"] is False and
                     self._soc_stop_latch.get("cable_marker") ==
                     self._continuity_marker(CONF_WALLBOX_CONNECTED)):
@@ -1794,12 +1822,10 @@ class ChargingController:
             if self._connection and identity != self._connection:
                 self._blocked = "vehicle_changed_without_unplug"
                 self.real_enabled = False
-            if self._session_id is None:
-                self._session_id = self._trace_session
+            if not self._connection:
+                # Identification may arrive minutes AFTER physical charging
+                # and AFTER a confirmed, guest-safe power regulation.
                 self._connection = identity
-                self._power_state = State(session_id=self._session_id,
-                                          cap_kw=self.session_power_kw,
-                                          baseline_kw=self.session_power_kw)
                 if self._restart_power is None:
                     self._schedule_save()
             if self._restart_power is not None:
@@ -1816,7 +1842,7 @@ class ChargingController:
             elif self._soc_stop_done:
                 self.status = "Carica terminata — limite SOC raggiunto"
                 self.reason = "soc_target_stop_verified"
-            elif (self._refresh_error and not self._car_update_ready(now, snapshot["car"])):
+            elif (self._refresh_error and snapshot["charging"] is not True):
                 self.status, self.reason = "In attesa dati auto", self._refresh_error
             elif (self._soc_stop_refresh_at and snapshot["charging"] is True and
                   self.soc is not None and self.target_soc is not None and
@@ -1885,7 +1911,7 @@ class ChargingController:
             self._record("state", self.reason, status=self.status, notice=self.notice)
         self._notify()
         if (self.real_enabled and self.mode == "automatic" and not self.explicit_pause
-                and not self._blocked and self._pending is None and snapshot["car"]
+                and not self._blocked and self._pending is None
                 and snapshot["charging"] is True and not self.delay_enabled
                 and self._saved_delay_lease is None):
             if self._task is None or self._task.done():
@@ -2104,11 +2130,10 @@ class ChargingController:
             except Exception as error:
                 _LOGGER.warning("SOC refresh failed (%s), never retry blindly",
                                 type(error).__name__)
-                self._blocked = "soc_refresh_failed_no_retry"
-                self._record("vehicle_refresh_error", self._blocked)
-                self.real_enabled = False
-                self.status, self.reason = "Bloccata", self._blocked
-                self._notify()
+                self._record("vehicle_refresh_error",
+                             "soc_refresh_failed_stop_not_authorized")
+                # Never stop on unverified SOC, but do not disable the
+                # otherwise independent power stabilizer.
             return True
         if not self._soc_stop_fresh(car, now):
             self.status, self.reason = ("In carica — verifica SOC",
@@ -2138,13 +2163,10 @@ class ChargingController:
                     or self._restart_power is not None
                     or self.explicit_pause or self._pending is not None
                     or self._blocked or current["cable"] is not True
-                    or current["car"] is None or current["charging"] is None):
+                    or current["charging"] is None):
                 return
             if current["trusted"] is not True:
                 self._gate(",".join(self._facts["issues"]))
-                return
-            if not self._car_update_ready(datetime.now(timezone.utc), current["car"]):
-                self._gate(self._refresh_error or "awaiting_fresh_vehicle_data")
                 return
             if self._soc_stop_done:
                 return
@@ -2167,7 +2189,7 @@ class ChargingController:
                     self._gate(self._blocked)
                     self._notify()
                     return
-                if await self._maybe_stop_at_soc(
+                if current["car"] is not None and await self._maybe_stop_at_soc(
                         current, datetime.now(timezone.utc)):
                     return
                 base = self.session_power_kw
@@ -2216,13 +2238,18 @@ class ChargingController:
                     connected=True, charging=True, auto=True, trusted=current["trusted"],
                     house_kw=current["house"], house_at=current["house_at"],
                     dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]), current_kw=current["actual"],
-                    margin_minutes=self.margin_minutes,
+                    # No cloud identity/valid ETA: deliberately use unlimited
+                    # planning flexibility for discretionary load reduction.
+                    # Actual charging still requires BLE+DPM+Shelly evidence.
+                    margin_minutes=(self.margin_minutes
+                                    if self.margin_minutes is not None else 1_000_000.0),
                     remaining_budget_kwh=(
                         max(0.0, (self.margin_minutes-45)/60 *
                             self.planning_rate_kw)
                         if self.margin_minutes is not None and
                            self.margin_minutes > 45 and
-                           self.planning_rate_kw is not None else 0.0),
+                           self.planning_rate_kw is not None
+                        else 1_000_000.0),
                     max_kw=base,
                 )
                 state, decision = evaluate(o, self._power_state)
@@ -2233,6 +2260,7 @@ class ChargingController:
                                  target_kw=decision.target_kw, phase=decision.phase,
                                  previous_phase=self._power_state.phase, kind=decision.kind,
                                  available_budget_kwh=o.remaining_budget_kwh,
+                                 budget_unlimited=self.margin_minutes is None,
                                  spent_budget_kwh=state.spent_budget_kwh,
                                  dpm_only_estimated_kw=round(
                                      dpm_only_kw(o.house_kw, o.dpm_kw, base), 3),
@@ -2426,13 +2454,15 @@ class ChargingController:
             return "session_no_longer_authorized"
         current = self._snapshot(now)
         car = current["car"]
-        if (car is None or car[CONF_CABLE] != self._connection or
+        if (self._vehicle_conflict(now, current["cable"]) or
+                (kind == "soc_stop" and
+                 (car is None or car[CONF_CABLE] != self._connection)) or
+                (car is not None and self._connection and
+                 car[CONF_CABLE] != self._connection) or
                 current["trusted"] is not True or current["charging"] is not True
                 or not current["dpm_normal"] or
                 self._reported_binary(self.cfg[CONF_START_STOP]) is not True):
             return "active_charge_not_verified"
-        if not self._car_update_ready(now, car):
-            return "vehicle_update_unverified"
         if kind == "power":
             number = self._raw(self.cfg[CONF_REQUESTED_LIMIT])
             limits = [finite_number(number.attributes.get(key)) for key in ("min", "max", "step")]
@@ -2470,7 +2500,7 @@ class ChargingController:
                              (self._soc_stop_latch or {}).get("vehicle")
                              if kind == "soc_resume" else None),
                     cable_marker=(self._continuity_marker(CONF_WALLBOX_CONNECTED)
-                                  if kind in ("soc_stop","soc_resume") else None))
+                                  if kind in ("soc_stop","soc_resume","power") else None))
         self._pending = p
         self._saved_attempt = {"operation": p.operation, "kind": kind,
                                "session": session, "expected_kw": expected_kw}
