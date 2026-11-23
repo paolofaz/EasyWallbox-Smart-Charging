@@ -131,6 +131,7 @@ class ChargingController:
         self._unplug_report_marker = None
         self._unplug_reports = 0
         self._unplug_interruption = False  # Positive state-3 awaiting second AD and 69s
+        self._unplug_restore_pending = False  # Observed connected -> physically unplugged
         # Optional, observed Shelly supply cycle. Never persisted/recovered from
         # HA startup, ESPHome restart, or BLE reconnect alone.
         self._supply_off_since = None
@@ -642,18 +643,25 @@ class ChargingController:
 
     def _wallbox_cable(self, now):
         if self._ble_online(now) is not True:
+            self._unplug_restore_pending = False
             self._reset_unplug_evidence(now, "ble_disconnected")
             return None
         cable = self._wallbox_flag(CONF_WALLBOX_CONNECTED)
         if cable is not False:
+            if cable is True:
+                self._unplug_restore_pending = False
             self._reset_unplug_evidence(now,
                                         "cable_replugged" if cable is True
                                         else "cable_not_confirmed")
             return cable
+        if self._last_cable is True:
+            self._unplug_restore_pending = True
         if self._charge_state(now) != "Cable Unplugged":
             self._reset_unplug_evidence(now, "charge_state_not_unplugged")
             return None
-        stop_uncertain = (self._supply_restore_candidate is not None or
+        # 69s and two independent AD observations are for cable removal,
+        # not for the Shelly power-on path.
+        stop_uncertain = (self._unplug_restore_pending or
                           self._soc_stop_latch is not None or self._soc_stop_done or
                           self._standby_restore_due or
                           (isinstance(self._saved_attempt, dict) and
@@ -728,7 +736,7 @@ class ChargingController:
         p = self._pending
         if p is None or not p.dispatched:
             return
-        if p.kind in ("delay_arm", "delay_release", "normalize_on", "supply_restore"):
+        if p.kind in ("delay_arm", "delay_release", "normalize_on", "supply_restore", "mode_auto_on"):
             if p.session != self._idle_park_trace or cable is None:
                 self._fail_command(p, "standby_command_ble_or_ownership_lost")
                 return
@@ -796,7 +804,7 @@ class ChargingController:
             self._saved_delay_lease = {
                 "kind": "preplug", "start": self._scheduled_at.isoformat(),
                 "dpm": dpm_limit}
-        elif p.kind in ("delay_release", "normalize_on", "soc_resume", "supply_restore"):
+        elif p.kind in ("delay_release", "normalize_on", "soc_resume", "supply_restore", "mode_auto_on"):
             # DPM > 0 proves the switch was released, NOT that a car
             # immediately started charging. This works even with no car.
             if self._reported_binary(self.cfg[CONF_START_STOP]) is not True:
@@ -846,7 +854,7 @@ class ChargingController:
                      readback_at=self._age(source).isoformat(),
                      charging_flag=observed, ev_kw=ev)
         self.reason = "confirmed_" + p.kind
-        if p.kind in ("delay_release", "normalize_on"):
+        if p.kind in ("delay_release", "normalize_on", "mode_auto_on"):
             self._idle_park_trace = None
             asyncio.get_running_loop().call_soon(self.refresh)
         elif p.kind == "soc_resume":
@@ -946,7 +954,8 @@ class ChargingController:
                 self._setting(CONF_DPM_CONFIRMED, now) != 0.0 or
                 self._wallbox_flag(CONF_WALLBOX_CHARGING) is not False or
                 self._charge_state(now) == "Error"):
-            if (cable is False and self._soc_stop_latch is not None and
+            if (cable is False and (self._standby_restore_due or
+                                    self._soc_stop_latch is not None) and
                     self._reported_binary(self.cfg[CONF_START_STOP]) is True and
                     self._setting(CONF_DPM_CONFIRMED, now) is not None and
                     abs(self._setting(CONF_DPM_CONFIRMED, now) -
@@ -978,7 +987,8 @@ class ChargingController:
     def _schedule_supply_restore(self, now, cable):
         """One-shot standby normalization ONLY after an observed physical Shelly cycle."""
         relay = self.cfg.get(CONF_WALLBOX_POWER_SWITCH)
-        if not relay or self._supply_restore_candidate is None:
+        if (not relay or self._supply_restore_candidate is None or
+                now-self._supply_restore_candidate >= timedelta(minutes=2)):
             return
         if (self._closed or self.mode != "automatic" or not self.real_enabled
                 or self.explicit_pause or self._blocked or self._pending
@@ -1535,8 +1545,8 @@ class ChargingController:
         if self._unplug_since and now < self._unplug_since + timedelta(seconds=69):
             due_dates.append(self._unplug_since + timedelta(seconds=69))
         if (self._supply_restore_candidate is not None and
-                now < self._supply_restore_candidate + timedelta(minutes=10)):
-            due_dates.append(self._supply_restore_candidate + timedelta(minutes=10))
+                now < self._supply_restore_candidate + timedelta(minutes=2)):
+            due_dates.append(self._supply_restore_candidate + timedelta(minutes=2))
         # Timer does not produce a new AD measurement: it only rechecks caches.
         if self._pending:
             due_dates.append(self._pending.since + ACK_TIMEOUT)
@@ -1560,48 +1570,31 @@ class ChargingController:
         self.refresh()
 
     def _observe_supply_event(self, event):
-        """Accept only live, observed supply OFF->ON and a BLE-down interval.
-
-        A switch status that is merely restored at HA startup, a BLE reconnect
-        or an ESPHome firmware update NEVER authorizes standby ON.
-        """
+        """Shelly OFF->ON arms one ON after a BLE OFF->ON within two minutes."""
         relay = self.cfg.get(CONF_WALLBOX_POWER_SWITCH)
         if not relay:
             return
         data = getattr(event, "data", None) or {}
-        now = datetime.now(timezone.utc)
-        if data.get("entity_id") == relay:
-            old, new = data.get("old_state"), data.get("new_state")
-            was_on = on(old.state) if old is not None else None
-            is_on = on(new.state) if new is not None else None
-            if was_on is True and is_on is False:
-                self._supply_off_since = now
-                self._supply_ble_off_seen = self._ble_online(now) is False
-                self._supply_restore_candidate = None
-                self._supply_ble_rejoined = False
-                self._record("power_supply", "physical_relay_went_off")
-            elif was_on is False and is_on is True:
-                permitted = (
-                    self._supply_off_since is not None
-                    and now-self._supply_off_since >= timedelta(seconds=5)
-                    and self._supply_ble_off_seen
-                    and self.mode == "automatic" and self.real_enabled
-                    and not self.explicit_pause and not self._blocked
-                    and self._saved_attempt is None and self._pending is None
-                )
-                self._supply_restore_candidate = now if permitted else None
-                self._supply_ble_rejoined = False
-                self._record("power_supply", "shelly_power_on_confirmed"
-                             if permitted else "shelly_on_not_eligible_for_restore")
-                self._supply_off_since = None
-                self._supply_ble_off_seen = False
-            elif is_on is not True and is_on is not False:
-                self._supply_restore_candidate = None
-                self._supply_ble_rejoined = False
-        elif (self._supply_off_since is not None and
-              self._reported_binary(relay) is False and
-              self._ble_online(now) is False):
-            self._supply_ble_off_seen = True
+        if data.get("entity_id") != relay:
+            return
+        old, new = data.get("old_state"), data.get("new_state")
+        if (old is None or new is None or
+                old.attributes.get("restored") or new.attributes.get("restored")):
+            return  # Not a real observed relay edge.
+        before, after = on(old.state), on(new.state)
+        if before is True and after is False:
+            self._supply_restore_candidate = None
+            self._supply_ble_rejoined = False
+            self._record("power_supply", "physical_relay_went_off")
+        elif before is False and after is True:
+            eligible = (self.mode == "automatic" and self.real_enabled
+                        and not self.explicit_pause and not self._blocked
+                        and self._saved_attempt is None and self._pending is None)
+            self._supply_restore_candidate = (
+                datetime.now(timezone.utc) if eligible else None)
+            self._supply_ble_rejoined = False
+            self._record("power_supply", "shelly_power_on_confirmed"
+                         if eligible else "shelly_on_not_eligible_for_restore")
 
     @callback
     def _on_event(self, event):
@@ -1650,19 +1643,25 @@ class ChargingController:
         now = datetime.now(timezone.utc)
         online = self._ble_online(now) is True
         if (self._supply_restore_candidate is not None and
-                now-self._supply_restore_candidate > timedelta(minutes=10)):
+                now-self._supply_restore_candidate >= timedelta(minutes=2)):
             self._record("power_supply", "restoration_window_expired")
             self._supply_restore_candidate = None
             self._supply_ble_rejoined = False
         if online and self._online is not True:
-            if (self._supply_restore_candidate is not None and
-                    self._reported_binary(self.cfg.get(CONF_WALLBOX_POWER_SWITCH)) is True):
+            if (self._online is False and self._supply_restore_candidate is not None
+                    and now-self._supply_restore_candidate < timedelta(minutes=2)
+                    and self._reported_binary(self.cfg.get(CONF_WALLBOX_POWER_SWITCH)) is True):
                 self._supply_ble_rejoined = True
             link = self._raw(self.cfg[CONF_BLE_CONNECTED])
             self._ble_since = getattr(link, "last_changed", None) or self._age(link)
             # BLE reconnection never changes Start-Stop automatically.
         self._online = online
         cable = self._wallbox_cable(now) if online else None
+        if (self._unplug_restore_pending and self._unplug_since is not None
+                and self.mode == "manual"):
+            self.mode = "automatic"
+            self._record("reconciliation", "physical_unplug_returns_to_automatic")
+            self._schedule_save()
         if cable is not True:
             # No charging session may exist; no invented electrical effects.
             self._expire_restart_power(now, cable)
@@ -1869,6 +1868,12 @@ class ChargingController:
         self._status_acks(now, cable)
         if cable is False:
             self._reconcile_terminal_soc_stop(now)
+            if self._unplug_restore_pending:
+                self._unplug_restore_pending = False
+                if not self.delay_enabled and self._saved_delay_lease is None:
+                    self._standby_restore_due = True
+                    self._record("reconciliation", "confirmed_cable_unplug_standby_on")
+                self._schedule_save()
         self._reschedule(now, False)
         if cable is False:
             self._unplug_interruption = False
@@ -2247,7 +2252,7 @@ class ChargingController:
                                  None, "explicitly_increased_target_after_soc_stop")
 
     def _write_block(self, kind, target, session, now):
-        if kind in ("delay_arm", "delay_release", "normalize_on", "supply_restore"):
+        if kind in ("delay_arm", "delay_release", "normalize_on", "supply_restore", "mode_auto_on"):
             cable = self._wallbox_cable(now)
             charging = self._wallbox_flag(CONF_WALLBOX_CHARGING)
             ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
@@ -2285,11 +2290,10 @@ class ChargingController:
                 relay = self.cfg.get(CONF_WALLBOX_POWER_SWITCH)
                 charge = self._raw(self.cfg.get(CONF_CHARGE_STATE))
                 if (relay is None or not self._supply_restore_candidate
+                        or now-self._supply_restore_candidate >= timedelta(minutes=2)
                         or not self._supply_ble_rejoined
                         or self._reported_binary(relay) is not True
-                        or cable is not False or self._unplug_since is None
-                        or now-self._unplug_since < timedelta(seconds=69)
-                        or self._unplug_reports < 2
+                        or cable is not False
                         or self._charge_state(now) != "Cable Unplugged"
                         or charge is None or self._age(charge) <= self._supply_restore_candidate
                         or self.delay_enabled or self._saved_delay_lease is not None
@@ -2297,6 +2301,13 @@ class ChargingController:
                         or self._standby_restore_due or dpm != 0.0 or switch is not False
                         or abs(target-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
                     return "supply_restore_requires_verified_power_cycle_and_unplug"
+            elif kind == "mode_auto_on":
+                if (self.delay_enabled or self._saved_delay_lease is not None
+                        or self._dpm_lease is not None or self._soc_stop_latch is not None
+                        or self._standby_restore_due or dpm != 0.0 or
+                        switch is not False or
+                        abs(target-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
+                    return "manual_to_auto_requires_verified_idle_dpm0"
             else:  # normalize_on: only after a true state-3 unplug
                 if (self.delay_enabled or self._saved_delay_lease is not None or
                         self._dpm_lease is not None or cable is not False or
@@ -2371,15 +2382,15 @@ class ChargingController:
             self._gate("another_operation_unresolved")
             return
         now = datetime.now(timezone.utc)
-        session = (self._idle_park_trace if kind in ("delay_arm","delay_release","normalize_on","supply_restore")
+        session = (self._idle_park_trace if kind in ("delay_arm","delay_release","normalize_on","supply_restore","mode_auto_on")
                    else self._session_id)
         veto = self._write_block(kind, target, session, now)
         if veto:
             self._gate(veto)
             return
-        expected_kw = target if kind in ("power","delay_release","normalize_on","soc_resume","supply_restore") else 0.0
+        expected_kw = target if kind in ("power","delay_release","normalize_on","soc_resume","supply_restore","mode_auto_on") else 0.0
         p = Pending(kind, target, now, next_state, uuid4().hex, session,
-                    cable=self._wallbox_cable(now) if kind in ("delay_arm","delay_release","normalize_on","supply_restore") else None,
+                    cable=self._wallbox_cable(now) if kind in ("delay_arm","delay_release","normalize_on","supply_restore","mode_auto_on") else None,
                     soc_stop_target=self.target_soc if kind == "soc_stop" else None,
                     vehicle=(self._connection if kind == "soc_stop" else
                              (self._soc_stop_latch or {}).get("vehicle")
@@ -2451,6 +2462,7 @@ class ChargingController:
         return lambda: self._listeners.discard(changed)
 
     async def async_change(self, field, value):
+        previous_mode = self.mode
         if field == "mode" and value in ("automatic", "manual"):
             self.mode = value
             # Manual overrides automatic action for the ENTIRE session.
@@ -2598,6 +2610,12 @@ class ChargingController:
         self._record("user_intent", field, value=str(value))
         if field in ("mode", "real", "delay", "time", "departure", "ready_by"):
             await self._save()
+        if (field == "mode" and previous_mode == "manual" and value == "automatic"
+                and self._reported_binary(self.cfg[CONF_START_STOP]) is False):
+            self._idle_park_trace = uuid4().hex
+            async with self._lock:
+                await self._send("mode_auto_on", float(self.cfg[CONF_EXPECTED_DPM]),
+                                 None, "user_changed_manual_to_automatic")
         self.refresh()
 
     def start(self):
@@ -2623,7 +2641,8 @@ class ChargingController:
                    self.mode == "automatic" and not self._blocked and
                    (self.delay_enabled or self._saved_delay_lease is not None
                     or self._pending is not None or
-                    switch_state is False))
+                    self._supply_restore_candidate is not None or
+                    self._standby_restore_due or switch_state is False))
         if monitor and self._idle_guard_unsub is None:
             ids = [self.cfg[k] for k in (
                 CONF_WALLBOX_CHARGING,
