@@ -298,6 +298,83 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
                          [("switch","turn_off"),("switch","turn_on")])
         rows=await self.rows()
         self.assertEqual([r["confirmed_kw"] for r in rows if r["event"]=="confirmed"],[0,4.4])
+    async def test_stable_charge_state_uses_firmware_watchdog_not_two_minute_ttl(self):
+        await self.start_charging()
+        charge = self.hass.states[self.cfg[C.CONF_CHARGE_STATE]]
+        self.controller._ble_since = now() - timedelta(minutes=35)
+        charge.last_reported = now() - timedelta(minutes=20)
+        self.assertEqual(self.controller._charge_state(now()), "Charging")
+        self.publish(C.CONF_TELEMETRY_FRESH, "off")
+        self.assertIsNone(self.controller._charge_state(now()))
+        self.publish(C.CONF_TELEMETRY_FRESH, "on")
+        self.controller._ble_since = now() - timedelta(minutes=1)
+        self.assertIsNone(self.controller._charge_state(now()))
+        self.publish(C.CONF_CHARGE_STATE, "Charging")
+        self.assertEqual(self.controller._charge_state(now()), "Charging")
+        self.publish(C.CONF_CHARGE_STATE, "unavailable")
+        self.assertIsNone(self.controller._charge_state(now()))
+
+    async def test_requested_number_older_than_ble_must_match_new_eeprom(self):
+        await self.start_charging()
+        self.controller._ble_since = now() - timedelta(minutes=2)
+        number = self.hass.states[self.cfg[C.CONF_REQUESTED_LIMIT]]
+        number.last_reported = now() - timedelta(minutes=10)
+        self.publish(C.CONF_CONFIRMED_LIMIT, 4.0)
+        self.assertEqual(self.controller._setting(C.CONF_REQUESTED_LIMIT, now()), 4.0)
+        self.publish(C.CONF_CONFIRMED_LIMIT, 3.6)
+        self.assertIsNone(self.controller._setting(C.CONF_REQUESTED_LIMIT, now()))
+        self.publish(C.CONF_REQUESTED_LIMIT, "unavailable")
+        self.assertIsNone(self.controller._setting(C.CONF_REQUESTED_LIMIT, now()))
+        self.publish(C.CONF_REQUESTED_LIMIT, 3.6)
+        self.assertEqual(self.controller._setting(C.CONF_REQUESTED_LIMIT, now()), 3.6)
+
+    async def test_failed_cloud_button_does_not_latch_after_verified_kia_update(self):
+        await self.start_charging()
+        car = self.cfg[C.CONF_VEHICLES][1]
+        self.controller._connect_since = now() - timedelta(minutes=3)
+        self.controller._refresh_requested_at = now() - timedelta(minutes=2)
+        self.controller._refresh_due = None
+        self.controller._refresh_issued = True
+        self.controller._refresh_error = "vehicle_refresh_command_failed"
+        self.hass.states[car[C.CONF_SOC]].last_reported = now() - timedelta(minutes=3)
+        self.assertFalse(self.controller._car_update_ready(now(), car))
+        self.hass.states[car[C.CONF_SOC]].publish("44")
+        self.assertTrue(self.controller._car_update_ready(now(), car))
+        self.assertIsNone(self.controller._refresh_error)
+
+    async def test_five_minute_diagnostic_heartbeat_without_new_ble_calls(self):
+        await self.start_charging()
+        rows = await self.rows()
+        count = sum(row["event"] == "diagnostic" for row in rows)
+        self.assertEqual(count, 1)
+        calls = len(self.hass.services.calls)
+        self.controller.refresh()
+        self.assertEqual(sum(x["event"] == "diagnostic" for x in await self.rows()), 1)
+        self.controller._last_diagnostic_at = now() - timedelta(minutes=6)
+        self.controller.refresh()
+        rows = await self.rows()
+        diagnostic = [x for x in rows if x["event"] == "diagnostic"]
+        self.assertEqual(len(diagnostic), 2)
+        self.assertIn("source_issues", diagnostic[-1])
+        self.assertEqual(len(self.hass.services.calls), calls)
+
+    async def test_600w_moderate_for_10_of_12_can_request_limited(self):
+        from easywallbox_test_package.power_policy import Observation, evaluate
+        start = now() - timedelta(minutes=12)
+        state = None
+        decisions = []
+        for minute in range(12):
+            stamp = start + timedelta(minutes=minute)
+            state, decision = evaluate(Observation(
+                at=stamp, session_id="kia_600w", connected=True,
+                charging=True, auto=True, trusted=True,
+                house_kw=0.6, house_at=stamp, dpm_kw=4.4,
+                current_kw=4.0, margin_minutes=180,
+                remaining_budget_kwh=2.0, max_kw=4.0), state)
+            decisions.append(decision)
+        self.assertEqual([(d.action, d.target_kw) for d in decisions
+                          if d.action == "set_limit"], [("set_limit", 3.6)])
+
     async def test_passive_registers_stay_valid_on_continuous_ble_only(self):
         self.hass.states[self.cfg[C.CONF_BLE_CONNECTED]].last_changed -= timedelta(hours=5)
         await self.start_charging()
