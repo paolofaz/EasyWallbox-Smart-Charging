@@ -55,7 +55,7 @@ jobs:
       - run: python -m pip install "homeassistant==2026.11.1"
       - run: python tests/ha_field_trial.py
   publish-beta:
-    if: github.event_name == 'push' && github.event.head_commit.message == 'Release 0.9.1b1'
+    if: github.event_name == 'push' && github.event.head_commit.message == 'Release 0.9.2b1'
     needs: [tests, hassfest, marketplace, ha-runtime]
     runs-on: ubuntu-latest
     permissions:
@@ -70,6 +70,6 @@ jobs:
         run: |
           set -euo pipefail
           version=$(jq -r .version custom_components/easywallbox_smart/manifest.json)
-          test "$version" = "0.9.1b1"
+          test "$version" = "0.9.2b1"
           gh release create "v$version" --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "EasyWallbox Smart Charging 0.9.1 beta" --notes "Beta 0.9.1: correzione ripristino Start-Stop dopo Shelly OFF→ON e BLE OFF→ON entro 2 minuti; comando ON al ritorno Manuale→Automatica; ritorno automatico dopo distacco fisico del cavo e ON dopo 69 secondi di disconnessione confermata. DPM attivo, nessun retry BLE cieco. Primo collaudo reale ancora necessario."
+            --title "EasyWallbox Smart Charging 0.9.2 beta" --notes "Beta 0.9.2: stabilizzatore NORMAL/LIMITED operativo su ricarica verificata da wallbox+Shelly anche senza riconoscimento cloud auto; budget pianificatore illimitato quando sconosciuto, DPM e readback obbligatori. Refresh auto a +15 s e ogni minuto fino a cinque minuti, errori cloud non bloccanti. Telemetry Fresh opzionale come veto comandi. Archivio al distacco fisico con contatori misurati prima dell’azzeramento Duration; pause escluse; diagnostica periodica. Test automatici superati, collaudo reale ancora necessario."
