@@ -665,7 +665,6 @@ class ChargingController:
         # 69s and two independent AD observations are for cable removal,
         # not for the Shelly power-on path.
         stop_uncertain = (self._soc_stop_latch is not None or self._soc_stop_done or
-                          self._standby_restore_due or
                           (isinstance(self._saved_attempt, dict) and
                            self._saved_attempt.get("kind") == "soc_stop") or
                           (self._pending is not None and self._pending.kind == "soc_stop"))
