@@ -18,6 +18,7 @@
           "expected_dpm_kw": "Expected positive DPM (kW)",
           "base_kw": "Default session charging power (kW)",
           "charge_state": "Charge State (existing ESPHome sensor; required for safe SOC stop recovery)",
+          "telemetry_fresh": "Telemetry Fresh (ESPHome AD watchdog; blocks commands when OFF)",
           "session_energy": "Session Energy (ESPHome; archive with Duration)",
           "session_duration": "Session Duration (ESPHome; minutes)",
           "wallbox_power_switch": "Optional Shelly switch powering the wallbox (power-cycle standby reset)"
@@ -107,6 +108,7 @@
           "expected_dpm_kw": "Expected positive DPM (kW)",
           "base_kw": "Default session charging power (kW)",
           "charge_state": "Charge State (existing ESPHome sensor; required for safe SOC stop recovery)",
+          "telemetry_fresh": "Telemetry Fresh (ESPHome AD watchdog; blocks commands when OFF)",
           "session_energy": "Session Energy (ESPHome; archive with Duration)",
           "session_duration": "Session Duration (ESPHome; minutes)",
           "wallbox_power_switch": "Optional Shelly switch powering the wallbox (power-cycle standby reset)"
