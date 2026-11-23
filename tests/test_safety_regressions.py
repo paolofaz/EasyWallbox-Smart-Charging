@@ -162,6 +162,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.report(C.CONF_BLE_CONNECTED, "on")
         self.c.refresh()
         self.report(C.CONF_WALLBOX_CONNECTED, "off")
+        self.report(C.CONF_TELEMETRY_FRESH, "on")
         self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
         self.report(C.CONF_WALLBOX_CHARGING, "off")
         self.report(C.CONF_EV_POWER, "0")
