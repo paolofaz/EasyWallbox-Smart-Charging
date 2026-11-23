@@ -113,6 +113,8 @@ class ChargingController:
         self.session_history = SessionArchive(hass, entry, self.cfg, self._notify)
         self._trace_session = None
         self._gate_key = None
+        self._last_diagnostic_at = None
+        self._last_policy_reason = None
         self._facts = {}
         self._ble_since = None
         self._online = None
@@ -628,10 +630,22 @@ class ChargingController:
         return on(state.state)
 
     def _charge_state(self, now):
-        """Return current ESPHome Charge State, or None if absent/stale."""
+        """Trust a stable Charge State while the ESPHome AD watchdog is healthy.
+
+        An unchanged HA string is not a stale AD measurement. BLE epoch,
+        firmware invalidation and Telemetry Fresh reject actual stale data.
+        """
         entity = self.cfg.get(CONF_CHARGE_STATE)
-        value = self._fresh(entity, now, WALLBOX_TTL) if entity else None
-        return value.state if value is not None else None
+        value = self._raw(entity)
+        if (value is None or value.attributes.get("restored")
+                or value.state in ("unknown", "unavailable", "Unavailable", "")
+                or self._wallbox_flag(CONF_TELEMETRY_FRESH) is not True):
+            return None
+        reported = self._age(value)
+        if (reported is None or reported > now or
+                (self._ble_since and reported < self._ble_since)):
+            return None
+        return value.state
 
     def _reset_unplug_evidence(self, now, reason):
         """Reset the positive unplug proof, with one journal row per reset."""
@@ -698,16 +712,28 @@ class ChargingController:
         # HA values and any reading left over from an earlier BLE epoch.
         source = self._raw(self.cfg[key])
         if (source is None or source.attributes.get("restored") or
-                self._age(source) > now or
-                (self._ble_since and self._age(source) < self._ble_since)):
+                self._age(source) is None or self._age(source) > now):
             return None
-        return power_kw(source.state, source.attributes.get("unit_of_measurement"))
+        value = power_kw(source.state, source.attributes.get("unit_of_measurement"))
+        if value is None:
+            return None
+        if self._ble_since and self._age(source) < self._ble_since:
+            # The ESPHome template number is a UI setting. HA can retain
+            # last_reported when unchanged after BLE reconnect. Reuse only
+            # if independent EEPROM 174 readback in this epoch agrees.
+            if key != CONF_REQUESTED_LIMIT:
+                return None
+            confirmed = self._setting(CONF_CONFIRMED_LIMIT, now)
+            if confirmed is None or abs(value-confirmed) > .051:
+                return None
+        return value
 
     def _record(self, event, reason, **details):
         self._journal.record(self._trace_session or self._idle_park_trace, event, reason,
                              mode=self.mode, facts=self._facts, **details)
 
     def _gate(self, reason):
+        self._last_policy_reason = reason
         key = (reason, self.mode, self._session_id)
         if key != self._gate_key:
             self._gate_key = key
@@ -1042,8 +1068,8 @@ class ChargingController:
             return False
         if self._refresh_due is not None and not self._refresh_issued:
             return False
-        if self._refresh_error == "vehicle_refresh_command_failed":
-            return False
+        # A failed cloud button is diagnostic, not a permanent veto.
+        # Independently verified newer vehicle data may recover the session.
         if car is None:
             return False
         if self._refresh_requested_at is not None:
@@ -1117,7 +1143,8 @@ class ChargingController:
                                     type(error).__name__)
                     self._refresh_error = "vehicle_refresh_command_failed"
                     self._record("vehicle_refresh_error", self._refresh_error)
-                    break
+                    # Failure of the Fiat refresh must not skip the Kia.
+                    continue
             self.refresh()
 
     def _house(self, now):
@@ -1695,6 +1722,8 @@ class ChargingController:
             self._refresh_due = None  # armed only by confirmed charging
             self._refresh_issued = False
             self._refresh_requested_at = self._refresh_deadline = self._refresh_error = None
+            self._last_diagnostic_at = None
+            self._last_policy_reason = None
             self._facts = {"ble": True, "cable": True}
             self._record("session_open", "wallbox_cable_connected",
                          default_session_power_kw=self.session_power_kw,
@@ -1817,6 +1846,19 @@ class ChargingController:
                 self._refresh_task = self.entry.async_create_background_task(
                     self.hass, self._request_one_shot_updates(),
                     "EasyWallbox beta vehicle data refresh")
+        # Five-minute read-only heartbeat: repeated identical blockers
+        # previously produced no log rows for the entire charging session.
+        if (snapshot["charging"] is True and self._trace_session is not None
+                and (self._last_diagnostic_at is None or
+                     now-self._last_diagnostic_at >= timedelta(minutes=5))):
+            self._last_diagnostic_at = now
+            self._record("diagnostic", self._last_policy_reason or self.reason,
+                         status=self.status,
+                         phase=(self._power_state.phase if self._power_state else None),
+                         source_issues=list(self._facts.get("issues", ())),
+                         refresh_error=self._refresh_error,
+                         control_enabled=self.real_enabled,
+                         block=self._blocked)
         state_key = (self.status, self.reason, self.notice, tuple(self._facts["issues"]))
         if state_key != self._last_key:
             self._last_key = state_key
@@ -2163,6 +2205,7 @@ class ChargingController:
                 )
                 state, decision = evaluate(o, self._power_state)
                 if decision.reason != "waiting_for_new_shelly_report":
+                    self._last_policy_reason = decision.reason
                     self._gate_key = None
                     self._record("policy", decision.reason, action=decision.action,
                                  target_kw=decision.target_kw, phase=decision.phase,
