@@ -1,0 +1,78 @@
+"""User-selected not-before time for a one-shot delayed charge."""
+from homeassistant.components.time import TimeEntity
+from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
+from zoneinfo import ZoneInfo
+from .const import DOMAIN
+from .device import controller_device_info
+
+
+async def async_setup_entry(hass, entry, add_entities):
+    c = hass.data[DOMAIN][entry.entry_id]
+    add_entities([PreferredStartTime(c, entry), ReadyByTime(c, entry)])
+
+
+class PreferredStartTime(TimeEntity):
+    _attr_has_entity_name = True
+    _attr_name = "Inizia non prima delle"
+    _attr_icon = "mdi:clock-outline"
+    _attr_should_poll = False
+
+    def __init__(self, controller, entry):
+        self.controller = controller
+        self._attr_device_info = controller_device_info(entry)
+        self._attr_unique_id = entry.entry_id + "_preferred_start"
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(self.controller.add_listener(self._update, lambda: self.native_value))
+
+    @callback
+    def _update(self):
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        return self.controller.preferred_start
+
+    async def async_set_value(self, value):
+        try:
+            await self.controller.async_change("time", value)
+        except ValueError as error:
+            raise HomeAssistantError(str(error)) from error
+
+class ReadyByTime(TimeEntity):
+    """Session departure deadline, prefilled from the detected car/day."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Auto pronta entro"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_should_poll = False
+
+    def __init__(self, controller, entry):
+        self.controller = controller
+        self._attr_device_info = controller_device_info(entry)
+        self._attr_unique_id = entry.entry_id + "_ready_by"
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(self.controller.add_listener(self._update, lambda: self.native_value))
+
+    @callback
+    def _update(self):
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        deadline = self.controller.departure
+        if deadline is None or self.controller.vehicle_name is None:
+            return None
+        return deadline.astimezone(
+            ZoneInfo(self.controller.hass.config.time_zone)).time().replace(
+                tzinfo=None, second=0, microsecond=0)
+
+    async def async_set_value(self, value):
+        try:
+            await self.controller.async_change("ready_by", value)
+        except ValueError as error:
+            raise HomeAssistantError(str(error)) from error

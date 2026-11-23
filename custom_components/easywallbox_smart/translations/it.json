@@ -1,0 +1,196 @@
+{
+  "title": "EasyWallbox Smart Charging",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wallbox e misure di potenza",
+        "description": "Seleziona le otto entità della stessa wallbox ESPHome, i misuratori domestici e lo Shelly del ramo EV.",
+        "data": {
+          "house_power_sources": "Sensori di potenza casa (escluso il ramo EV)",
+          "ev_power": "Shelly del ramo wallbox",
+          "ble_connected": "Connection (BLE)",
+          "wallbox_connected": "Car Connected",
+          "wallbox_charging": "Charging",
+          "start_stop_switch": "Start-Stop",
+          "requested_limit": "Charge power",
+          "confirmed_limit": "Power set",
+          "dpm_confirmed": "Limit house power set -DPM-",
+          "expected_dpm_kw": "Limite DPM normale atteso (kW)",
+          "base_kw": "Potenza predefinita per sessione (kW)",
+          "charge_state": "Charge State (sensore ESPHome esistente; necessario per ripristino sicuro dopo Stop SOC)",
+          "session_energy": "Session Energy (ESPHome; per archivio con Duration)",
+          "session_duration": "Session Duration (ESPHome; minuti)",
+          "wallbox_power_switch": "Switch Shelly che alimenta la wallbox (facoltativo; ripristino ON solo dopo accensione fisica verificata)"
+        }
+      },
+      "vehicle": {
+        "title": "Profilo auto",
+        "description": "Configura i dati dell'auto: la potenza media di ricarica viene calcolata automaticamente dalle misure, non va inserita.",
+        "data": {
+          "name": "Nome auto",
+          "cable": "Sensore cavo collegato",
+          "soc": "Sensore SOC",
+          "capacity_kwh": "Capacità utile batteria kWh",
+          "efficiency": "Rendimento AC",
+          "departure_weekday": "Partenza feriali (HH:MM)",
+          "departure_weekend": "Partenza weekend (HH:MM)",
+          "add_another": "Configura anche un'altra automobile",
+          "vehicle_refresh_button": "Pulsante aggiorna dati auto (facoltativo)",
+          "vehicle_last_update": "Timestamp ultimo aggiornamento auto (facoltativo)",
+          "stop_at_target": "Interrompi la ricarica a target SOC (solo se l'auto non lo fa)"
+        }
+      },
+      "target_method": {
+        "title": "Come viene impostato l'obiettivo di carica?",
+        "menu_options": {
+          "target_fixed": "Percentuale fissa (es. 80%)",
+          "target_entity": "Entità Home Assistant che espone il limite SOC"
+        }
+      },
+      "target_fixed": {
+        "title": "Target SOC fisso",
+        "description": "Percentuale obiettivo. Se hai abilitato lo Stop a target, seleziona 80–100% con passi da 5; altrimenti è soltanto un obiettivo di pianificazione.",
+        "data": {
+          "target_fixed": "Percentuale desiderata"
+        }
+      },
+      "target_entity": {
+        "title": "Target SOC da Home Assistant",
+        "description": "Seleziona il sensore o numero che rappresenta il limite di ricarica desiderato. Deve contenere una percentuale valida.",
+        "data": {
+          "target_entity": "Entità limite SOC"
+        }
+      }
+    },
+    "error": {
+      "invalid_meter_sources": "Selezione sensori casa errata",
+      "duplicate_entities": "Le entità non devono essere ripetute",
+      "invalid_power": "Potenza base/boost non consentita",
+      "duplicate_vehicle": "Auto o cavo già presenti",
+      "invalid_clock": "Orario HH:MM non valido",
+      "invalid_target": "Target SOC non valido",
+      "incomplete_wallbox": "Completa tutte le associazioni wallbox.",
+      "invalid_wallbox_mapping": "Seleziona entità ESPHome abilitate appartenenti alla stessa wallbox.",
+      "vehicle_refresh_is_not_vehicle_button": "Seleziona il pulsante dati dell’auto oppure lascia vuoto il campo.",
+      "incomplete_history_counters": "Seleziona entrambi i contatori Session Energy e Session Duration oppure nessuno.",
+      "invalid_wallbox_power_switch": "Seleziona lo switch di alimentazione fisica, abilitato e su un dispositivo distinto dall'ESPHome."
+    },
+    "abort": {
+      "already_configured": "Wallbox già configurata"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Impostazioni EasyWallbox Smart Charging",
+        "menu_options": {
+          "wallbox": "Wallbox, sensori e potenze",
+          "choose_vehicle": "Modifica un'auto esistente",
+          "add_vehicle": "Aggiungi una nuova auto",
+          "remove_vehicle": "Rimuovi un'auto",
+          "diagnostics": "Diario diagnostico"
+        }
+      },
+      "wallbox": {
+        "title": "Wallbox e misure di potenza",
+        "description": "Seleziona le otto entità della stessa wallbox ESPHome, i misuratori domestici e lo Shelly del ramo EV.",
+        "data": {
+          "house_power_sources": "Sensori di potenza casa (escluso il ramo EV)",
+          "ev_power": "Shelly del ramo wallbox",
+          "ble_connected": "Connection (BLE)",
+          "wallbox_connected": "Car Connected",
+          "wallbox_charging": "Charging",
+          "start_stop_switch": "Start-Stop",
+          "requested_limit": "Charge power",
+          "confirmed_limit": "Power set",
+          "dpm_confirmed": "Limit house power set -DPM-",
+          "expected_dpm_kw": "Limite DPM normale atteso (kW)",
+          "base_kw": "Potenza predefinita per sessione (kW)",
+          "charge_state": "Charge State (sensore ESPHome esistente; necessario per ripristino sicuro dopo Stop SOC)",
+          "session_energy": "Session Energy (ESPHome; per archivio con Duration)",
+          "session_duration": "Session Duration (ESPHome; minuti)",
+          "wallbox_power_switch": "Switch Shelly che alimenta la wallbox (facoltativo; ripristino ON solo dopo accensione fisica verificata)"
+        }
+      },
+      "choose_vehicle": {
+        "title": "Seleziona l'auto da modificare",
+        "data": {
+          "vehicle": "Auto"
+        }
+      },
+      "edit_vehicle": {
+        "title": "Modifica i dati dell'auto",
+        "description": "Modifica sensori, capacità, rendimento, aggiornamento e orari. Il limite di carica SOC si sceglie nel passaggio successivo.",
+        "data": {
+          "name": "Nome auto",
+          "cable": "Sensore cavo collegato",
+          "soc": "Sensore SOC",
+          "capacity_kwh": "Capacità utile batteria kWh",
+          "efficiency": "Rendimento AC",
+          "departure_weekday": "Partenza feriali (HH:MM)",
+          "departure_weekend": "Partenza weekend (HH:MM)",
+          "vehicle_refresh_button": "Pulsante aggiorna dati auto (facoltativo)",
+          "vehicle_last_update": "Timestamp ultimo aggiornamento auto (facoltativo)",
+          "stop_at_target": "Interrompi la ricarica a target SOC tramite Start-Stop"
+        }
+      },
+      "edit_target_method": {
+        "title": "Come impostare l'obiettivo SOC?",
+        "menu_options": {
+          "edit_target_fixed": "Percentuale fissa",
+          "edit_target_entity": "Entità Home Assistant"
+        }
+      },
+      "edit_target_fixed": {
+        "title": "Obiettivo SOC fisso",
+        "data": {
+          "target_fixed": "Percentuale desiderata"
+        },
+        "description": "Uno slider SOC sarà disponibile come entità dell'integrazione solo per i veicoli con Stop automatico attivo e target fisso."
+      },
+      "edit_target_entity": {
+        "title": "Obiettivo SOC da entità",
+        "data": {
+          "target_entity": "Entità limite SOC"
+        }
+      },
+      "remove_vehicle": {
+        "title": "Quale auto vuoi rimuovere?",
+        "data": {
+          "vehicle": "Auto"
+        }
+      },
+      "confirm_remove": {
+        "title": "Conferma rimozione auto",
+        "description": "Questo elimina il profilo selezionato. La wallbox non riceverà comandi durante il ricaricamento delle opzioni.",
+        "data": {
+          "confirm": "Confermo la rimozione"
+        }
+      },
+      "diagnostics": {
+        "title": "Diario diagnostico su disco",
+        "description": "I file JSONL giornalieri vengono scritti in /config/easywallbox_smart/decision_logs/ (decisions_YYYY-MM-DD.jsonl). Disattivando il flag non si producono nuovi eventi. I file già presenti non vengono cancellati. Salvando, l'integrazione viene ricaricata.",
+        "data": {
+          "diagnostic_logging": "Scrivi il diario delle decisioni su disco"
+        }
+      }
+    },
+    "error": {
+      "invalid_clock": "Inserisci gli orari nel formato HH:MM",
+      "duplicate_vehicle": "Nome o sensore cavo già utilizzato da un'altra auto",
+      "invalid_vehicle": "Profilo incompleto o non valido",
+      "vehicle_missing": "L'auto non esiste più",
+      "incomplete_wallbox": "Completa tutte le associazioni wallbox.",
+      "invalid_wallbox_mapping": "Seleziona entità ESPHome abilitate appartenenti alla stessa wallbox.",
+      "invalid_meter_sources": "Selezione sensori casa errata",
+      "duplicate_entities": "Le entità non devono essere ripetute",
+      "invalid_power": "Potenza base/boost non consentita",
+      "vehicle_refresh_is_not_vehicle_button": "Seleziona il pulsante dati dell’auto oppure lascia vuoto il campo.",
+      "incomplete_history_counters": "Seleziona entrambi i contatori Session Energy e Session Duration oppure nessuno.",
+      "invalid_wallbox_power_switch": "Seleziona lo switch di alimentazione fisica, abilitato e su un dispositivo distinto dall'ESPHome."
+    },
+    "abort": {
+      "cannot_remove_last": "Non puoi eliminare l'unica auto configurata"
+    }
+  }
+}

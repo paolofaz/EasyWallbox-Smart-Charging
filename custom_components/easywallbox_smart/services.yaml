@@ -1,0 +1,23 @@
+prune_session_history:
+  name: Elimina vecchie sessioni
+  description: >-
+    Conserva soltanto le ultime N sessioni registrate; eliminazione irreversibile,
+    richiede amministratore. Non invia alcun comando alla wallbox.
+  fields:
+    keep_last:
+      name: Sessioni da mantenere
+      description: Numero di ricariche recenti da conservare.
+      required: true
+      example: 50
+      selector:
+        number:
+          min: 1
+          max: 100000
+          mode: box
+    entry_id:
+      name: ID integrazione (facoltativo)
+      description: Compilare solo se sono installate più EasyWallbox Smart Charging.
+      required: false
+      example: "1234abcd"
+      selector:
+        text:

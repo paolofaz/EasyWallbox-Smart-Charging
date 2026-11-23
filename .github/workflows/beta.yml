@@ -1,0 +1,75 @@
+name: EasyWallbox Smart Charging beta quality gate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m compileall -q custom_components/easywallbox_smart tests
+      - run: python -m pip install "voluptuous>=0.15,<1"
+      - run: python -m unittest discover -s tests -v
+      - name: Check JSON and translations
+        run: |
+          python -m json.tool hacs.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/manifest.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/strings.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/en.json >/dev/null
+          python -m json.tool custom_components/easywallbox_smart/translations/it.json >/dev/null
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@master
+  marketplace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          comment: "false"
+  ha-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: python -m pip install "homeassistant==2026.11.1"
+      - run: python tests/ha_field_trial.py
+  publish-beta:
+    if: github.event_name == 'push' && github.event.head_commit.message == 'Initial beta 0.9.0b1'
+    needs: [tests, hassfest, marketplace, ha-runtime]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Publish tested beta as a prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version custom_components/easywallbox_smart/manifest.json)
+          test "$version" = "0.9.0b1"
+          gh release create "v$version" --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "EasyWallbox Smart Charging 0.9 beta" --notes-file docs/COLLAUDO_BETA.md
