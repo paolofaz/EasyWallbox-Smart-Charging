@@ -56,6 +56,7 @@ class OptionalSupply(unittest.IsolatedAsyncioTestCase):
         self.hass.states[self.cfg[C.CONF_WALLBOX_CONNECTED]].publish("off")
         self.hass.states[self.cfg[C.CONF_WALLBOX_CHARGING]].publish("off")
         self.hass.states[self.cfg[C.CONF_DPM_CONFIRMED]].publish("0")
+        self.hass.states[self.cfg[C.CONF_TELEMETRY_FRESH]].publish("on")
         self.hass.states[charge].publish("Cable Unplugged")
         # Supply restore is independent of the 69s physical cable-unplug timer.
         self.c.refresh()
