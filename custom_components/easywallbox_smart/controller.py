@@ -132,6 +132,7 @@ class ChargingController:
         self._unplug_reports = 0
         self._unplug_interruption = False  # Positive state-3 awaiting second AD and 69s
         self._unplug_restore_pending = False  # Observed connected -> physically unplugged
+        self._unplug_restore_since = None  # ON permitted only after 69s still unplugged
         # Optional, observed Shelly supply cycle. Never persisted/recovered from
         # HA startup, ESPHome restart, or BLE reconnect alone.
         self._supply_off_since = None
@@ -644,12 +645,14 @@ class ChargingController:
     def _wallbox_cable(self, now):
         if self._ble_online(now) is not True:
             self._unplug_restore_pending = False
+            self._unplug_restore_since = None
             self._reset_unplug_evidence(now, "ble_disconnected")
             return None
         cable = self._wallbox_flag(CONF_WALLBOX_CONNECTED)
         if cable is not False:
             if cable is True:
                 self._unplug_restore_pending = False
+                self._unplug_restore_since = None
             self._reset_unplug_evidence(now,
                                         "cable_replugged" if cable is True
                                         else "cable_not_confirmed")
@@ -661,8 +664,7 @@ class ChargingController:
             return None
         # 69s and two independent AD observations are for cable removal,
         # not for the Shelly power-on path.
-        stop_uncertain = (self._unplug_restore_pending or
-                          self._soc_stop_latch is not None or self._soc_stop_done or
+        stop_uncertain = (self._soc_stop_latch is not None or self._soc_stop_done or
                           self._standby_restore_due or
                           (isinstance(self._saved_attempt, dict) and
                            self._saved_attempt.get("kind") == "soc_stop") or
@@ -777,7 +779,7 @@ class ChargingController:
         key = CONF_CONFIRMED_LIMIT if is_power else CONF_DPM_CONFIRMED
         source = self._raw(self.cfg[key])
         confirmed = self._setting(key, now)
-        expected = p.target if p.kind in ("power", "delay_release", "normalize_on", "soc_resume", "supply_restore") else 0.0
+        expected = p.target if p.kind in ("power", "delay_release", "normalize_on", "soc_resume", "supply_restore", "mode_auto_on") else 0.0
         if (source is None or confirmed is None or
                 self._age(source) <= p.since or abs(confirmed-expected) > .051):
             return
@@ -1544,6 +1546,9 @@ class ChargingController:
             due_dates.append(now + timedelta(minutes=1))
         if self._unplug_since and now < self._unplug_since + timedelta(seconds=69):
             due_dates.append(self._unplug_since + timedelta(seconds=69))
+        if (self._unplug_restore_since is not None and
+                now < self._unplug_restore_since + timedelta(seconds=69)):
+            due_dates.append(self._unplug_restore_since + timedelta(seconds=69))
         if (self._supply_restore_candidate is not None and
                 now < self._supply_restore_candidate + timedelta(minutes=2)):
             due_dates.append(self._supply_restore_candidate + timedelta(minutes=2))
@@ -1657,7 +1662,7 @@ class ChargingController:
             # BLE reconnection never changes Start-Stop automatically.
         self._online = online
         cable = self._wallbox_cable(now) if online else None
-        if (self._unplug_restore_pending and self._unplug_since is not None
+        if (self._unplug_restore_pending and cable is False
                 and self.mode == "manual"):
             self.mode = "automatic"
             self._record("reconciliation", "physical_unplug_returns_to_automatic")
@@ -1870,6 +1875,11 @@ class ChargingController:
             self._reconcile_terminal_soc_stop(now)
             if self._unplug_restore_pending:
                 self._unplug_restore_pending = False
+                self._unplug_restore_since = now
+                self._record("reconciliation", "observed_cable_unplug_wait_69s")
+            if (self._unplug_restore_since is not None and
+                    now-self._unplug_restore_since >= timedelta(seconds=69)):
+                self._unplug_restore_since = None
                 if not self.delay_enabled and self._saved_delay_lease is None:
                     self._standby_restore_due = True
                     self._record("reconciliation", "confirmed_cable_unplug_standby_on")
