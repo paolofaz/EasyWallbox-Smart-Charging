@@ -298,6 +298,68 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
                          [("switch","turn_off"),("switch","turn_on")])
         rows=await self.rows()
         self.assertEqual([r["confirmed_kw"] for r in rows if r["event"]=="confirmed"],[0,4.4])
+    async def test_unknown_vehicle_still_runs_electrical_normal_policy(self):
+        # A real guest car may be charging while both configured cloud cables
+        # remain OFF. No SOC/departure is invented and no cloud gate is used.
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.kia"].publish("off")
+        await self.start_charging()
+        self.assertIsNotNone(self.controller._session_id)
+        self.assertFalse(self.controller._connection)
+        self.assertEqual(self.controller.vehicle_name, "Veicolo non identificato")
+        self.assertTrue(self.controller._snapshot(now())["trusted"])
+        self.assertEqual(self.controller._power_state.phase, "NORMAL")
+        rows = await self.rows()
+        self.assertTrue(any(row["event"] == "policy" for row in rows))
+
+    async def test_unknown_vehicle_refresh_15s_retry_at_minutes_and_stop_at_5(self):
+        self.hass.states["binary_sensor.fiat"].publish("off")
+        self.hass.states["binary_sensor.kia"].publish("off")
+        await self.start_charging()
+        self.assertIsNotNone(self.controller._refresh_due)
+        self.assertGreater((self.controller._refresh_due-now()).total_seconds(), 10)
+        # A disconnected Fiat provider can throw; every attempt must STILL
+        # press Kia. Cloud errors never veto power stabilization.
+        calls = []
+        original_call = self.hass.services.async_call
+        async def provider(domain, service, params, blocking=False):
+            if domain == "button" and service == "press":
+                calls.append(params["entity_id"])
+                if params["entity_id"] == "button.fiat_update":
+                    raise RuntimeError("Fiat unavailable")
+            else:
+                await original_call(domain, service, params, blocking=blocking)
+        self.hass.services.async_call = provider
+        self.controller._refresh_due = now()-timedelta(seconds=1)
+        await self.controller._request_one_shot_updates()
+        self.assertEqual(calls, ["button.fiat_update", "button.kia_update"])
+        self.assertEqual(self.controller._refresh_count, 1)
+        self.assertIsNone(self.controller._blocked)
+        self.assertTrue(self.controller.real_enabled)
+        # Four one-per-minute retries, no calls beyond +5min.
+        for attempt in range(2, 6):
+            self.controller._refresh_due = now()-timedelta(seconds=1)
+            await self.controller._request_one_shot_updates()
+            self.assertEqual(self.controller._refresh_count, attempt)
+        self.assertEqual(len(calls), 10)
+        self.assertIsNone(self.controller._refresh_due)
+        await self.controller._request_one_shot_updates()
+        self.assertEqual(len(calls), 10)
+
+    async def test_configured_telemetry_fresh_blocks_every_electrical_write(self):
+        await self.start_charging()
+        self.publish(C.CONF_TELEMETRY_FRESH, "off")
+        self.assertEqual(
+            self.controller._write_block(
+                "power", 3.6, self.controller._session_id, now()),
+            "telemetry_not_fresh")
+        self.assertEqual(
+            self.controller._write_block(
+                "mode_auto_on", 4.4, self.controller._idle_park_trace, now()),
+            "telemetry_not_fresh")
+        self.publish(C.CONF_TELEMETRY_FRESH, "on")
+        self.assertTrue(self.controller._snapshot(now())["trusted"])
+
     async def test_stable_charge_state_uses_firmware_watchdog_not_two_minute_ttl(self):
         await self.start_charging()
         charge = self.hass.states[self.cfg[C.CONF_CHARGE_STATE]]
