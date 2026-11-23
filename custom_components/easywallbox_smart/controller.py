@@ -2356,6 +2356,8 @@ class ChargingController:
                                  None, "explicitly_increased_target_after_soc_stop")
 
     def _write_block(self, kind, target, session, now):
+        if not self._telemetry_ok():
+            return "telemetry_not_fresh"
         if kind in ("delay_arm", "delay_release", "normalize_on", "supply_restore", "mode_auto_on"):
             cable = self._wallbox_cable(now)
             charging = self._wallbox_flag(CONF_WALLBOX_CHARGING)
