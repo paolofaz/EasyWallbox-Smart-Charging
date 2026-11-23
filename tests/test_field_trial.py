@@ -315,7 +315,8 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_vehicle_refresh_15s_retry_at_minutes_and_stop_at_5(self):
         self.hass.states["binary_sensor.fiat"].publish("off")
         self.hass.states["binary_sensor.kia"].publish("off")
-        await self.start_charging()
+        self.controller.start()  # Unlike dispatcher fixture, keep cloud timer armed.
+        await self.settle()
         self.assertIsNotNone(self.controller._refresh_due)
         self.assertGreater((self.controller._refresh_due-now()).total_seconds(), 10)
         # A disconnected Fiat provider can throw; every attempt must STILL
