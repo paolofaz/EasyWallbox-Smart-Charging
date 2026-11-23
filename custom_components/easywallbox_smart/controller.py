@@ -152,6 +152,8 @@ class ChargingController:
         self._fixed_target_overrides = {}
         self._refresh_due = None
         self._refresh_issued = False
+        self._refresh_start_at = None
+        self._refresh_count = 0
         self._refresh_requested_at = None
         self._refresh_deadline = None
         self._refresh_targets = ()
@@ -629,17 +631,23 @@ class ChargingController:
             return None
         return on(state.state)
 
-    def _charge_state(self, now):
-        """Trust a stable Charge State while the ESPHome AD watchdog is healthy.
+    def _telemetry_ok(self):
+        """Use the firmware AD watchdog if mapped; never assume OFF is safe."""
+        entity = self.cfg.get(CONF_TELEMETRY_FRESH)
+        return entity is None or self._wallbox_flag(CONF_TELEMETRY_FRESH) is True
 
-        An unchanged HA string is not a stale AD measurement. BLE epoch,
-        firmware invalidation and Telemetry Fresh reject actual stale data.
+    def _charge_state(self, now):
+        """Stable Charge State is valid within a live, confirmed BLE epoch.
+
+        HA does not guarantee periodic last_reported for identical text.
+        ESPHome invalidates this value on BLE loss; the optional AD watchdog
+        independently vetoes the value when configured and OFF/unknown.
         """
         entity = self.cfg.get(CONF_CHARGE_STATE)
         value = self._raw(entity)
         if (value is None or value.attributes.get("restored")
                 or value.state in ("unknown", "unavailable", "Unavailable", "")
-                or self._wallbox_flag(CONF_TELEMETRY_FRESH) is not True):
+                or self._ble_online(now) is not True or not self._telemetry_ok()):
             return None
         reported = self._age(value)
         if (reported is None or reported > now or
@@ -701,7 +709,8 @@ class ChargingController:
     def _wallbox_flag(self, key):
         # ESPHome invalidates these AD flags when its watchdog trips. A stable
         # healthy binary can legitimately have an old HA last_changed.
-        source = self._raw(self.cfg[key])
+        entity = self.cfg.get(key)
+        source = self._raw(entity)
         if source is None or (self._ble_since and self._age(source) < self._ble_since):
             return None
         return self._reported_binary(self.cfg[key])
@@ -893,6 +902,12 @@ class ChargingController:
         self._pending = None
         self._record("unconfirmed", reason, operation=p.operation, kind=p.kind)
         # A failed command retains its persisted unresolved intent.
+
+    def _vehicle_conflict(self, now, cable):
+        """Two simultaneously ON cloud cable sensors are contradictory, not a guest."""
+        return (cable is True and sum(
+            self._binary(car[CONF_CABLE], now, CAR_TTL) is True
+            for car in self.cfg[CONF_VEHICLES]) > 1)
 
     def _select_vehicle(self, now, cable):
         profile = None
@@ -1297,14 +1312,17 @@ class ChargingController:
         self._record_planning_power(now, house, house_at, ev_kw, charging, actual_limit)
         self._record_ev_delivery(now, ev_kw, charging)
         if (charging is True and self._connect_since is not None
-                and self._refresh_due is None and not self._refresh_issued):
-            # Debounce physical charging for five seconds, not a stale
-            # Fiat/Kia cloud cable marker. Never request on mere plug-in.
-            self._refresh_due = now + timedelta(seconds=5)
+                and self._refresh_start_at is None):
+            # Refresh once after 15 seconds and, only while unrecognized,
+            # at +1m, +2m, +3m and +4m. Stop completely at +5m.
+            self._refresh_start_at = now
+            self._refresh_due = now + timedelta(seconds=15)
+            self._refresh_deadline = now + timedelta(minutes=5)
             self._record("vehicle_refresh", "charging_start_detected")
 
         self.house_kw = round(house, 3) if house is not None else None
-        self.vehicle_name = car[CONF_NAME] if car else None
+        self.vehicle_name = car[CONF_NAME] if car else (
+            "Veicolo non identificato" if cable is True and charging is True else None)
         self.charging_verified = charging
         self.stop_at_target_enabled = bool(car.get(CONF_STOP_AT_TARGET)) if car else None
         self.soc = self.target_soc = self.margin_minutes = self.remaining_kwh = None
@@ -1380,7 +1398,8 @@ class ChargingController:
         issues = []
         for ok, reason in (
             (cable is True, "cable_unknown"),
-            (car is not None, "vehicle_not_unique_or_stale"),
+            (not self._vehicle_conflict(now, cable), "vehicle_identity_conflict"),
+            (self._telemetry_ok(), "telemetry_not_fresh"),
             (not self.cfg.get(CONF_CHARGE_STATE) or charge_state in (
                 "Charging", "Vehicle ready", "Pause", "Stato transitorio", "Pending",
                 "Transition (7)", "Unknown (7)"), "charge_state_unverified"),
@@ -1390,7 +1409,6 @@ class ChargingController:
             (dpm_normal or dpm_parked, "dpm_unverified"),
             (actual_limit is not None and requested is not None and
              abs(actual_limit-requested) <= .051, "ev_limit_unverified"),
-            (target_reached is not None, "soc_or_target_unverified"),
         ):
             if not ok:
                 issues.append(reason)
@@ -1583,12 +1601,12 @@ class ChargingController:
             due_dates.append(self._pending.since + ACK_TIMEOUT)
             # Short-lived local readback checks, no BLE or Shelly polling command.
             due_dates.append(now + timedelta(seconds=5))
-        if self._refresh_due and connected and not self._refresh_issued:
+        if self._refresh_due and connected:
             due_dates.append(self._refresh_due)
         if (self.delay_enabled and self._scheduled_at and
                 self._saved_delay_lease):
             due_dates.append(self._scheduled_at)
-        if self._refresh_deadline and connected:
+        if self._refresh_deadline and connected and now < self._refresh_deadline:
             due_dates.append(self._refresh_deadline)
         due_dates = [dt for dt in due_dates if dt > now]
         if due_dates:
@@ -1721,6 +1739,8 @@ class ChargingController:
             self._connect_since = now
             self._refresh_due = None  # armed only by confirmed charging
             self._refresh_issued = False
+            self._refresh_start_at = None
+            self._refresh_count = 0
             self._refresh_requested_at = self._refresh_deadline = self._refresh_error = None
             self._last_diagnostic_at = None
             self._last_policy_reason = None
@@ -1841,7 +1861,7 @@ class ChargingController:
                 self._soc_stop_latch is None and
                 self._refresh_due is not None and
                 snapshot["charging"] is True and
-                now >= self._refresh_due and not self._refresh_issued):
+                now >= self._refresh_due):
             if self._refresh_task is None or self._refresh_task.done():
                 self._refresh_task = self.entry.async_create_background_task(
                     self.hass, self._request_one_shot_updates(),
@@ -1972,6 +1992,8 @@ class ChargingController:
             self.charge_now = self.explicit_pause = False
             self._soc_stop_refresh_at = self._soc_stop_baseline = None
             self._connect_since = self._refresh_due = self._refresh_deadline = None
+            self._refresh_start_at = None
+            self._refresh_count = 0
             self._house_history.clear()
             self._ev_history.clear()
             self._delivered_ev_kwh = 0.0
