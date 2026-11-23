@@ -57,10 +57,7 @@ class OptionalSupply(unittest.IsolatedAsyncioTestCase):
         self.hass.states[self.cfg[C.CONF_WALLBOX_CHARGING]].publish("off")
         self.hass.states[self.cfg[C.CONF_DPM_CONFIRMED]].publish("0")
         self.hass.states[charge].publish("Cable Unplugged")
-        self.c.refresh()
-        self.assertIsNotNone(self.c._unplug_since)
-        self.c._unplug_since = datetime.now(timezone.utc)-timedelta(seconds=70)
-        self.hass.states[charge].publish("Cable Unplugged")
+        # Supply restore is independent of the 69s physical cable-unplug timer.
         self.c.refresh()
         await asyncio.sleep(.05)
 
@@ -74,12 +71,12 @@ class OptionalSupply(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.01)
         self.assertIsNone(self.c._supply_restore_candidate)
         self.assertEqual(self.hass.services.calls, [])
-        # A Shelly OFF/ON without witnessing the wallbox BLE offline also fails closed.
+        # Shelly OFF/ON arms a window but never writes without a NEW BLE OFF->ON.
         relay = self.cfg[C.CONF_WALLBOX_POWER_SWITCH]
         self.event(relay, "on", "off")
-        self.c._supply_off_since = datetime.now(timezone.utc)-timedelta(seconds=8)
         self.event(relay, "off", "on")
-        self.assertIsNone(self.c._supply_restore_candidate)
+        self.assertIsNotNone(self.c._supply_restore_candidate)
+        self.assertFalse(self.c._supply_ble_rejoined)
         self.assertEqual(self.hass.services.calls, [])
 
     async def test_actual_shelly_cycle_restores_once_only_after_verified_unplug(self):
