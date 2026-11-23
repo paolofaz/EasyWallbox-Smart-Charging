@@ -18,6 +18,7 @@
           "expected_dpm_kw": "Limite DPM normale atteso (kW)",
           "base_kw": "Potenza predefinita per sessione (kW)",
           "charge_state": "Charge State (sensore ESPHome esistente; necessario per ripristino sicuro dopo Stop SOC)",
+          "telemetry_fresh": "Telemetry Fresh (ESPHome: blocca i comandi quando OFF o non disponibile)",
           "session_energy": "Session Energy (ESPHome; per archivio con Duration)",
           "session_duration": "Session Duration (ESPHome; minuti)",
           "wallbox_power_switch": "Switch Shelly che alimenta la wallbox (facoltativo; ripristino ON solo dopo accensione fisica verificata)"
@@ -107,6 +108,7 @@
           "expected_dpm_kw": "Limite DPM normale atteso (kW)",
           "base_kw": "Potenza predefinita per sessione (kW)",
           "charge_state": "Charge State (sensore ESPHome esistente; necessario per ripristino sicuro dopo Stop SOC)",
+          "telemetry_fresh": "Telemetry Fresh (ESPHome: blocca i comandi quando OFF o non disponibile)",
           "session_energy": "Session Energy (ESPHome; per archivio con Duration)",
           "session_duration": "Session Duration (ESPHome; minuti)",
           "wallbox_power_switch": "Switch Shelly che alimenta la wallbox (facoltativo; ripristino ON solo dopo accensione fisica verificata)"
