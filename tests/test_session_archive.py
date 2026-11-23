@@ -53,6 +53,91 @@ class JointReset(unittest.TestCase):
 
 
 class Persistence(unittest.IsolatedAsyncioTestCase):
+    async def test_duration_resets_on_unplug_energy_only_next_plug(self):
+        """Archive at cable-off from LAST connected AD, not next joint reset."""
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            cfg = rig.setup(hass)
+            cfg[rig.const.CONF_SESSION_ENERGY] = "sensor.session_energy"
+            cfg[rig.const.CONF_SESSION_DURATION] = "sensor.session_duration"
+            hass.states["sensor.session_energy"] = rig.FakeState("1.2", "kWh")
+            hass.states["sensor.session_duration"] = rig.FakeState("31", "min")
+            archive = SessionArchive(hass, rig.FakeEntry(cfg), cfg, lambda: None)
+            await archive.async_load()
+            archive.start()  # Real cable connected and counters measurable.
+            archive._observe()
+            # Pause is NOT the end, despite Charging switching OFF.
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
+            archive._observe()
+            self.assertEqual(archive.total, 0)
+            # AD may report a zero duration BEFORE archive receives cable off.
+            hass.states["sensor.session_duration"].publish("0")
+            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
+            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
+            archive._observe()
+            await archive.async_close()
+            self.assertEqual(archive.total, 1)
+            self.assertEqual(archive.sessions[0]["duration_min"], 31)
+            self.assertEqual(archive.sessions[0]["energy_kwh"], 1.2)
+            self.assertEqual(archive.sessions[0]["completion"],
+                             "physical_cable_unplug")
+
+    async def test_unplug_archive_survives_later_counter_reset_and_no_duplicates(self):
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            cfg = rig.setup(hass)
+            cfg[rig.const.CONF_SESSION_ENERGY] = "sensor.session_energy"
+            cfg[rig.const.CONF_SESSION_DURATION] = "sensor.session_duration"
+            hass.states["sensor.session_energy"] = rig.FakeState("1.4", "kWh")
+            hass.states["sensor.session_duration"] = rig.FakeState("26", "min")
+            entry = rig.FakeEntry(cfg)
+            archive = SessionArchive(hass, entry, cfg, lambda: None)
+            await archive.async_load()
+            archive.start()
+            hass.states["sensor.session_energy"].publish("1.5")
+            hass.states["sensor.session_duration"].publish("27")
+            archive._observe()
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
+            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
+            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
+            archive._observe()
+            self.assertEqual(archive.total, 1)
+            # Next connection resets energy only, minutes were already zero.
+            hass.states["sensor.session_duration"].publish("0")
+            hass.states["sensor.session_energy"].publish("0")
+            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("on")
+            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Vehicle ready")
+            archive._observe()
+            self.assertEqual(archive.total, 1)
+            await archive.async_close()
+            self.assertEqual(archive._store.content["total"], 1)
+            boot = SessionArchive(hass, entry, cfg, lambda: None)
+            boot._store.async_load = lambda: asyncio.sleep(0, result=archive._store.content)
+            await boot.async_load()
+            self.assertEqual(boot.total, 1)
+            await boot.async_close()
+
+    async def test_unknown_cable_and_ble_loss_cannot_archive_session(self):
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            cfg = rig.setup(hass)
+            cfg[rig.const.CONF_SESSION_ENERGY] = "sensor.session_energy"
+            cfg[rig.const.CONF_SESSION_DURATION] = "sensor.session_duration"
+            hass.states["sensor.session_energy"] = rig.FakeState("1.4", "kWh")
+            hass.states["sensor.session_duration"] = rig.FakeState("29", "min")
+            archive = SessionArchive(hass, rig.FakeEntry(cfg), cfg, lambda: None)
+            await archive.async_load()
+            archive.start()
+            hass.states[cfg[rig.const.CONF_BLE_CONNECTED]].publish("off")
+            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
+            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
+            archive._observe()
+            self.assertEqual(archive.total, 0)
+            await archive.async_close()
+
     async def test_archive_survives_restart_without_duplicate(self):
         from tempfile import TemporaryDirectory
         with TemporaryDirectory() as wd:
