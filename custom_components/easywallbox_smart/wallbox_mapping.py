@@ -1,7 +1,7 @@
 """Validate manually selected ESPHome roles without guessing entity names."""
 from .const import (CONF_CHARGE_STATE, CONF_WALLBOX_POWER_SWITCH, CONF_SESSION_ENERGY,
                     CONF_SESSION_DURATION, CONF_START_STOP, CONF_VEHICLES,
-                    CONF_VEHICLE_REFRESH, WALLBOX_ENTITIES)
+                    CONF_VEHICLE_REFRESH, CONF_TELEMETRY_FRESH, WALLBOX_ENTITIES)
 
 
 def mapping_error(hass, config):
@@ -33,6 +33,14 @@ def mapping_error(hass, config):
                 state_item.device_id != anchor.device_id or
                 state_item.platform != "esphome" or state_item.domain != "sensor" or
                 sensor in (config.get(key) for key in WALLBOX_ENTITIES)):
+            return "invalid_wallbox_mapping"
+    telemetry = config.get(CONF_TELEMETRY_FRESH)
+    if telemetry:
+        item = registry.async_get(telemetry)
+        if (item is None or item.disabled_by is not None or
+                item.device_id != anchor.device_id or
+                item.platform != "esphome" or item.domain != "binary_sensor" or
+                telemetry in (config.get(key) for key in WALLBOX_ENTITIES)):
             return "invalid_wallbox_mapping"
     relay = config.get(CONF_WALLBOX_POWER_SWITCH)
     if relay:
