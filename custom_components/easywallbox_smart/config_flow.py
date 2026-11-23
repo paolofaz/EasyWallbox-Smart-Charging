@@ -47,6 +47,7 @@ WALLBOX = vol.Schema({
     vol.Required(CONF_EV_POWER): entity("sensor"),
     **{vol.Required(key): entity(domain) for key, domain in WALLBOX_ENTITIES.items()},
     vol.Optional(CONF_CHARGE_STATE): entity("sensor"),
+    vol.Optional(CONF_TELEMETRY_FRESH): entity("binary_sensor"),
     vol.Optional(CONF_SESSION_ENERGY): entity("sensor"),
     vol.Optional(CONF_SESSION_DURATION): entity("sensor"),
     vol.Optional(CONF_WALLBOX_POWER_SWITCH): entity("switch"),
@@ -77,6 +78,8 @@ def check_wallbox(x):
     other = [x.get(CONF_EV_POWER), *(x.get(key) for key in WALLBOX_ENTITIES)]
     if x.get(CONF_CHARGE_STATE):
         other.append(x[CONF_CHARGE_STATE])
+    if x.get(CONF_TELEMETRY_FRESH):
+        other.append(x[CONF_TELEMETRY_FRESH])
     for optional in (CONF_SESSION_ENERGY, CONF_SESSION_DURATION, CONF_WALLBOX_POWER_SWITCH):
         if x.get(optional):
             other.append(x[optional])
