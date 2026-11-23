@@ -9,7 +9,7 @@ COMP = Path(__file__).resolve().parents[1] / "custom_components/easywallbox_smar
 class CardResourceRC10(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((COMP / "manifest.json").read_text())
-        self.assertEqual(manifest["version"], "0.9.0b1")
+        self.assertEqual(manifest["version"], "0.9.1b1")
         self.assertIn("lovelace", manifest["dependencies"])
 
     def test_resource_not_dashboard(self):
