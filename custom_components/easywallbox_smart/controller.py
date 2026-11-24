@@ -817,17 +817,25 @@ class ChargingController:
             self._fail_command(p, "active_charge_state_error_during_command")
             return
         is_power = p.kind == "power"
-        key = CONF_CONFIRMED_LIMIT if is_power else CONF_DPM_CONFIRMED
+        # Independent post-command Charge Enabled readback confirms Start/Stop.
+        # Smart Charging never reads or writes the numerical DPM register.
+        key = CONF_CONFIRMED_LIMIT if is_power else CONF_CHARGE_ENABLED
         source = self._raw(self.cfg[key])
-        confirmed = self._setting(key, now)
-        expected = p.target if p.kind in ("power", "delay_release", "normalize_on", "soc_resume", "supply_restore", "mode_auto_on") else 0.0
+        confirmed = (self._setting(key, now) if is_power else
+                     self._wallbox_flag(CONF_CHARGE_ENABLED))
+        expected = (p.target if is_power else
+                    p.kind not in ("delay_arm", "soc_stop"))
         if (source is None or confirmed is None or
-                self._age(source) <= p.since or abs(confirmed-expected) > .051):
+                self._age(source) <= p.since or
+                (abs(confirmed-expected) > .051 if is_power
+                 else confirmed is not expected)):
             return
         if not p.readback_seen:
             p.readback_seen = True
-            self._record("readback", "ev_register" if is_power else "dpm_register",
-                         operation=p.operation, kind=p.kind, confirmed_kw=confirmed,
+            self._record("readback", "ev_register" if is_power else "charge_enabled",
+                         operation=p.operation, kind=p.kind,
+                         **({"confirmed_kw": confirmed} if is_power
+                            else {"confirmed_enabled": confirmed}),
                          readback_at=self._age(source).isoformat())
         observed = self._wallbox_flag(CONF_WALLBOX_CHARGING)
         ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
@@ -842,11 +850,10 @@ class ChargingController:
             if (cable is not False or observed is not False or ev is None or ev >= .03
                     or self._reported_binary(self.cfg[CONF_START_STOP]) is not False):
                 return
-            dpm_limit = float(self.cfg[CONF_EXPECTED_DPM])
-            self._dpm_lease = dpm_limit
+            self._dpm_lease = 1.0  # Switch-ON ownership sentinel, not DPM kW.
             self._saved_delay_lease = {
                 "kind": "preplug", "start": self._scheduled_at.isoformat(),
-                "dpm": dpm_limit}
+                "switch": "off_confirmed"}
         elif p.kind in ("delay_release", "normalize_on", "soc_resume", "supply_restore", "mode_auto_on"):
             # DPM > 0 proves the switch was released, NOT that a car
             # immediately started charging. This works even with no car.
@@ -893,7 +900,10 @@ class ChargingController:
         self._pending = self._saved_attempt = None
         self._schedule_save()
         self._record("confirmed", "post_request_readback", operation=p.operation,
-                     kind=p.kind, expected_kw=expected, confirmed_kw=confirmed,
+                     kind=p.kind,
+                     **({"expected_kw": expected, "confirmed_kw": confirmed}
+                        if is_power else {"expected_enabled": expected,
+                                          "confirmed_enabled": confirmed}),
                      readback_at=self._age(source).isoformat(),
                      charging_flag=observed, ev_kw=ev)
         self.reason = "confirmed_" + p.kind
@@ -948,12 +958,8 @@ class ChargingController:
                 or cable not in (True, False) or self._blocked
                 or self._saved_attempt is not None):
             return
-        try:
-            limit = float(saved["dpm"])
-        except (TypeError, ValueError, KeyError):
-            return
-        if abs(limit-float(self.cfg[CONF_EXPECTED_DPM])) > .051:
-            return
+        # Legacy numeric leases are ignored. Independently confirmed OFF
+        # and unchanged physical ownership suffice for the switch lease.
         if (self._setting(CONF_DPM_CONFIRMED, now) != 0.0 or
                 self._reported_binary(self.cfg[CONF_START_STOP]) is not False or
                 self._wallbox_flag(CONF_WALLBOX_CHARGING) is not False or
@@ -961,7 +967,7 @@ class ChargingController:
             return
         ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
         if ev is not None and ev < .03:
-            self._dpm_lease = limit
+            self._dpm_lease = 1.0  # Switch-ON ownership sentinel
             if self._idle_park_trace is None:
                 self._idle_park_trace = uuid4().hex
             self._record("reconciliation", "saved_preplug_hold_verified")
