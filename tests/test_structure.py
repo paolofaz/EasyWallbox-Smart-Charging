@@ -18,7 +18,7 @@ class RCStructureTest(unittest.TestCase):
                 obj=json.load(fp)
             self.assertIsInstance(obj,dict)
         version=json.loads((COMP/"manifest.json").read_text())["version"]
-        self.assertEqual(version,"0.9.2b1")
+        self.assertRegex(version,r"^1\.0\.0rc[0-9]+$")
 
     def test_all_python_modules_compile(self):
         for src in COMP.glob("*.py"):
