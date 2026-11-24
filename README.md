@@ -42,6 +42,21 @@ Prima del primo collaudo, verificare che le vecchie automazioni HA che comandava
 
 Il supervisore non segue i picchi secondo per secondo. Un LIMITED può rientrare in NORMAL dopo 15 minuti *osservati* di headroom nominale, o in caso di urgenza con effettiva opportunità di potenza. La condizione di quiete è attualmente `potenza contrattuale - casa - baseline ≥ −0,02 kW`; è **da verificare sui dati reali**, non va modificata preventivamente.
 
+
+### ETA: previsione della fine ricarica (solo informativa)
+
+La previsione **non pilota Start-Stop, il DPM o NORMAL/LIMITED**: il margine prudente per la partenza resta calcolato come prima.
+
+La versione 1.0 RC adotta una previsione **a due regimi**, sviluppata a partire dall'analisi della ricarica del 23–24 novembre:
+
+- **Potenza libera di riferimento**: mediana di almeno 20 letture EV indipendenti (almeno 10 minuti) in questa sessione, con consumo domestico ≤0,3 kW e limite EV effettivamente a NORMAL. Se questi dati mancano, usa provvisoriamente il minore fra il 96% della potenza desiderata e la potenza contrattuale meno 0,2 kW. Questo ripiego *non è* una misura.
+- **Potenza attuale**: media delle misure Shelly EV degli ultimi 10 minuti, comprese le pause DPM osservate. Questa stima vale solo per i prossimi **30 minuti**; il resto dell'energia viene previsto alla potenza libera. Non si proietta il forno acceso su tutta la notte.
+- **Energia residua**: capacità/rendimento del profilo auto, meno energia AC Shelly osservata dall'ultimo SOC. Nella stessa sessione, dopo almeno **5 punti di SOC** misurati senza vuoti Shelly, il coefficiente kWh/% può essere corretto con peso progressivo e massimo ±15%. Non viene appreso permanentemente da una sola ricarica.
+- **Stabilità**: l'orario indicato è aggiornato in blocchi da 10 minuti; normalmente non varia più di 15 minuti per aggiornamento. Un cambiamento esplicito del veicolo, del target SOC o della potenza desiderata avvia una nuova previsione.
+- **Trasparenza**: il sensore Fine carica prevista riporta la qualità *provvisoria/consolidata*, la potenza libera, la potenza recente e un orario *teorico* a potenza libera. Sono riferimenti di calcolo, non garanzie. Con SOC assente, incoerente o obsoleto, la previsione resta indisponibile.
+
+Il modello non conosce i futuri utilizzi di forno, lavastoviglie o altri elettrodomestici: in particolare le prime ore possono avere errori importanti. Non si mostra un falso «orario massimo» o un intervallo statistico non calibrato. Servono ulteriori sessioni reali per validare l'accuratezza e considerare eventuale apprendimento persistente.
+
 ## Interfaccia
 
 Sono disponibili entità di stato, pianificatore/avvisi, auto identificata, fase stabilizzatore, stime di energia e completamento, selezione modalità, orari, slider potenza sessione e, ove configurato, slider SOC. Non vengono duplicati i sensori di corrente/potenza Shelly o gli stati BLE. È disponibile una card storico sessioni per Lovelace: l'integrazione registra la risorsa JavaScript ma **non crea una dashboard**. La card legge solo le sessioni **chiuse da distacco fisico del cavo**, una riga per collegamento con colonne **Fine ricarica, Automobile, Energia, Durata**. Le pause e gli azzeramenti dei contatori non producono righe: il modulo conserva le porzioni in .storage e le somma in kWh e minuti. Durante un'interruzione BLE o riavvio conserva lo stato parziale e lo segnala come tale quando la continuità non è certa. Se l'auto non è identificabile, mostra «Non identificata». Una precedente riga beta senza prova del distacco non viene spacciata per una sessione completata.
