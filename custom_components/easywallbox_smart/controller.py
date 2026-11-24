@@ -119,7 +119,8 @@ class ChargingController:
         self._journal = DecisionJournal(
             hass, entry, version,
             enabled=self.cfg.get(CONF_DIAGNOSTIC_LOGGING, DEFAULT_DIAGNOSTIC_LOGGING))
-        self.session_history = SessionArchive(hass, entry, self.cfg, self._notify)
+        self.session_history = SessionArchive(
+            hass, entry, self.cfg, self._notify, report=self._record)
         self._trace_session = None
         self._gate_key = None
         self._last_diagnostic_at = None
