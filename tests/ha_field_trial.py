@@ -81,6 +81,8 @@ async def exercise(hass, root):
     def kw(entity, value, **attributes):
         publish(entity, value, unit_of_measurement="kW", **attributes)
 
+    publish(cfg["session_energy"], 0, unit_of_measurement="kWh")
+    publish(cfg["session_duration"], 0, unit_of_measurement="min")
     publish(cfg["ble_connected"], "off")
     # Firmware invalidates AD flags while BLE is disconnected.
     publish(cfg["wallbox_connected"], "unavailable")
@@ -224,6 +226,11 @@ async def exercise(hass, root):
                    c._pending is None and sent == [4.0], 12)
     assert not any(x["domain"]=="switch" for x in calls)
 
+    # Actual HA state-change callbacks must capture the absolute totals.
+    publish(cfg["session_energy"], 5.2, unit_of_measurement="kWh")
+    publish(cfg["session_duration"], 83, unit_of_measurement="min")
+    await wait_for(lambda: c.session_history.status()["active_energy_kwh"] == 5.2
+                   and c.session_history.status()["active_duration_min"] == 83)
     # Fiat SOC stop is still mandatory when explicitly opted in at 85%.
     publish(car["soc"], 85)
     await wait_for(lambda: c._soc_stop_latch is not None and
@@ -254,6 +261,17 @@ async def exercise(hass, root):
     publish(cfg["charge_state"], "Cable Unplugged")
     publish(cfg["wallbox_connected"], "off")
     await hass.async_block_till_done()
+    # Archive must not close on the first cable OFF event: ESPHome owns
+    # the 60-second confirmation and only then publishes both zeros.
+    await wait_for(lambda: c.session_history.status()["awaiting_firmware_reset"])
+    assert c.session_history.total == 0
+    publish(cfg["session_energy"], 0, unit_of_measurement="kWh")
+    await hass.async_block_till_done()
+    assert c.session_history.total == 0
+    publish(cfg["session_duration"], 0, unit_of_measurement="min")
+    await wait_for(lambda: c.session_history.total == 1)
+    saved_row = c.session_history.sessions[0]
+    assert (saved_row["energy_kwh"], saved_row["duration_min"]) == (5.2, 83), saved_row
     # Advance the verified state-3 hold without a real-world two-minute sleep.
     assert c._unplug_since is not None
     from datetime import datetime, timedelta, timezone
@@ -312,6 +330,7 @@ async def exercise(hass, root):
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
     assert entry.state == ConfigEntryState.LOADED
+    assert hass.data["easywallbox_smart"][entry.entry_id].session_history.total == 1
     assert await hass.config_entries.async_unload(entry.entry_id)
     print("HA earlier versions field trial passed: natural start, SOC85 stop, target90 resume, unplug ON, preplug OFF/cancel ON, reload")
 
