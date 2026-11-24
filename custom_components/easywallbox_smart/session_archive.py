@@ -45,6 +45,7 @@ class SessionArchive:
         self._last_online = None
         self._last_counter_status = {"energy": "awaiting_data",
                                      "duration": "awaiting_data"}
+        self._last_outcome = "not_yet_closed"
         self._write_lock = asyncio.Lock()
         self._unsubscribe = None
         self._tasks = set()
@@ -249,6 +250,7 @@ class SessionArchive:
             "active_partial": bool(a and a.get("continuity_uncertain")),
             "counter_status": dict(self._last_counter_status),
             "completion_gate": "physical_unplug",
+            "last_outcome": self._last_outcome,
             "reason_if_disabled": (
                 "missing_session_energy_or_duration" if not self.enabled
                 else None),
@@ -263,6 +265,7 @@ class SessionArchive:
         minutes = float(counters.get("duration", {}).get("total", 0))
         self._active = None
         if energy < .2 or minutes < 2:
+            self._last_outcome = "discarded_insufficient_observed_counters"
             self._persist_background()
             return  # A cable insertion with no measurable charge.
         now = datetime.now(timezone.utc)
@@ -279,6 +282,7 @@ class SessionArchive:
                         else "observed"),
         }
         self.sessions.append(row)
+        self._last_outcome = "record_saved_on_verified_unplug"
         self.total = len(self.sessions)
         self.total_observed += 1
         self._notify()
