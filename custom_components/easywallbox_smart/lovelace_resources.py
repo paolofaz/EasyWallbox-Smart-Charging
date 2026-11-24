@@ -6,7 +6,7 @@ from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.exceptions import HomeAssistantError
 
 RESOURCE_PATH = "/easywallbox_smart/session-history-card.js"
-RESOURCE_URL = RESOURCE_PATH + "?v=0.9.0b1"
+RESOURCE_URL = RESOURCE_PATH + "?v=1.0.0"
 
 
 async def async_register_card_resource(hass) -> None:
