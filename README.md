@@ -1,13 +1,13 @@
 # EasyWallbox Smart Charging
 
-**1.0.0rc5 — release candidate Home Assistant: test automatici effettuati, collaudo reale della nuova ETA e della migrazione ancora necessario. RC4 superata da questa correzione dello storico.** 
+**1.0.0 — release stabile Home Assistant. Richiede il firmware EasyWallbox ESPHome con contatori cumulativi per lo storico. I test automatici non sostituiscono il collaudo fisico della nuova archiviazione.**
 
 L'integrazione gestisce la pianificazione della carica e una stabilizzazione *lenta* del limite EV tramite le entità del firmware EasyWallbox ESPHome. Non sostituisce il **DPM della wallbox**, che deve rimanere attivo e continua a occuparsi dei picchi elettrici e delle protezioni.
 
 ## Architettura
 
-- **ESPHome + BLE**: legge e conferma registri e stati della wallbox; esegue i comandi richiesti.
-- **Home Assistant / EasyWallbox Smart Charging**: identifica l'auto, legge SOC e orari, calcola i margini, prende decisioni e invia comandi soltanto dopo le verifiche previste.
+- **ESPHome + BLE**: legge e conferma registri e stati della wallbox, esegue i comandi richiesti, accumula energia e minuti della connessione fisica e ne determina la chiusura.
+- **Home Assistant / EasyWallbox Smart Charging**: identifica l'auto, legge SOC e orari, calcola i margini, prende decisioni e invia comandi soltanto dopo le verifiche previste. Archivia i totali assoluti ESPHome senza sommarli una seconda volta.
 - **Tre Shelly EM** nel setup di riferimento: due rami dei consumi domestici e un ramo dedicato alla wallbox. Per la policy si usano soltanto i consumi domestici, escludendo l'EV.
 - **La wallbox con DPM attivo** resta l'unico controllore rapido di corrente. Un comando BLE, uno switch o un ACK non dimostrano da soli la potenza effettivamente erogata.
 
@@ -20,6 +20,8 @@ Nessun Docker aggiuntivo, script esterno, fotovoltaico, tariffe dinamiche o deci
 Richiede una versione di Home Assistant compatibile con **2026.11** (quality gate su **2026.11.1**) e una EasyWallbox ESPHome già funzionante. Installare tramite HACS/Marketplace come integrazione personalizzata da questo repository, oppure copiare `custom_components/easywallbox_smart` in `config/custom_components/` e riavviare HA.
 
 Aprire *Impostazioni → Dispositivi e servizi → Aggiungi integrazione → EasyWallbox Smart Charging* e completare il config flow grafico. In caso di installazione preesistente, usare le Opzioni.
+
+**Migrazione alla 1.0.0:** prima aggiornare ESPHome alla versione con contatori cumulativi e fallback 60 s/5 min ([firmware di riferimento](https://github.com/paolofaz/Easywallbox---Esphome/blob/cb3a802968286b21a83a2b22d6d21c314f202c0c/wallbox.yaml)). Effettuare entrambi gli aggiornamenti con auto scollegata e `Session Energy`/`Session Duration` azzerati, dopo un backup HA. I nomi delle due entità sono rimasti invariati; verificarne gli entity_id nelle Opzioni. Il nuovo archivio non è compatibile con i vecchi contatori grezzi. Per uno storico affidabile selezionare anche `Charge State` e `Telemetry Fresh`, se disponibili. Controllare che il DPM fisico sia attivo e che `dpm_default` nel proprio ESPHome sia appropriato alla configurazione elettrica.
 
 ### Entità richieste
 
@@ -47,7 +49,7 @@ Il supervisore non segue i picchi secondo per secondo. Un LIMITED può rientrare
 
 La previsione **non pilota Start-Stop, il DPM o NORMAL/LIMITED**: il margine prudente per la partenza resta calcolato come prima.
 
-La versione 1.0 RC adotta una previsione **a due regimi**, sviluppata a partire dall'analisi della ricarica del 23–24 novembre:
+La versione 1.0.0 adotta una previsione **a due regimi**, sviluppata a partire dall'analisi della ricarica del 23–24 novembre:
 
 - **Potenza libera di riferimento**: mediana di almeno 20 letture EV indipendenti (almeno 10 minuti) in questa sessione, con consumo domestico ≤0,3 kW e limite EV effettivamente a NORMAL. Se questi dati mancano, usa provvisoriamente il minore fra il 96% della potenza desiderata e la potenza contrattuale meno 0,2 kW. Questo ripiego *non è* una misura.
 - **Potenza attuale**: media delle misure Shelly EV degli ultimi 10 minuti, comprese le pause DPM osservate. Questa stima vale solo per i prossimi **30 minuti**; il resto dell'energia viene previsto alla potenza libera. Non si proietta il forno acceso su tutta la notte.
@@ -59,7 +61,20 @@ Il modello non conosce i futuri utilizzi di forno, lavastoviglie o altri elettro
 
 ## Interfaccia
 
-Sono disponibili entità di stato, pianificatore/avvisi, auto identificata, fase stabilizzatore, stime di energia e completamento, selezione modalità, orari, slider potenza sessione e, ove configurato, slider SOC. Non vengono duplicati i sensori di corrente/potenza Shelly o gli stati BLE. È disponibile una card storico sessioni per Lovelace: l'integrazione registra la risorsa JavaScript ma **non crea una dashboard**. La card legge solo le sessioni **chiuse da distacco fisico del cavo**, una riga per collegamento con colonne **Fine ricarica, Automobile, Energia, Durata**. Aggiorna la pagina tramite WebSocket al massimo ogni 30 secondi mentre è aperta, e offre anche il tasto Aggiorna: nessun polling BLE aggiuntivo. Se non esiste alcuna riga, distingue una sessione ancora collegata da un distacco con contatori insufficienti. Le pause e gli azzeramenti dei contatori non producono righe: il modulo conserva in .storage i **delta indipendenti** di Session Energy e Session Duration e li somma in kWh e minuti, anche quando i due sensori non aggiornano assieme o si azzera uno solo. Durante un'interruzione BLE o riavvio conserva lo stato parziale e lo segnala come tale quando la continuità non è certa. Se l'auto non è identificabile, mostra «Non identificata». Una precedente riga beta senza prova del distacco non viene spacciata per una sessione completata.
+Sono disponibili entità di stato, pianificatore/avvisi, auto identificata, fase stabilizzatore, stime di energia e completamento, selezione modalità, orari, slider potenza sessione e, ove configurato, slider SOC. Non vengono duplicati i sensori di corrente/potenza Shelly o gli stati BLE. La card storico sessioni per Lovelace è registrata automaticamente come risorsa: l'integrazione **non crea una dashboard**.
+
+### Storico ricariche — contatori cumulativi ESPHome
+
+La card espone una riga per sessione completata con colonne **Fine ricarica, Automobile, Energia, Durata** (ore/minuti). Aggiorna la pagina WebSocket al massimo ogni 30 secondi mentre è aperta, oppure tramite Aggiorna. Nessun polling BLE aggiuntivo.
+
+- ESPHome accumula i kWh e i minuti effettivi nei due sensori pubblici `Session Energy` e `Session Duration`, conservandoli durante le pause.
+- Home Assistant salva l'ultimo valore assoluto di ciascun cumulativo nella sessione attiva. Non ricostruisce reset, non somma delta e non usa un secondo timer.
+- Il primo distacco fisico verificato conserva la data e i totali, ma non crea una riga. Un ricollegamento prima dell'azzeramento continua la stessa sessione.
+- La riga viene archiviata quando entrambi i cumulativi ESPHome sono zero, dopo un distacco osservato. Il firmware li azzera dopo almeno 60 secondi di distacco confermato, oppure dopo 5 minuti senza telemetria se il distacco era stato già confermato. L'azzeramento può arrivare con BLE offline; una perdita BLE da sola non chiude la sessione. Un valore a zero isolato non chiude né cancella lo snapshot.
+- Gli ultimi valori e l'eventuale distacco pendente sono persistiti insieme allo storico. La data in tabella è quella del distacco osservato; l'orario del reset viene conservato separatamente. Vengono conservate le righe completate valide delle versioni precedenti; gli accumulatori ancora aperti della RC5 non sono sommati ai nuovi totali. Le righe con meno di 0,2 kWh o 2 minuti non sono registrate.
+- Se la continuità non è dimostrabile (es. perdita BLE, riavvio o regressione anomala dei cumulativi), la qualità della riga è indicata come `partial_observed`; se l'auto non è identificabile, compare «Non identificata».
+
+Il diario registra `archive_configured_at_start`, lo stato archivio al distacco e `firmware_session_closed` quando i due contatori si azzerano. Una perdita dell'intera finestra di chiusura (HA offline dal distacco fino a una nuova ricarica) può rendere irrecuperabile la sessione: il firmware non pubblica un identificativo persistente o uno storico delle sessioni chiuse. Non vengono inventati totali mancanti.
 
 Un avviso di limite precedente mostra l'**ultimo valore confermato**, non una lettura attuale: verificare sempre il valore effettivo di ESPHome e le misure Shelly prima di intervenire.
 
@@ -76,8 +91,8 @@ Questa impostazione è destinata a rimanere disponibile anche dopo la beta, senz
 
 ## Collaudo e sicurezza
 
-La versione precedente 0.9.2b1 è stata collaudata sul campo per NORMAL/LIMITED e ritorno automatico. La release candidate 1.0 modifica l'archivio, l'associazione Charge Enabled e la diagnosi dello storico, per cui **richiede ancora una verifica reale di scollegamento, somma dei contatori, pausa Start-Stop e riavvio**; i test automatici non sostituiscono la prova elettrica. La logica anti-oscillazione e le soglie dello stabilizzatore restano invariate.
+La versione precedente 0.9.2b1 è stata collaudata sul campo per NORMAL/LIMITED e ritorno automatico. La 1.0.0 viene pubblicata solo dopo il quality gate Python, HA runtime, Hassfest e HACS. **Restano da verificare sul campo** i nuovi cumulativi ESPHome, il distacco normale e il fallback con spegnimento, la persistenza al riavvio e l'accuratezza ETA. La logica anti-oscillazione e le soglie dello stabilizzatore restano invariate rispetto alla RC5.
 
-**Rollback:** ripristinare la release 0.9.2b1, riassociare nelle Opzioni la sorgente «Limit house power set -DPM-» e il valore DPM numerico esattamente corrispondente al firmware; non installare 0.9.2 con DPM fisico e riferimento contrattuale diversi. Un backup della directory .storage di HA prima dell'aggiornamento è consigliato per verificare o recuperare lo storico. Non modificare direttamente .storage per correggere le righe.
+**Rollback:** per tornare alla RC5, ripristinare anche il firmware con i precedenti contatori grezzi, a cavo scollegato, e usare il backup HA della configurazione precedente. Non mescolare archivio RC5 e cumulativi 1.0. Per tornare alla 0.9.2b1 occorre inoltre riassociare il DPM numerico con valore esattamente corrispondente al firmware. Non modificare direttamente .storage per correggere le righe.
 
 [Licenza](LICENSE)
