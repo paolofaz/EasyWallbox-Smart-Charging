@@ -22,7 +22,8 @@ from .const import (
 )
 
 MAX_COUNTER_AGE = timedelta(minutes=2)
-FRAME_TOLERANCE = timedelta(seconds=4)
+# Counter states are independent: wallbox reports share a BLE frame, but
+# HA state_changed events need not be simultaneous or equally frequent.
 ENERGY_RESET_KWH = 0.15
 DURATION_RESET_MIN = 1.5
 
@@ -52,6 +53,8 @@ class SessionArchive:
         self._active: dict | None = None
         self._last_marker = None
         self._last_online = None
+        self._last_counter_status = {"energy": "awaiting_data",
+                                     "duration": "awaiting_data"}
         self._write_lock = asyncio.Lock()
         self._unsubscribe = None
         self._tasks = set()
@@ -83,6 +86,20 @@ class SessionArchive:
             # A restart may hide an unplug; retain data but mark the gap.
             self._active = dict(active)
             self._active["continuity_uncertain"] = True
+            if "counters" not in self._active:
+                # Translate unfinished RC4 accumulators without discarding
+                # energy when the integration upgrades while a car is plugged.
+                old = self._active
+                self._active["counters"] = {
+                    "energy": {"total": float(old.get("completed_kwh", 0)) +
+                                        float(old.get("peak_kwh", 0)),
+                               "last": float(old.get("peak_kwh", 0)),
+                               "seen_at": None},
+                    "duration": {"total": float(old.get("completed_min", 0)) +
+                                          float(old.get("peak_min", 0)),
+                                 "last": float(old.get("peak_min", 0)),
+                                 "seen_at": None},
+                }
 
     def start(self):
         if not self.enabled or self._unsubscribe:
@@ -110,22 +127,24 @@ class SessionArchive:
         return (stamp is not None and stamp.tzinfo is not None and
                 timedelta(0) <= now-stamp <= MAX_COUNTER_AGE)
 
-    def _pair(self):
-        states = [self.hass.states.get(self.cfg[k]) for k in (
-            CONF_SESSION_ENERGY, CONF_SESSION_DURATION)]
-        if any(not self._recent(st) for st in states):
+    def _counter(self, name):
+        """A valid independent read; never require two HA stamps to match."""
+        key = (CONF_SESSION_ENERGY if name == "energy"
+               else CONF_SESSION_DURATION)
+        st = self.hass.states.get(self.cfg[key])
+        if not self._recent(st):
+            self._last_counter_status[name] = "unavailable_or_stale"
             return None
         try:
-            energy, minutes = (float(st.state) for st in states)
+            value = float(st.state)
         except (TypeError, ValueError):
+            self._last_counter_status[name] = "non_numeric"
             return None
-        if (not isfinite(energy) or not isfinite(minutes) or
-                energy < 0 or minutes < 0):
+        if not isfinite(value) or value < 0:
+            self._last_counter_status[name] = "out_of_range"
             return None
-        stamps = tuple(self._stamp(st) for st in states)
-        if abs(stamps[0]-stamps[1]) > FRAME_TOLERANCE:
-            return None
-        return CounterPair(energy, minutes, max(stamps), stamps)
+        self._last_counter_status[name] = "ok"
+        return value, self._stamp(st)
 
     def _persist_background(self):
         task = self.entry.async_create_background_task(
@@ -138,10 +157,11 @@ class SessionArchive:
             "connected_seen": True,
             "started_at": datetime.now(timezone.utc).isoformat(),
             "vehicle": None, "identity_conflict": False,
-            "completed_kwh": 0.0, "completed_min": 0.0,
-            "peak_kwh": 0.0, "peak_min": 0.0, "segments": 0,
-            "last_pair_at": None, "continuity_uncertain": False,
-            "seeded": False, "pending_stale": None,
+            "counters": {
+                "energy": {"total": 0.0, "last": None, "seen_at": None},
+                "duration": {"total": 0.0, "last": None, "seen_at": None},
+            },
+            "segments": 0, "continuity_uncertain": False,
         }
 
     def note_vehicle(self, name):
@@ -163,61 +183,91 @@ class SessionArchive:
             a["continuity_uncertain"] = True
             self._persist_background()
 
-    def _observe_pair(self, pair):
-        if pair is None or self._active is None or pair.marker == self._last_marker:
-            return
-        self._last_marker = pair.marker
+    def _observe_counters(self):
+        """Accumulate monotonically *per sensor*, surviving asynchronous resets.
+
+        Store the increment between successive actual reports. A freshly
+        attached integration starts from observed counters, rather than
+        claiming earlier energy as new; the archive will mark this partial.
+        A reset cannot zero the accumulated progress. Sensor readings are
+        independent; they do not need coincident HA timestamps.
+        """
         a = self._active
-        # On a NEW physical plug the first AD may still contain counters
-        # from the previous car (the wallbox resets them asynchronously).
-        # Never attribute pre-charge idle counters to the new connection.
-        if not a.get("seeded", True):
-            stale = a.get("pending_stale")
-            charging = self.hass.states.get(self.cfg[CONF_WALLBOX_CHARGING])
-            actively_charging = bool(self._recent(charging) and
-                                     charging.state == "on")
-            if stale is not None:
-                if (float(stale[0])-pair.kwh >= ENERGY_RESET_KWH or
-                        float(stale[1])-pair.minutes >= DURATION_RESET_MIN):
-                    a["pending_stale"] = None
-                    a["seeded"] = True
-                else:
-                    return  # Never transfer a prior charge's counters.
-            elif not actively_charging and (pair.kwh >= .2 or pair.minutes >= 2):
-                a["pending_stale"] = [pair.kwh, pair.minutes]
-                self._persist_background()
-                return
-            elif actively_charging or (pair.kwh < .2 and pair.minutes < 2):
-                a["seeded"] = True
-            else:
-                return
-        prev_energy = float(a.get("peak_kwh", 0))
-        prev_minutes = float(a.get("peak_min", 0))
-        energy_reset = prev_energy-pair.kwh >= ENERGY_RESET_KWH
-        time_reset = prev_minutes-pair.minutes >= DURATION_RESET_MIN
-        if energy_reset and time_reset:
-            # Joint reset is a new counter epoch, NOT a completed charge.
-            a["completed_kwh"] += prev_energy
-            a["completed_min"] += prev_minutes
-            a["peak_kwh"] = pair.kwh
-            a["peak_min"] = pair.minutes
-            a["segments"] += 1
-        elif energy_reset or time_reset:
-            # AD's two sensors may publish non-atomically; never add a
-            # fragment before both decreases are observed.
+        if a is None:
             return
-        else:
-            a["peak_kwh"] = max(prev_energy, pair.kwh)
-            a["peak_min"] = max(prev_minutes, pair.minutes)
-        a["last_pair_at"] = pair.at.isoformat()
-        self._persist_background()
+        counters = a.setdefault("counters", self._new_active()["counters"])
+        changed = False
+        for name in ("energy", "duration"):
+            reading = self._counter(name)
+            if reading is None:
+                continue
+            value, stamp = reading
+            c = counters[name]
+            old = c.get("last")
+            # HA last_reported changes even when a state value is identical.
+            # The source timestamp is diagnostic, NOT a trigger for counting
+            # time. Only the actual monotonic meter difference is counted.
+            if old is None:
+                c["last"] = value
+                c["seen_at"] = stamp.isoformat()
+                if value >= (.2 if name == "energy" else 2):
+                    # Startup while a session is already underway: the
+                    # historical part cannot be assigned without proof.
+                    a["continuity_uncertain"] = True
+                changed = True
+                continue
+            delta = value-float(old)
+            tolerance = .015 if name == "energy" else .25
+            reset = (
+                delta <= -(ENERGY_RESET_KWH if name == "energy"
+                           else DURATION_RESET_MIN)
+                or (value <= tolerance and old > tolerance)
+            )
+            if reset:
+                # New epoch can already have accumulated energy or minutes.
+                # Preserve the old total and account for the new reading.
+                c["total"] = float(c.get("total", 0)) + value
+                c["last"] = value
+                a["segments"] = int(a.get("segments", 0)) + 1
+                changed = True
+            elif delta > tolerance:
+                c["total"] = float(c.get("total", 0)) + delta
+                c["last"] = value
+                changed = True
+            elif delta >= -tolerance and value > float(old):
+                c["last"] = value
+                changed = True
+            c["seen_at"] = stamp.isoformat()
+        if changed:
+            self._persist_background()
+
+    def status(self):
+        """Small diagnostic record, never wallbox commands or secrets."""
+        a = self._active
+        counters = a.get("counters", {}) if a else {}
+        return {
+            "enabled": self.enabled,
+            "history_count": len(self.sessions),
+            "active": a is not None,
+            "active_energy_kwh": round(float(
+                counters.get("energy", {}).get("total", 0)), 3),
+            "active_duration_min": round(float(
+                counters.get("duration", {}).get("total", 0)), 2),
+            "active_partial": bool(a and a.get("continuity_uncertain")),
+            "counter_status": dict(self._last_counter_status),
+            "completion_gate": "physical_unplug",
+            "reason_if_disabled": (
+                "missing_session_energy_or_duration" if not self.enabled
+                else None),
+        }
 
     def _finish(self):
         a = self._active
         if a is None:
             return
-        energy = float(a["completed_kwh"])+float(a["peak_kwh"])
-        minutes = float(a["completed_min"])+float(a["peak_min"])
+        counters = a.get("counters", {})
+        energy = float(counters.get("energy", {}).get("total", 0))
+        minutes = float(counters.get("duration", {}).get("total", 0))
         self._active = None
         self._last_marker = None
         if energy < .2 or minutes < 2:
@@ -270,7 +320,7 @@ class SessionArchive:
             if self._active is None:
                 self._active = self._new_active()
                 self._persist_background()
-            self._observe_pair(self._pair())
+            self._observe_counters()
             return
 
         # OFF alone is not enough: require the matching wallbox state and
