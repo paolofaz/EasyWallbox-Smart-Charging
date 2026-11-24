@@ -1,3 +1,30 @@
+
+## 24 novembre 2026 — prova 09:23–09:52 e correzione archivio RC5
+
+### Dati della prova reale
+- Diario decisions_2026-11-24(1).jsonl, 255 eventi della versione 1.0.0rc4. Auto Kia EV3, target iniziale 80%, poi 90%, SOC misurato 80→80,5% prima dello scollegamento. L'utente riferisce circa 81% dopo la lettura cloud: il diario termina prima della sua reimpostazione a 80%.
+- NORMAL 4 kW, LIMITED 2,2 kW alle 09:31:42 con 1,94 kW casa, conferma 09:31:45; NORMAL 4 kW alle 09:46:50, conferma 09:46:54. Protezione DPM e anti-oscillazione coerenti; nessun cambiamento alle soglie.
+- Il controller riconosce 'session_close / cable_unplugged' alle 09:52:04. La card utente non mostrava il record, ma il diario RC4 NON registra eventi archivio: il file non permette di distinguere fra contatori mancanti, record non scritto o risposta UI già caricata.
+
+### Debolezze identificate nell'archivio RC4
+- `_pair()` richiedeva due letture recenti con scarto timestamp massimo 4 s. HA può aggiornare i due sensori in eventi diversi e lo stato_changed non è emesso a ogni report identico; nessuna coppia accettata significa archivio vuoto anche con ricarica reale.
+- La logica precedente sommava i segmenti solo al reset simultaneo dei due contatori, scartando le discese di uno solo.
+- La card `_loaded` richiedeva apertura o click 'Aggiorna': una riga realmente salvata poteva non comparire sul dashboard già aperto.
+- Sono possibili ulteriori cause specifiche della prova: mappature opzionali `Session Energy`/`Session Duration` mancanti dopo un aggiornamento, sensori `unavailable` o durata/energia effettiva sotto soglia. Non affermiamo una causa certa per la sessione 09:23→09:52 senza `.storage` o nuovi log dell'archivio.
+
+### Correzione su main per RC5
+- Contatori ora indipendenti: accumulano il delta reale di energia e minuti di ciascun sensor, con salvataggio dei progressivi in `.storage`, senza sincronizzazione forzata dei timestamp.
+- Reset di un contatore non azzera l'altro; recupero dei progressivi dell'attiva salvati in RC4, senza attribuire l'intero contatore nonzero preesistente alla nuova sessione (conserva solo incrementi osservati e marca 'partial_observed').
+- Salvataggio sempre e solo dopo distacco fisico verificato, con soglie minime di energia/durata; nessun comando BLE aggiunto.
+- Nuovi eventi JSONL 'archive_configured_at_start' e 'verified_unplug_archive_status' con enabled, active, progressivi, stato sensori e risultato; pagina WebSocket aggiunge archive_status e la card rende visibile eventuale scarto per contatori insufficienti.
+- Card aggiornata automaticamente dalla sola API read-only, massimo ogni 30 s quando HA le passa uno stato, mantenendo il pulsante Aggiorna.
+- Test per timestamp indipendenti, reset solo kWh, contatori iniziali nonzero e motivazione dell'archivio disabilitato, oltre a tutti i test esistenti. Richiesto collaudo su Home Assistant: ricarica >0,2 kWh, distacco del cavo, verifica riga e conferma che nessuna riga compaia durante Pause.
+
+### Limitazioni e rollback
+- La sessione del 24/11, se non archiviata da RC4, non può essere recuperata con accuratezza dal solo diario delle decisioni. Il recupero dei record precedenti non è garantito.
+- Continuità durante distacco e nuovo collegamento interamente in BLE offline non dimostrabile: conservare marca di qualità parziale, non attribuire a un'auto non identificata dati inventati.
+- Non toccati firmware ESPHome, Start-Stop, DPM numerico, ETA e policy NORMAL/LIMITED. Per rollback restare su versione RC4/0.9.2b1 con rispettive mappature, tenendo conto della diversa semantica Charge Enabled; meglio backup .storage prima dell'aggiornamento.
+
 # NOTE SVILUPPO — EasyWallbox Smart Charging
 
 ## 24 novembre 2026 — preparazione 1.0 release candidate
