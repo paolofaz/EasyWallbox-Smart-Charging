@@ -24,7 +24,7 @@ from .decision_journal import DecisionJournal
 from .session_archive import SessionArchive
 from .sources import finite_number, on, power_kw, next_departure
 from .power_policy import Observation, State, evaluate, dpm_only_kw
-from .planner_rate import (estimate_ac_kw, estimate_forecast_ac_kw,
+from .planner_rate import (estimate_ac_kw, estimate_charge_eta,
                            margin_minutes as estimate_margin)
 from .delay_window import validate_delay
 
@@ -92,6 +92,14 @@ class ChargingController:
         self.planning_rate_kw = None
         self._forecast_rate_kw = None
         self._forecast_quality = None
+        self._eta_free_kw = self._eta_now_kw = self._eta_earliest_at = None
+        self._eta_free_history = deque(maxlen=256)  # Uncapped, low-house EV only
+        self._eta_recent_history = deque(maxlen=32)  # All verified EV and pauses
+        self._eta_base = self.session_power_kw
+        self._eta_soc_ref = None  # (vehicle cable, SOC, cumulative Shelly AC)
+        self._eta_ac_per_soc = None  # Learned only within THIS connection
+        self._eta_learning_gap = False
+        self._eta_last_bucket = self._eta_last_finish = self._eta_key = None
         self._house_history = deque(maxlen=96)
         self._ev_history = deque(maxlen=96)
         self._delivered_ev_kwh = 0.0  # Measured Shelly AC energy this session
@@ -1225,6 +1233,100 @@ class ChargingController:
     def _planned_start(self, now):
         """Read the validated absolute date/time saved with the session."""
         return self._scheduled_at
+
+
+    def _eta_observe(self, now, cable, charging, charge_state, ev_kw,
+                     house, confirmed_limit):
+        """Bounded 45-second samples for ETA alone, no extra BLE or policy."""
+        if cable is not True:
+            return
+        if abs(self.session_power_kw-self._eta_base) > .051:
+            self._eta_free_history.clear()
+            self._eta_recent_history.clear()
+            self._eta_base = self.session_power_kw
+            self._eta_last_bucket = self._eta_last_finish = self._eta_key = None
+        source = self._fresh(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
+        if source is None or ev_kw is None:
+            return
+        at = self._age(source)
+        if (charging is True or
+                (charging is False and charge_state == "Pause" and ev_kw < .1)):
+            if (not self._eta_recent_history or
+                    at > self._eta_recent_history[-1][0]+timedelta(seconds=45)):
+                self._eta_recent_history.append(
+                    (at, ev_kw if charging is True else 0.0))
+        if (charging is True and house is not None and house <= .3
+                and confirmed_limit is not None and
+                confirmed_limit >= self.session_power_kw-.11 and
+                ev_kw >= 1.4):
+            if (not self._eta_free_history or
+                    at > self._eta_free_history[-1][0]+timedelta(seconds=45)):
+                self._eta_free_history.append((at, ev_kw))
+        cutoff = now-timedelta(minutes=11)
+        while self._eta_recent_history and self._eta_recent_history[0][0] < cutoff:
+            self._eta_recent_history.popleft()
+
+    def _eta_energy(self, car, soc, target, charging):
+        """Learn bounded AC kWh per SOC percent; NEVER touch safety margin."""
+        key = car[CONF_CABLE]
+        prior_per_pct = (float(car[CONF_CAPACITY]) /
+                         float(car[CONF_EFFICIENCY]) / 100)
+        if (self._eta_soc_ref is None or self._eta_soc_ref[0] != key or
+                soc < self._eta_soc_ref[1]-.1):
+            self._eta_soc_ref = (key, soc, self._delivered_ev_kwh)
+            self._eta_ac_per_soc = None
+            self._eta_learning_gap = False
+        if self._delivery_gap:
+            self._eta_learning_gap = True
+        ref_key, ref_soc, ref_energy = self._eta_soc_ref
+        if self._eta_learning_gap:
+            if soc > ref_soc+.1:
+                # A missing metered interval cannot be used for learning.
+                self._eta_soc_ref = (key, soc, self._delivered_ev_kwh)
+                self._eta_learning_gap = False
+        elif charging is True and soc-ref_soc >= 5:
+            observed_kwh = self._delivered_ev_kwh-ref_energy
+            observed_per_pct = observed_kwh/(soc-ref_soc)
+            if (.65*prior_per_pct <= observed_per_pct <=
+                    1.35*prior_per_pct):
+                clipped = max(.85*prior_per_pct, min(
+                    1.15*prior_per_pct, observed_per_pct))
+                weight = min(1.0, (soc-ref_soc)/10)
+                self._eta_ac_per_soc = (
+                    prior_per_pct*(1-weight)+clipped*weight)
+        per_pct = self._eta_ac_per_soc or prior_per_pct
+        # Subtract only AC actually measured since the identical cloud SOC;
+        # never assume meter delivery during a BLE or Shelly gap.
+        since_soc = 0.0
+        if (charging is True and self._soc_anchor is not None and
+                self._soc_anchor[:2] == (key, soc)):
+            since_soc = max(0.0, self._delivered_ev_kwh-self._soc_anchor[2])
+        return max(0.0, (target-soc)*per_pct-since_soc)
+
+    def _eta_publish(self, now, candidate, vehicle, target):
+        """10-minute buckets and bounded display changes, not policy changes."""
+        key = (vehicle[CONF_CABLE], float(target),
+               round(self.session_power_kw, 1))
+        bucket = int(now.timestamp()//600)
+        proposed = now+timedelta(seconds=candidate.seconds)
+        if self._eta_key != key or self._eta_last_finish is None:
+            self._eta_key = key
+            self._eta_last_bucket = bucket
+            self._eta_last_finish = proposed
+        elif bucket > self._eta_last_bucket:
+            steps = min(6, bucket-self._eta_last_bucket)
+            max_shift = timedelta(minutes=15*steps)
+            delta = proposed-self._eta_last_finish
+            if delta > max_shift:
+                proposed = self._eta_last_finish+max_shift
+            elif delta < -max_shift:
+                proposed = self._eta_last_finish-max_shift
+            self._eta_last_finish = proposed
+            self._eta_last_bucket = bucket
+        visible = max(self._eta_last_finish, now+timedelta(minutes=1))
+        self._finish_display = datetime.fromtimestamp(
+            round(visible.timestamp()/600)*600, timezone.utc)
+        self._eta_earliest_at = now+timedelta(seconds=candidate.earliest_seconds)
 
     def _record_planning_power(self, now, house, house_at, ev_kw, charging, ev_limit):
         """Keep bounded samples in RAM, without additional HA entities."""
