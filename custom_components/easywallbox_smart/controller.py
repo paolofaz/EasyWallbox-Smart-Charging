@@ -12,6 +12,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time, timezone
+from math import ceil
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -1324,8 +1325,9 @@ class ChargingController:
             self._eta_last_finish = proposed
             self._eta_last_bucket = bucket
         visible = max(self._eta_last_finish, now+timedelta(minutes=1))
+        # Ceil instead of nearest: never display a finish in the past.
         self._finish_display = datetime.fromtimestamp(
-            round(visible.timestamp()/600)*600, timezone.utc)
+            ceil(visible.timestamp()/600)*600, timezone.utc)
         self._eta_earliest_at = now+timedelta(seconds=candidate.earliest_seconds)
 
     def _record_planning_power(self, now, house, house_at, ev_kw, charging, ev_limit):
