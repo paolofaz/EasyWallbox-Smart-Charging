@@ -344,6 +344,19 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
             await self.c.async_change("delay",True)
         self.assertFalse(self.c.delay_enabled)
         self.assertEqual(self.hass.services.calls,[])
+    async def test_contract_power_is_independent_of_real_dpm_number(self):
+        # A physical 4.6 kW DPM and a mathematical 4.4 kW contract
+        # must not block the stabilizer. The numeric EEP158 sensor is unused.
+        self.hass.states["sensor.dpm_set"].publish("4.6")
+        self.c.refresh()
+        snapshot = self.c._snapshot(datetime.now(timezone.utc))
+        self.assertTrue(snapshot["dpm_normal"])
+        self.assertEqual(self.c._facts["contracted_power_kw"], 4.4)
+        self.hass.states["sensor.dpm_set"].publish("unavailable")
+        self.c.refresh()
+        snapshot = self.c._snapshot(datetime.now(timezone.utc))
+        self.assertTrue(snapshot["dpm_normal"])
+
     async def test_missing_charge_enabled_readback_blocks_real_command(self):
         self.hass.states["binary_sensor.charge_enabled"].publish("unavailable")
         self.c.refresh()
