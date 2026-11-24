@@ -161,7 +161,7 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.hass.services.calls, [])
 
     async def test_legacy_entities_can_be_entirely_absent(self):
-        for key in (C.CONF_TELEMETRY_FRESH, C.CONF_CHARGE_ENABLED, C.CONF_DPM_ACTIVE,
+        for key in (C.CONF_TELEMETRY_FRESH, C.CONF_DPM_ACTIVE,
                     C.CONF_COMMAND_STATUS, C.CONF_WALLBOX_REFRESH):
             self.hass.states.pop(self.controller.cfg.pop(key))
         await self.trigger_power()
@@ -273,11 +273,11 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
         await c.async_change("time",clock)
         await c.async_change("delay",True)
         self.assertEqual(c._pending.kind,"delay_arm")
-        self.publish(C.CONF_DPM_CONFIRMED,0)
+        self.publish(C.CONF_CHARGE_ENABLED,"off")
         self.publish(C.CONF_START_STOP,"off")
         c.refresh()
         self.assertIsNone(c._pending)
-        self.assertEqual(c._dpm_lease,4.4)
+        self.assertEqual(c._dpm_lease,1.0)
         self.assertTrue(c.delay_enabled)
         # Plugging in the car must not cancel a confirmed delayed start.
         self.publish(C.CONF_WALLBOX_CONNECTED,"on")
@@ -288,7 +288,7 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
         c.refresh()
         await self.settle()
         self.assertEqual(c._pending.kind,"delay_release")
-        self.publish(C.CONF_DPM_CONFIRMED,4.4)
+        self.publish(C.CONF_CHARGE_ENABLED,"on")
         self.publish(C.CONF_START_STOP,"on")
         c.refresh()
         await self.settle()
@@ -297,7 +297,7 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x[:2] for x in self.hass.services.calls],
                          [("switch","turn_off"),("switch","turn_on")])
         rows=await self.rows()
-        self.assertEqual([r["confirmed_kw"] for r in rows if r["event"]=="confirmed"],[0,4.4])
+        self.assertEqual([r["confirmed_enabled"] for r in rows if r["event"]=="confirmed"],[False,True])
     async def test_unknown_vehicle_still_runs_electrical_normal_policy(self):
         # A real guest car may be charging while both configured cloud cables
         # remain OFF. No SOC/departure is invented and no cloud gate is used.
@@ -494,7 +494,7 @@ class FieldTrial(unittest.IsolatedAsyncioTestCase):
         await c.async_change("delay",True)
         self.assertEqual(c._pending.kind,"delay_arm")
         self.publish(C.CONF_WALLBOX_CONNECTED,"on")
-        self.publish(C.CONF_DPM_CONFIRMED,0)
+        self.publish(C.CONF_CHARGE_ENABLED,"off")
         self.publish(C.CONF_START_STOP,"off")
         c.refresh()
         self.assertFalse(c.real_enabled)
