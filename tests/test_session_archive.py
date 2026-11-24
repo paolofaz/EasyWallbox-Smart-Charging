@@ -1,4 +1,4 @@
-"""Persistent physical-plug archive, tested without wallbox commands."""
+"""Firmware totals, physical session boundaries, and persisted HA snapshots."""
 import asyncio
 import unittest
 from tempfile import TemporaryDirectory
@@ -7,16 +7,17 @@ from datetime import datetime, timedelta, timezone
 import test_controller_smoke as rig
 from easywallbox_test_package.session_archive import SessionArchive
 
+C = rig.const
+
 
 class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
-    def make_archive(self, hass, entry=None):
-        cfg = rig.setup(hass)
-        cfg[rig.const.CONF_SESSION_ENERGY] = "sensor.session_energy"
-        cfg[rig.const.CONF_SESSION_DURATION] = "sensor.session_duration"
+    def make_archive(self, hass, *, cable=True, report=None):
+        cfg = rig.setup(hass, cable=cable, charging=cable)
+        cfg[C.CONF_SESSION_ENERGY] = "sensor.session_energy"
+        cfg[C.CONF_SESSION_DURATION] = "sensor.session_duration"
         hass.states["sensor.session_energy"] = rig.FakeState("0", "kWh")
         hass.states["sensor.session_duration"] = rig.FakeState("0", "min")
-        entry = entry or rig.FakeEntry(cfg)
-        return SessionArchive(hass, entry, cfg, lambda: None)
+        return SessionArchive(hass, rig.FakeEntry(cfg), cfg, lambda: None, report)
 
     @staticmethod
     def counters(hass, energy, minutes):
@@ -24,297 +25,315 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
         hass.states["sensor.session_duration"].publish(str(minutes))
 
     @staticmethod
-    def disconnect(hass, archive):
-        cfg = archive.cfg
-        hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
-        hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
-        hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
+    def publish(hass, archive, key, value):
+        hass.states[archive.cfg[key]].publish(value)
+
+    def unplug(self, hass, archive):
+        for key, value in ((C.CONF_CHARGE_STATE, "Cable Unplugged"),
+                           (C.CONF_WALLBOX_CHARGING, "off"),
+                           (C.CONF_WALLBOX_CONNECTED, "off")):
+            self.publish(hass, archive, key, value)
+            archive._observe()
+
+    def replug(self, hass, archive):
+        for key, value in ((C.CONF_CHARGE_STATE, "Vehicle ready"),
+                           (C.CONF_WALLBOX_CONNECTED, "on")):
+            self.publish(hass, archive, key, value)
+            archive._observe()
+
+    def offline(self, hass, archive):
+        for key, value in ((C.CONF_BLE_CONNECTED, "off"),
+                           (C.CONF_TELEMETRY_FRESH, "off"),
+                           (C.CONF_CHARGE_STATE, "Unavailable"),
+                           (C.CONF_WALLBOX_CONNECTED, "unknown"),
+                           (C.CONF_WALLBOX_CHARGING, "unknown")):
+            self.publish(hass, archive, key, value)
+            archive._observe()
+
+    def reset(self, hass, archive):
+        hass.states["sensor.session_energy"].publish("0")
+        archive._observe()
+        hass.states["sensor.session_duration"].publish("0")
         archive._observe()
 
-    async def test_independent_counters_are_never_lost_to_stamp_skew(self):
+    async def test_absolute_totals_pause_and_separate_reset_reports(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            # A minute counter can update while kWh is stable for >4 sec.
-            # The next kWh update can similarly arrive with old minutes.
-            energy = hass.states["sensor.session_energy"]
-            duration = hass.states["sensor.session_duration"]
-            duration.publish("6")
-            energy.last_reported -= timedelta(seconds=20)
-            archive._observe()
-            self.assertEqual(archive._active["counters"]["duration"]["total"], 6)
-            energy.publish("0.5")
-            duration.last_reported -= timedelta(seconds=20)
-            archive._observe()
-            self.assertAlmostEqual(
-                archive._active["counters"]["energy"]["total"], .5)
-            duration.publish("7")
-            archive._observe()
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.total, 1)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], .5)
-            self.assertEqual(archive.sessions[0]["duration_min"], 7)
-            self.assertEqual(archive.status()["last_outcome"],
-                             "record_saved_on_verified_unplug")
-            await archive.async_close()
+            events = []
+            a = self.make_archive(hass, report=lambda *args, **kw: events.append((args, kw)))
+            await a.async_load()
+            a.start()
+            a.note_vehicle("Kia")
+            self.counters(hass, 11.6, 207)
+            a._observe()
+            self.publish(hass, a, C.CONF_CHARGE_STATE, "Pause")
+            self.publish(hass, a, C.CONF_WALLBOX_CHARGING, "off")
+            a._observe()
+            self.counters(hass, 14.8, 277)
+            a._observe()
+            self.assertEqual(a.status()["active_energy_kwh"], 14.8)
+            self.assertEqual(a.status()["active_duration_min"], 277)
+            self.unplug(hass, a)
+            self.assertEqual(a.total, 0)
+            unplug_at = a._active["unplug_at"]
+            self.assertTrue(a.status()["awaiting_firmware_reset"])
+            hass.states["sensor.session_energy"].publish("0")
+            a._observe()
+            self.assertEqual(a.total, 0)
+            self.assertEqual(a.status()["active_energy_kwh"], 14.8)
+            hass.states["sensor.session_duration"].publish("0")
+            a._observe()
+            self.assertEqual(a.total, 1)
+            row = a.sessions[0]
+            self.assertEqual((row["energy_kwh"], row["duration_min"]), (14.8, 277))
+            self.assertEqual(row["vehicle"], "Kia")
+            self.assertEqual(row["completed_at"], unplug_at)
+            self.assertEqual(row["completion"], "physical_cable_unplug")
+            self.assertEqual(a.status()["last_outcome"], "record_saved_on_firmware_reset")
+            self.assertEqual(events[0][0], ("archive", "firmware_session_closed"))
+            a._observe()
+            self.assertEqual(a.total, 1)
+            self.assertEqual(hass.services.calls, [])
+            await a.async_close()
 
-    async def test_only_one_counter_resets_other_continues(self):
+    async def test_brief_replug_does_not_create_row_or_double_count(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            self.counters(hass, 2.4, 55)
-            archive._observe()
-            # Energy reset by wallbox but duration does not reset yet.
-            hass.states["sensor.session_energy"].publish(".1")
-            archive._observe()
-            self.counters(hass, .8, 70)
-            archive._observe()
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.total, 1)
-            self.assertAlmostEqual(archive.sessions[0]["energy_kwh"], 3.2)
-            self.assertEqual(archive.sessions[0]["duration_min"], 70)
-            self.assertEqual(archive.sessions[0]["segments"], 2)
-            await archive.async_close()
+            a = self.make_archive(hass)
+            await a.async_load()
+            a.start()
+            self.counters(hass, 5.0, 90)
+            a._observe()
+            self.unplug(hass, a)
+            self.assertEqual(a.total, 0)
+            self.replug(hass, a)
+            self.assertFalse(a.status()["awaiting_firmware_reset"])
+            self.counters(hass, 7.0, 130)
+            a._observe()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual(a.total, 1)
+            self.assertEqual((a.sessions[0]["energy_kwh"], a.sessions[0]["duration_min"]),
+                             (7.0, 130))
+            await a.async_close()
 
-    async def test_initial_nonzero_counters_do_not_duplicate_previous_session(self):
+    async def test_offline_after_unplug_waits_for_firmware_zero(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
+            a = self.make_archive(hass)
+            await a.async_load()
+            a.start()
+            self.counters(hass, 6.2, 102)
+            a._observe()
+            self.unplug(hass, a)
+            self.offline(hass, a)
+            self.assertEqual(a.total, 0)
+            self.assertTrue(a.status()["awaiting_firmware_reset"])
+            a._observe()
+            self.assertEqual(a.total, 0)
+            self.reset(hass, a)
+            self.assertEqual(a.total, 1)
+            self.assertEqual(a.sessions[0]["completion"], "unplug_telemetry_timeout")
+            self.assertEqual(a.sessions[0]["quality"], "partial_observed")
+            self.assertEqual(a.sessions[0]["energy_kwh"], 6.2)
+            await a.async_close()
+
+    async def test_ble_offline_without_unplug_cannot_close_session(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            a.start()
+            self.counters(hass, 8.0, 140)
+            a._observe()
+            self.offline(hass, a)
+            self.reset(hass, a)  # even an unexpected zero is not unplug proof
+            self.assertEqual(a.total, 0)
+            self.assertEqual(a.status()["active_energy_kwh"], 8.0)
+            self.assertFalse(a.status()["awaiting_firmware_reset"])
+            await a.async_close()
+
+    async def test_explicit_error_revokes_unplug_evidence(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            a.start()
+            self.counters(hass, 2.0, 30)
+            a._observe()
+            self.unplug(hass, a)
+            self.publish(hass, a, C.CONF_CHARGE_STATE, "Error")
+            a._observe()
+            self.offline(hass, a)
+            self.reset(hass, a)
+            self.assertEqual(a.total, 0)
+            self.assertFalse(a.status()["awaiting_firmware_reset"])
+            await a.async_close()
+
+    async def test_restart_retains_pending_snapshot_and_no_duplicate(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            a.start()
+            self.counters(hass, 4.5, 67)
+            a._observe()
+            self.unplug(hass, a)
+            await a.async_close()
+            saved = a._store.content
+            b = SessionArchive(hass, a.entry, a.cfg, lambda: None)
+            b._store.async_load = lambda: asyncio.sleep(0, result=saved)
+            await b.async_load()
+            b.start()
+            self.assertEqual(b.total, 0)
+            self.assertEqual(b.status()["active_energy_kwh"], 4.5)
+            self.reset(hass, b)
+            self.assertEqual(b.total, 1)
+            self.assertEqual(b.sessions[0]["duration_min"], 67)
+            await b.async_close()
+            c = SessionArchive(hass, a.entry, a.cfg, lambda: None)
+            c._store.async_load = lambda: asyncio.sleep(0, result=b._store.content)
+            await c.async_load()
+            c.start()
+            self.assertEqual(c.total, 1)
+            await c.async_close()
+
+    async def test_startup_mid_session_uses_full_firmware_totals(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
             self.counters(hass, 17.0, 205)
-            await archive.async_load()
-            archive.start()
-            self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
+            a.start()
             self.counters(hass, 18.2, 227)
-            archive._observe()
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], 1.2)
-            self.assertEqual(archive.sessions[0]["duration_min"], 22)
-            self.assertEqual(archive.sessions[0]["quality"], "partial_observed")
-            await archive.async_close()
+            a._observe()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual(a.sessions[0]["energy_kwh"], 18.2)
+            self.assertEqual(a.sessions[0]["duration_min"], 227)
+            await a.async_close()
+
+    async def test_old_completed_records_preserved_but_rc_active_not_added(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            old = {"sessions": [
+                {"energy_kwh": 11.6, "duration_min": 207},
+                {"completion": "physical_cable_unplug", "energy_kwh": 7.5,
+                 "duration_min": 123}],
+                "total": 2,
+                "active": {"connected_seen": True, "counters": {
+                    "energy": {"total": 20}, "duration": {"total": 300}}}}
+            a._store.async_load = lambda: asyncio.sleep(0, result=old)
+            await a.async_load()
+            self.assertEqual(a.total, 1)
+            self.assertIsNone(a._active)
+            self.assertEqual(a.status()["last_outcome"], "legacy_active_not_migrated")
+            self.counters(hass, 3.5, 65)
+            a.start()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual(a.total, 2)
+            self.assertEqual(a.sessions[-1]["energy_kwh"], 3.5)
+            await a.async_close()
+
+    async def test_unexpected_decrease_while_connected_is_not_summed(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            a.start()
+            self.counters(hass, 5.0, 90)
+            a._observe()
+            self.counters(hass, 4.0, 80)
+            a._observe()
+            self.assertEqual(a.total, 0)
+            self.assertTrue(a.status()["active_partial"])
+            self.counters(hass, 6.0, 100)
+            a._observe()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual(a.sessions[0]["energy_kwh"], 6.0)
+            self.assertEqual(a.sessions[0]["quality"], "partial_observed")
+            await a.async_close()
+
+    async def test_stable_totals_after_hours_and_late_unplug(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            a.start()
+            self.counters(hass, 18.5, 310)
+            a._observe()
+            old = datetime.now(timezone.utc)-timedelta(hours=4)
+            for key in (C.CONF_BLE_CONNECTED, C.CONF_WALLBOX_CONNECTED,
+                        C.CONF_WALLBOX_CHARGING, C.CONF_SESSION_ENERGY,
+                        C.CONF_SESSION_DURATION):
+                hass.states[a.cfg[key]].last_reported = old
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual(a.sessions[0]["energy_kwh"], 18.5)
+            self.assertEqual(a.sessions[0]["duration_min"], 310)
+            await a.async_close()
+
+    async def test_unavailable_or_restored_is_not_zero(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass)
+            a.start()
+            self.counters(hass, 4.2, 60)
+            a._observe()
+            self.unplug(hass, a)
+            self.counters(hass, 0, 0)
+            hass.states["sensor.session_duration"].attributes["restored"] = True
+            a._observe()
+            self.assertEqual(a.total, 0)
+            hass.states["sensor.session_duration"].attributes.pop("restored")
+            hass.states["sensor.session_duration"].publish("unavailable")
+            a._observe()
+            self.assertEqual(a.total, 0)
+            hass.states["sensor.session_duration"].publish("0")
+            a._observe()
+            self.assertEqual(a.total, 1)
+            await a.async_close()
+
+    async def test_no_charge_no_history_and_new_session_independent(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            a = self.make_archive(hass, cable=False)
+            a.start()
+            self.replug(hass, a)
+            self.unplug(hass, a)
+            self.assertEqual(a.total, 0)
+            self.replug(hass, a)
+            self.counters(hass, 1.4, 31)
+            a._observe()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.replug(hass, a)
+            self.counters(hass, 2.2, 57)
+            a._observe()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual([x["energy_kwh"] for x in a.sessions], [1.4, 2.2])
+            await a.async_close()
 
     async def test_archive_disabled_has_diagnostic_reason(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            archive.cfg.pop(rig.const.CONF_SESSION_DURATION)
-            archive.enabled = False
-            self.assertEqual(archive.status()["reason_if_disabled"],
+            a = self.make_archive(hass)
+            a.enabled = False
+            self.assertEqual(a.status()["reason_if_disabled"],
                              "missing_session_energy_or_duration")
 
-    async def test_reset_and_pause_sum_only_after_unplug(self):
+    async def test_native_units_converted_without_arithmetic_accumulation(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            cfg = archive.cfg
-            archive.note_vehicle(cfg[rig.const.CONF_VEHICLES][0][rig.const.CONF_NAME])
-            self.counters(hass, 11.6, 207)
-            archive._observe()
-            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Pause")
-            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
-            archive._observe()
-            self.assertEqual(archive.page()["count"], 0)
-            # Two counters can reset on two separate HA state callbacks.
-            hass.states["sensor.session_energy"].publish("0")
-            archive._observe()
-            self.assertEqual(archive._active["segments"], 1)
-            hass.states["sensor.session_duration"].publish("0")
-            archive._observe()
-            self.assertEqual(archive._active["segments"], 1)
-            self.assertEqual(archive.page()["count"], 0)
-            self.counters(hass, 3.2, 70)
-            archive._observe()
-            self.assertEqual(archive.page()["count"], 0)
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.page()["count"], 1)
-            row = archive.sessions[0]
-            self.assertEqual((row["energy_kwh"], row["duration_min"]), (14.8, 277))
-            self.assertEqual(row["segments"], 2)
-            self.assertEqual(row["completion"], "physical_cable_unplug")
-            self.assertEqual(row["vehicle"], cfg[rig.const.CONF_VEHICLES][0][rig.const.CONF_NAME])
-            self.assertEqual(hass.services.calls, [])
-            await archive.async_close()
-
-    async def test_multiple_resets_and_no_duplicate_unplug(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            self.counters(hass, 2.1, 40)
-            archive._observe()
-            self.counters(hass, 0.1, 1)
-            archive._observe()
-            self.counters(hass, 1.3, 25)
-            archive._observe()
-            self.counters(hass, 0.0, 0)
-            archive._observe()
-            self.counters(hass, 0.8, 17)
-            archive._observe()
-            self.disconnect(hass, archive)
-            archive._observe()
-            self.assertEqual(archive.total, 1)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], 4.2)
-            self.assertEqual(archive.sessions[0]["duration_min"], 82)
-            self.assertEqual(archive.sessions[0]["segments"], 3)
-            await archive.async_close()
-
-    async def test_unplug_resets_duration_before_final_archiving(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            self.counters(hass, 2.2, 57)
-            archive._observe()
-            hass.states["sensor.session_duration"].publish("0")
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], 2.2)
-            self.assertEqual(archive.sessions[0]["duration_min"], 57)
-            await archive.async_close()
-
-    async def test_restart_keeps_unfinished_parts_and_historical_rows(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            self.counters(hass, 3.0, 50)
-            archive._observe()
-            self.counters(hass, 0.0, 0)
-            archive._observe()
-            self.counters(hass, 1.0, 19)
-            archive._observe()
-            await archive.async_close()
-            saved = dict(archive._store.content)
-            self.assertIsNotNone(saved["active"])
-            second = SessionArchive(hass, archive.entry, archive.cfg, lambda: None)
-            second._store.async_load = lambda: asyncio.sleep(0, result=saved)
-            await second.async_load()
-            second.start()
-            self.assertEqual(second.total, 0)
-            self.counters(hass, 2.0, 35)
-            second._observe()
-            self.disconnect(hass, second)
-            self.assertEqual(second.sessions[0]["energy_kwh"], 5.0)
-            self.assertEqual(second.sessions[0]["duration_min"], 85)
-            self.assertEqual(second.sessions[0]["quality"], "partial_observed")
-            await second.async_close()
-            third = SessionArchive(hass, archive.entry, archive.cfg, lambda: None)
-            third._store.async_load = lambda: asyncio.sleep(0, result=second._store.content)
-            await third.async_load()
-            self.assertEqual(third.total, 1)
-            self.assertEqual(third.sessions[0]["energy_kwh"], 5.0)
-            await third.async_close()
-
-    async def test_ble_outage_does_not_lose_or_finalize(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            self.counters(hass, 2.0, 37)
-            archive._observe()
-            cfg = archive.cfg
-            hass.states[cfg[rig.const.CONF_BLE_CONNECTED]].publish("off")
-            archive._observe()
-            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
-            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
-            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
-            archive._observe()
-            self.assertEqual(archive.total, 0)
-            self.assertIsNotNone(archive._active)
-            hass.states[cfg[rig.const.CONF_BLE_CONNECTED]].publish("on")
-            archive._observe()
-            self.assertEqual(archive.total, 1)
-            self.assertEqual(archive.sessions[0]["quality"], "partial_observed")
-            await archive.async_close()
-
-    async def test_legacy_reset_only_rows_not_misrepresented(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            legacy = {
-                "sessions": [
-                    {"energy_kwh": 11.6, "duration_min": 207},
-                    {"completion": "physical_cable_unplug",
-                     "energy_kwh": 7.5, "duration_min": 123},
-                ],
-                "total": 2,
-            }
-            archive._store.async_load = lambda: asyncio.sleep(0, result=legacy)
-            await archive.async_load()
-            self.assertEqual(archive.total, 1)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], 7.5)
-            await archive.async_close()
-
-    async def test_previous_car_stale_counters_not_in_new_session(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            cfg = archive.cfg
-            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
-            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Vehicle ready")
-            self.counters(hass, 8.0, 190)
-            await archive.async_load()
-            archive.start()
-            self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
-            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("on")
-            archive._observe()
-            self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
-            self.counters(hass, 0, 0)
-            archive._observe()
-            self.counters(hass, 1.4, 31)
-            archive._observe()
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], 1.4)
-            self.assertEqual(archive.sessions[0]["duration_min"], 31)
-            await archive.async_close()
-
-    async def test_late_unplug_after_hours_with_stable_ble_and_charging_off(self):
-        # Connection and Charging can remain unchanged for hours after
-        # target SOC is reached; they are states, not periodic samples.
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            await archive.async_load()
-            archive.start()
-            self.counters(hass, 18.5, 310)
-            archive._observe()
-            cfg = archive.cfg
-            now = datetime.now(timezone.utc)
-            old = now - timedelta(hours=4)
-            hass.states[cfg[rig.const.CONF_BLE_CONNECTED]].last_reported = old
-            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
-            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].last_reported = old
-            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].last_reported = old
-            archive._observe()
-            self.assertIsNotNone(archive._active)
-            self.assertFalse(archive._active["continuity_uncertain"])
-            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
-            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
-            archive._observe()
-            self.assertEqual(archive.total, 1)
-            self.assertEqual(archive.sessions[0]["energy_kwh"], 18.5)
-            self.assertEqual(archive.sessions[0]["duration_min"], 310)
-            await archive.async_close()
-
-    async def test_unplug_without_measured_charge_is_not_history(self):
-        with TemporaryDirectory() as wd:
-            hass = rig.FakeHass(wd)
-            archive = self.make_archive(hass)
-            self.counters(hass, 0.0, 0)
-            await archive.async_load()
-            archive.start()
-            archive._observe()
-            self.disconnect(hass, archive)
-            self.assertEqual(archive.total, 0)
-            await archive.async_close()
+            a = self.make_archive(hass)
+            a.start()
+            hass.states["sensor.session_energy"].attributes["unit_of_measurement"] = "Wh"
+            hass.states["sensor.session_duration"].attributes["unit_of_measurement"] = "h"
+            self.counters(hass, 4500, 1.5)
+            a._observe()
+            self.unplug(hass, a)
+            self.reset(hass, a)
+            self.assertEqual((a.sessions[0]["energy_kwh"], a.sessions[0]["duration_min"]),
+                             (4.5, 90))
+            await a.async_close()
 
 
 if __name__ == "__main__":
