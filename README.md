@@ -92,4 +92,4 @@ If you found this project useful and want to support my work, you can offer me a
 
 [![Buy Me a Beer](https://img.shields.io/badge/Buy%20Me%20a%20Beer-0070ba?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/PaoloFazari)
 
-[Licenza](LICENSE)
+[License](LICENSE)
