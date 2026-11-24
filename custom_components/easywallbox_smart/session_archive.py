@@ -1,14 +1,15 @@
-"""Read-only, physical-plug charging archive with persistent counter segments.
+"""Archive the cumulative physical-session totals published by ESPHome.
 
-Neither a DPM pause nor an ESPHome session counter reset completes a record.
-Energy and duration are measured per counter epoch and summed on a verified
-physical unplug. All partial progress survives HA restarts and BLE outages.
-No wallbox service or additional BLE read is issued by this module.
+The firmware owns accounting and closure: it keeps totals across pauses and
+brief replugs, then zeros both after a verified 60s unplug or the 5-minute
+offline fallback following a verified unplug. HA stores snapshots, never
+adds counter deltas, and never sends a command from this module.
 """
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from copy import deepcopy
+from datetime import datetime, timezone
 from math import isfinite
 
 from homeassistant.helpers.event import async_track_state_change_event
@@ -17,32 +18,30 @@ from homeassistant.helpers.storage import Store
 from .const import (
     CONF_BLE_CONNECTED, CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
     CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_CHARGE_STATE,
-    CONF_VEHICLES, CONF_NAME,
+    CONF_TELEMETRY_FRESH, CONF_VEHICLES, CONF_NAME,
 )
 
-MAX_COUNTER_AGE = timedelta(minutes=2)
-# Counter states are independent: wallbox reports share a BLE frame, but
-# HA state_changed events need not be simultaneous or equally frequent.
-ENERGY_RESET_KWH = 0.15
-DURATION_RESET_MIN = 1.5
+COUNTER_MODE = "firmware_totals_v1"
+COMPLETIONS = {"physical_cable_unplug", "unplug_telemetry_timeout",
+               "firmware_reset_after_unplug"}
+PLUGGED_STATES = {"Charging", "Vehicle ready", "Pause", "Pending",
+                  "Stato transitorio", "Transition (7)", "Unknown (7)"}
 
 
 class SessionArchive:
-    """Persist one active physical connection; expose only completed records."""
+    """Persist the latest absolute totals and wait for firmware closure."""
 
-    def __init__(self, hass, entry, cfg, notify):
+    def __init__(self, hass, entry, cfg, notify, report=None):
         self.hass, self.entry, self.cfg = hass, entry, cfg
         self.enabled = bool(cfg.get(CONF_SESSION_ENERGY) and
                             cfg.get(CONF_SESSION_DURATION) and
                             cfg.get(CONF_WALLBOX_CONNECTED))
-        # Same key as 0.9: retain genuine physical-unplug rows; discard
-        # counter-reset-only fragments which were never completed sessions.
+        # Preserve the storage key and completed records from older releases.
         self._store = Store(hass, 1, "easywallbox_smart_rc_sessions_" + entry.entry_id)
         self.sessions: list[dict] = []
         self.total = 0
         self.total_observed = 0
         self._active: dict | None = None
-        self._last_online = None
         self._last_counter_status = {"energy": "awaiting_data",
                                      "duration": "awaiting_data"}
         self._last_outcome = "not_yet_closed"
@@ -50,50 +49,34 @@ class SessionArchive:
         self._unsubscribe = None
         self._tasks = set()
         self._notify = notify
+        self._report = report
 
     async def async_load(self):
         if not self.enabled:
             return
         saved = await self._store.async_load() or {}
         outcome = saved.get("last_outcome")
-        if isinstance(outcome, str) and len(outcome) <= 100:
+        if isinstance(outcome, str):
             self._last_outcome = outcome
         items = saved.get("sessions", [])
         if isinstance(items, list):
-            self.sessions = [
-                x for x in items if isinstance(x, dict) and
-                x.get("completion") == "physical_cable_unplug"
-            ]
+            self.sessions = [x for x in items if isinstance(x, dict) and
+                             x.get("completion") in COMPLETIONS]
         self.total = len(self.sessions)
         observed = saved.get("total")
-        # Old beta recorded phantom partial rows at a joint counter reset.
-        # Historical total must never imply those were completed charges.
-        old_items = saved.get("sessions", [])
-        fully_completed = (isinstance(old_items, list) and
-                           len(self.sessions) == len(old_items))
         self.total_observed = (
-            max(self.total, observed) if fully_completed and
-            isinstance(observed, int) and observed >= 0 else self.total
-        )
+            max(self.total, observed) if isinstance(items, list)
+            and len(self.sessions) == len(items)
+            and isinstance(observed, int) and observed >= 0 else self.total)
         active = saved.get("active")
-        if isinstance(active, dict) and active.get("connected_seen") is True:
-            # A restart may hide an unplug; retain data but mark the gap.
-            self._active = dict(active)
-            self._active["continuity_uncertain"] = True
-            if "counters" not in self._active:
-                # Translate unfinished RC4 accumulators without discarding
-                # energy when the integration upgrades while a car is plugged.
-                old = self._active
-                self._active["counters"] = {
-                    "energy": {"total": float(old.get("completed_kwh", 0)) +
-                                        float(old.get("peak_kwh", 0)),
-                               "last": float(old.get("peak_kwh", 0)),
-                               "seen_at": None},
-                    "duration": {"total": float(old.get("completed_min", 0)) +
-                                          float(old.get("peak_min", 0)),
-                                 "last": float(old.get("peak_min", 0)),
-                                 "seen_at": None},
-                }
+        if isinstance(active, dict):
+            if active.get("counter_mode") == COUNTER_MODE:
+                self._active = deepcopy(active)
+                self._active["continuity_uncertain"] = True
+            else:
+                # RC5 used HA-side deltas. Adding them to firmware totals
+                # would double count, and even choosing a max can mix sessions.
+                self._last_outcome = "legacy_active_not_migrated"
 
     def start(self):
         if not self.enabled or self._unsubscribe:
@@ -101,33 +84,31 @@ class SessionArchive:
         tracked = [
             self.cfg[k] for k in (
                 CONF_BLE_CONNECTED, CONF_SESSION_ENERGY, CONF_SESSION_DURATION,
-                CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_CHARGE_STATE
+                CONF_WALLBOX_CONNECTED, CONF_WALLBOX_CHARGING, CONF_CHARGE_STATE,
+                CONF_TELEMETRY_FRESH,
             ) if self.cfg.get(k)
         ]
         self._unsubscribe = async_track_state_change_event(
             self.hass, sorted(set(tracked)), self._on_event)
         self._observe()
 
-    @staticmethod
-    def _stamp(st):
-        return getattr(st, "last_reported", None) or st.last_updated
+    def _state(self, key):
+        entity = self.cfg.get(key)
+        st = self.hass.states.get(entity) if entity else None
+        if (st is None or st.attributes.get("restored") or
+                str(st.state).lower() in ("unknown", "unavailable", "")):
+            return None
+        return st
 
-    def _recent(self, st):
-        if st is None or st.attributes.get("restored") or st.state in (
-                "unknown", "unavailable", ""):
-            return False
-        stamp = self._stamp(st)
-        now = datetime.now(timezone.utc)
-        return (stamp is not None and stamp.tzinfo is not None and
-                timedelta(0) <= now-stamp <= MAX_COUNTER_AGE)
+    def _value(self, key):
+        state = self._state(key)
+        return state.state if state is not None else None
 
     def _counter(self, name):
-        """A valid independent read; never require two HA stamps to match."""
-        key = (CONF_SESSION_ENERGY if name == "energy"
-               else CONF_SESSION_DURATION)
-        st = self.hass.states.get(self.cfg[key])
-        if not self._recent(st):
-            self._last_counter_status[name] = "unavailable_or_stale"
+        key = CONF_SESSION_ENERGY if name == "energy" else CONF_SESSION_DURATION
+        st = self._state(key)
+        if st is None:
+            self._last_counter_status[name] = "unavailable_or_restored"
             return None
         try:
             value = float(st.state)
@@ -137,8 +118,15 @@ class SessionArchive:
         if not isfinite(value) or value < 0:
             self._last_counter_status[name] = "out_of_range"
             return None
+        # HA may display the duration in hours or energy in Wh. Store kWh/min.
+        unit = st.attributes.get("unit_of_measurement")
+        conversions = ({"kWh": 1, "Wh": .001} if name == "energy"
+                       else {"min": 1, "h": 60, "s": 1/60})
+        if unit is not None and unit not in conversions:
+            self._last_counter_status[name] = "invalid_unit"
+            return None
         self._last_counter_status[name] = "ok"
-        return value, self._stamp(st)
+        return value * conversions.get(unit, 1)
 
     def _persist_background(self):
         task = self.entry.async_create_background_task(
@@ -148,25 +136,19 @@ class SessionArchive:
 
     def _new_active(self):
         return {
-            "connected_seen": True,
+            "counter_mode": COUNTER_MODE,
             "started_at": datetime.now(timezone.utc).isoformat(),
             "vehicle": None, "identity_conflict": False,
-            "counters": {
-                "energy": {"total": 0.0, "last": None, "seen_at": None},
-                "duration": {"total": 0.0, "last": None, "seen_at": None},
-            },
-            "segments": 0, "continuity_uncertain": False,
+            "energy": None, "duration": None, "unplug_at": None,
+            "continuity_uncertain": False,
         }
 
     def note_vehicle(self, name):
-        """Use only the controller's confirmed cloud vehicle identification."""
-        if not self.enabled or not isinstance(name, str):
+        if not self.enabled or not isinstance(name, str) or self._active is None:
             return
         known = {v.get(CONF_NAME) for v in self.cfg.get(CONF_VEHICLES, ())}
-        if name not in known or self._active is None:
-            return
         a = self._active
-        if a.get("identity_conflict"):
+        if name not in known or a.get("identity_conflict") or a.get("unplug_at"):
             return
         if a.get("vehicle") is None:
             a["vehicle"] = name
@@ -177,173 +159,143 @@ class SessionArchive:
             a["continuity_uncertain"] = True
             self._persist_background()
 
-    def _observe_counters(self):
-        """Accumulate monotonically *per sensor*, surviving asynchronous resets.
-
-        Store the increment between successive actual reports. A freshly
-        attached integration starts from observed counters, rather than
-        claiming earlier energy as new; the archive will mark this partial.
-        A reset cannot zero the accumulated progress. Sensor readings are
-        independent; they do not need coincident HA timestamps.
-        """
-        a = self._active
-        if a is None:
-            return
-        counters = a.setdefault("counters", self._new_active()["counters"])
-        changed = False
-        for name in ("energy", "duration"):
-            reading = self._counter(name)
-            if reading is None:
-                continue
-            value, stamp = reading
-            c = counters[name]
-            old = c.get("last")
-            # HA last_reported changes even when a state value is identical.
-            # The source timestamp is diagnostic, NOT a trigger for counting
-            # time. Only the actual monotonic meter difference is counted.
-            if old is None:
-                c["last"] = value
-                c["seen_at"] = stamp.isoformat()
-                if value >= (.2 if name == "energy" else 2):
-                    # Startup while a session is already underway: the
-                    # historical part cannot be assigned without proof.
-                    a["continuity_uncertain"] = True
-                changed = True
-                continue
-            delta = value-float(old)
-            tolerance = .015 if name == "energy" else .25
-            reset = (
-                delta <= -(ENERGY_RESET_KWH if name == "energy"
-                           else DURATION_RESET_MIN)
-                or (value <= tolerance and old > tolerance)
-            )
-            if reset:
-                # New epoch can already have accumulated energy or minutes.
-                # Preserve the old total and account for the new reading.
-                c["total"] = float(c.get("total", 0)) + value
-                c["last"] = value
-                c["resets"] = int(c.get("resets", 0)) + 1
-                # Both sensors resetting at slightly different times
-                # is ONE new charge segment, not two.
-                a["segments"] = max(int(a.get("segments", 0)), c["resets"])
-                changed = True
-            elif delta > tolerance:
-                c["total"] = float(c.get("total", 0)) + delta
-                c["last"] = value
-                changed = True
-            elif delta >= -tolerance and value > float(old):
-                c["last"] = value
-                changed = True
-            c["seen_at"] = stamp.isoformat()
-        if changed:
-            self._persist_background()
-
     def status(self):
-        """Small diagnostic record, never wallbox commands or secrets."""
-        a = self._active
-        counters = a.get("counters", {}) if a else {}
+        a = self._active or {}
         return {
             "enabled": self.enabled,
             "history_count": len(self.sessions),
-            "active": a is not None,
-            "active_energy_kwh": round(float(
-                counters.get("energy", {}).get("total", 0)), 3),
-            "active_duration_min": round(float(
-                counters.get("duration", {}).get("total", 0)), 2),
-            "active_partial": bool(a and a.get("continuity_uncertain")),
+            "active": self._active is not None,
+            "active_energy_kwh": round(float(a.get("energy") or 0), 3),
+            "active_duration_min": round(float(a.get("duration") or 0), 2),
+            "active_partial": bool(a.get("continuity_uncertain")),
+            "awaiting_firmware_reset": bool(a.get("unplug_at")),
             "counter_status": dict(self._last_counter_status),
-            "completion_gate": "physical_unplug",
+            "counter_mode": COUNTER_MODE,
+            "completion_gate": "verified_unplug_and_firmware_zero_pair",
             "last_outcome": self._last_outcome,
             "reason_if_disabled": (
                 "missing_session_energy_or_duration" if not self.enabled
                 else None),
         }
 
-    def _finish(self):
+    def _finish(self, completion):
         a = self._active
         if a is None:
             return
-        counters = a.get("counters", {})
-        energy = float(counters.get("energy", {}).get("total", 0))
-        minutes = float(counters.get("duration", {}).get("total", 0))
+        energy = a.get("energy")
+        minutes = a.get("duration")
         self._active = None
-        if energy < .2 or minutes < 2:
+        if energy is None or minutes is None or energy < .2 or minutes < 2:
             self._last_outcome = "discarded_insufficient_observed_counters"
-            self._persist_background()
-            return  # A cable insertion with no measurable charge.
-        now = datetime.now(timezone.utc)
-        row = {
-            "completed_at": now.isoformat(),
-            "detected_reset_at": now.isoformat(),  # Old card compatibility.
-            "energy_kwh": round(energy, 1),
-            "duration_min": int(round(minutes)),
-            "vehicle": (a.get("vehicle") if not a.get("identity_conflict")
-                        else None) or "Non identificata",
-            "segments": int(a.get("segments", 0))+1,
-            "completion": "physical_cable_unplug",
-            "quality": ("partial_observed" if a.get("continuity_uncertain")
-                        else "observed"),
-        }
-        self.sessions.append(row)
-        self._last_outcome = "record_saved_on_verified_unplug"
-        self.total = len(self.sessions)
-        self.total_observed += 1
-        self._notify()
+        else:
+            now = datetime.now(timezone.utc).isoformat()
+            row = {
+                # Display the observed unplug, not the delayed reset time.
+                "completed_at": a.get("unplug_at") or now,
+                "detected_reset_at": now,
+                "energy_kwh": round(energy, 1),
+                "duration_min": int(round(minutes)),
+                "vehicle": (a.get("vehicle") if not a.get("identity_conflict")
+                            else None) or "Non identificata",
+                "completion": completion,
+                "quality": ("partial_observed" if a.get("continuity_uncertain")
+                            or completion != "physical_cable_unplug" else "observed"),
+            }
+            self.sessions.append(row)
+            self._last_outcome = "record_saved_on_firmware_reset"
+            self.total = len(self.sessions)
+            self.total_observed += 1
+            self._notify()
+        # Closing and the completed row share the same persisted document.
         self._persist_background()
+        if self._report is not None:
+            self._report("archive", "firmware_session_closed",
+                         completion=completion, **self.status())
 
     def _observe(self):
         if not self.enabled:
             return
-        ble = self.hass.states.get(self.cfg[CONF_BLE_CONNECTED])
-        # BLE connection is a stable state, not a cyclic sample. ESPHome
-        # invalidates it on disconnect; it need not be republished every 2m.
-        online = bool(ble is not None and
-                      not ble.attributes.get("restored") and
-                      ble.state in ("on", "true", "True"))
-        if not online:
-            if self._active is not None and not self._active.get("continuity_uncertain"):
-                self._active["continuity_uncertain"] = True
-                self._persist_background()
-            self._last_online = False
-            return
-        self._last_online = True
-        cable = self.hass.states.get(self.cfg[CONF_WALLBOX_CONNECTED])
-        # Car Connected is also a stable BLE-epoch flag. Duration/Energy
-        # remain time-fenced in _pair(), but the physical state may have
-        # remained ON since plug-in many hours ago.
-        if (cable is None or cable.attributes.get("restored")
-                or cable.state not in ("on", "off")):
-            return
-        if cable.state == "on":
-            if self._active is None:
-                self._active = self._new_active()
-                self._persist_background()
-            self._observe_counters()
-            return
+        online = self._value(CONF_BLE_CONNECTED) in ("on", "true", "True")
+        fresh = online and (not self.cfg.get(CONF_TELEMETRY_FRESH) or
+                            self._value(CONF_TELEMETRY_FRESH) == "on")
+        cable = self._value(CONF_WALLBOX_CONNECTED)
+        charging = self._value(CONF_WALLBOX_CHARGING)
+        state = self._value(CONF_CHARGE_STATE)
+        state_mapped = bool(self.cfg.get(CONF_CHARGE_STATE))
+        plugged = fresh and cable == "on" and (
+            not state_mapped or state in PLUGGED_STATES)
+        unplugged = fresh and cable == "off" and charging == "off" and (
+            not state_mapped or state == "Cable Unplugged")
+        ambiguous = fresh and state_mapped and state is not None and (
+            state not in PLUGGED_STATES and state != "Cable Unplugged")
 
-        # OFF alone is not enough: require the matching wallbox state and
-        # charging OFF. Neither BLE unavailable nor a paused EV can finalize.
-        if self._active is None:
-            return
-        state_id = self.cfg.get(CONF_CHARGE_STATE)
-        state = self.hass.states.get(state_id) if state_id else None
-        charging_id = self.cfg.get(CONF_WALLBOX_CHARGING)
-        charging = self.hass.states.get(charging_id) if charging_id else None
-        # An EV can stop charging at 04:20 and remain plugged until 08:30.
-        # 'Charging=off' from that BLE epoch is still valid; rejecting it as
-        # stale would silently lose the completed session. The firmware
-        # invalidates its AD flags during a BLE loss.
-        if (state_id and (state is None or state.attributes.get("restored")
-                          or state.state != "Cable Unplugged")):
-            return
-        if (charging_id and (charging is None or
-                             charging.attributes.get("restored") or
-                             charging.state != "off")):
-            return
-        # The last independent counter reports may arrive at the same BLE
-        # disconnect frame. Read them once more before closing.
-        self._observe_counters()
-        self._finish()
+        values = {name: self._counter(name) for name in ("energy", "duration")}
+        zero_pair = values["energy"] == 0 and values["duration"] == 0
+        a = self._active
+        changed = False
+        if a is None:
+            if not plugged:
+                return
+            a = self._active = self._new_active()
+            changed = True
+
+        if unplugged and not a.get("unplug_at"):
+            a["unplug_at"] = datetime.now(timezone.utc).isoformat()
+            self._last_outcome = "awaiting_firmware_reset"
+            changed = True
+        if ambiguous and a.get("unplug_at"):
+            # Firmware itself revokes unplug evidence on explicit error/unknown.
+            a["unplug_at"] = None
+            a["continuity_uncertain"] = True
+            changed = True
+
+        if a.get("unplug_at") and zero_pair:
+            # Both sensors are authoritative cumulative values. The firmware
+            # emits zero only when it closes; no additional HA timeout.
+            completion = ("physical_cable_unplug" if unplugged else
+                          "unplug_telemetry_timeout" if not fresh else
+                          "firmware_reset_after_unplug")
+            self._finish(completion)
+            if not plugged:
+                return
+            a = self._active = self._new_active()
+            changed = True
+
+        if not fresh:
+            if not a.get("continuity_uncertain"):
+                a["continuity_uncertain"] = True
+                changed = True
+        elif plugged:
+            if a.get("unplug_at"):
+                # Nonzero cumulative values at replug belong to the same
+                # firmware session. No row until its actual zero boundary.
+                a["unplug_at"] = None
+                self._last_outcome = "session_resumed_before_reset"
+                changed = True
+            for name, value in values.items():
+                if value is None:
+                    continue
+                old = a.get(name)
+                if old is not None and value < old:
+                    # Unexpected regression (e.g. lost checkpoint or missed
+                    # reset/replug): never sum or guess missing energy.
+                    a["continuity_uncertain"] = True
+                    self._last_outcome = "unexpected_firmware_counter_decrease"
+                if old != value:
+                    a[name] = value
+                    changed = True
+        elif unplugged:
+            # Firmware publishes energy and minutes separately. Keep the
+            # preceding snapshot if just one has reached zero; never replace
+            # the final record with a mixed old/zero pair.
+            for name, value in values.items():
+                if value is not None and value > 0 and value != a.get(name):
+                    if a.get(name) is not None and value < a[name]:
+                        a["continuity_uncertain"] = True
+                    a[name] = value
+                    changed = True
+        if changed:
+            self._persist_background()
 
     def page(self, *, offset=0, limit=20):
         """Only completed physical connections appear in the history."""
@@ -361,8 +313,8 @@ class SessionArchive:
         async with self._write_lock:
             await self._store.async_save({
                 "total": self.total_observed,
-                "sessions": self.sessions,
-                "active": self._active,
+                "sessions": deepcopy(self.sessions),
+                "active": deepcopy(self._active),
                 "last_outcome": self._last_outcome,
             })
 
