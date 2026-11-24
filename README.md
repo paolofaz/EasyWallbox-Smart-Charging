@@ -1,6 +1,6 @@
 # EasyWallbox Smart Charging
 
-**1.0.0rc4 — release candidate Home Assistant: test automatici effettuati, collaudo reale della nuova ETA e della migrazione ancora necessario. RC3 superata da questa correzione dello storico.** 
+**1.0.0rc5 — release candidate Home Assistant: test automatici effettuati, collaudo reale della nuova ETA e della migrazione ancora necessario. RC4 superata da questa correzione dello storico.** 
 
 L'integrazione gestisce la pianificazione della carica e una stabilizzazione *lenta* del limite EV tramite le entità del firmware EasyWallbox ESPHome. Non sostituisce il **DPM della wallbox**, che deve rimanere attivo e continua a occuparsi dei picchi elettrici e delle protezioni.
 
