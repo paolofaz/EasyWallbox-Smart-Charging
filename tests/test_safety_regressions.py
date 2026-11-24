@@ -37,7 +37,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.c._blocked = "previous_command_unconfirmed_no_retry"
         self.c.real_enabled = False
         self.report(C.CONF_START_STOP, "off")
-        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_CHARGE_ENABLED, "off")
         self.report(C.CONF_WALLBOX_CHARGING, "off")
         self.report(C.CONF_EV_POWER, "0.004")
         self.report(C.CONF_CHARGE_STATE, "Stato transitorio")
@@ -69,7 +69,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.c._pending)
         self.assertEqual(self.c._pending.kind, "normalize_on")
         self.report(C.CONF_START_STOP, "on")
-        self.report(C.CONF_DPM_CONFIRMED, "4.4")
+        self.report(C.CONF_CHARGE_ENABLED, "on")
         self.c.refresh()
         await asyncio.sleep(.02)
         self.assertIsNone(self.c._pending)
@@ -166,7 +166,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
         self.report(C.CONF_WALLBOX_CHARGING, "off")
         self.report(C.CONF_EV_POWER, "0")
-        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_CHARGE_ENABLED, "off")
         self.report(C.CONF_START_STOP, "unavailable")
         self.c.refresh()
         await asyncio.sleep(.02)
@@ -178,7 +178,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.c._pending.kind, "supply_restore")
         self.assertEqual([x[:2] for x in self.hass.services.calls
                           if x[0] == "switch"], [("switch", "turn_on")])
-        self.report(C.CONF_DPM_CONFIRMED, "4.4")
+        self.report(C.CONF_CHARGE_ENABLED, "on")
         self.report(C.CONF_START_STOP, "on")
         self.c.refresh()
         self.assertIsNone(self.c._pending)
@@ -195,7 +195,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.report(C.CONF_WALLBOX_CHARGING, "off")
         self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
         self.report(C.CONF_EV_POWER, "0")
-        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_CHARGE_ENABLED, "off")
         self.report(C.CONF_START_STOP, "off")
         self.c._on_event(SimpleNamespace(data={
             "entity_id": relay, "old_state": rig.FakeState("off"),
@@ -217,14 +217,14 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         self.report(C.CONF_WALLBOX_CHARGING, "off")
         self.report(C.CONF_CHARGE_STATE, "Vehicle ready")
         self.report(C.CONF_EV_POWER, "0")
-        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_CHARGE_ENABLED, "off")
         self.report(C.CONF_START_STOP, "off")
         await self.c.async_change("mode", "manual")
         await self.c.async_change("mode", "automatic")
         self.assertEqual([x[:2] for x in self.hass.services.calls
                           if x[0] == "switch"], [("switch", "turn_on")])
         self.assertEqual(self.c._pending.kind, "mode_auto_on")
-        self.report(C.CONF_DPM_CONFIRMED, "4.4")
+        self.report(C.CONF_CHARGE_ENABLED, "on")
         self.report(C.CONF_START_STOP, "on")
         self.c.refresh()
         self.assertIsNone(self.c._pending)
@@ -236,7 +236,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
         await self.c.async_change("mode", "manual")
         self.report(C.CONF_WALLBOX_CHARGING, "off")
         self.report(C.CONF_EV_POWER, "0")
-        self.report(C.CONF_DPM_CONFIRMED, "0")
+        self.report(C.CONF_CHARGE_ENABLED, "off")
         self.report(C.CONF_START_STOP, "off")
         self.report(C.CONF_WALLBOX_CONNECTED, "off")
         self.report(C.CONF_CHARGE_STATE, "Cable Unplugged")
@@ -255,7 +255,7 @@ class RC7StopRecovery(unittest.IsolatedAsyncioTestCase):
                 "unplug_since": self.c._unplug_restore_since,
                 "cable": self.c._wallbox_cable(datetime.now(timezone.utc)),
                 "switch": self.c._reported_binary(self.c.cfg[C.CONF_START_STOP]),
-                "dpm": self.c._setting(C.CONF_DPM_CONFIRMED, datetime.now(timezone.utc)),
+                "charge_enabled": self.c._wallbox_flag(C.CONF_CHARGE_ENABLED),
                 "park_task": str(self.c._park_task), "calls": self.hass.services.calls,
             })))
         self.assertEqual(self.c._pending.kind, "normalize_on")
