@@ -68,9 +68,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
             "Opzioni > Modifica auto: scegli un pulsante dati del veicolo "
             "oppure lascia vuota la selezione. Verifica che sia abilitato.")
     if reason:
+        if not cfg.get(CONF_CHARGE_ENABLED):
+            raise ConfigEntryError(
+                "Aggiornamento 1.0: apri Opzioni > Wallbox e seleziona "
+                "Charge Enabled di ESPHome (conferma indipendente Start-Stop). "
+                "Il vecchio sensore numerico DPM non serve più. "
+                "I profili delle auto restano conservati.")
         raise ConfigEntryError(
             "Verifica le sette associazioni obbligatorie ESPHome in Opzioni > Wallbox, "
-            "inclusa Connection. I profili delle auto sono conservati.")
+            "incluse Connection e Charge Enabled. I profili delle auto sono conservati.")
     coordinator = ChargingController(hass, entry, str(async_get_loaded_integration(hass, DOMAIN).version))
     await coordinator.async_load()
     try:
