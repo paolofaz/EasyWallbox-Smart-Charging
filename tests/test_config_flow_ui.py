@@ -155,7 +155,7 @@ class TestVehicleConfigUI(unittest.IsolatedAsyncioTestCase):
 
     async def test_setup_and_options_have_seven_required_roles_and_optional_state(self):
         expected = {"ble_connected", "wallbox_connected", "wallbox_charging",
-                    "start_stop_switch", "dpm_confirmed", "requested_limit",
+                    "start_stop_switch", "charge_enabled", "requested_limit",
                     "confirmed_limit"}
         self.assertEqual(set(self.app.WALLBOX_ENTITIES), expected)
         expected.update({"house_power_sources", "ev_power", "expected_dpm_kw",
