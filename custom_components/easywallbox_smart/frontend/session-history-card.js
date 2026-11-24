@@ -86,7 +86,7 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
         <div class="body">
           <div class="message" id="message"></div>
           <div class="scroll"><table>
-            <thead><tr><th>Reset rilevato</th><th>kWh</th><th>Minuti</th></tr></thead>
+            <thead><tr><th>Fine ricarica</th><th>Automobile</th><th>Energia</th><th>Durata</th></tr></thead>
             <tbody id="rows"></tbody>
           </table></div>
           <div class="footer">
@@ -105,17 +105,21 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
        data ? "Sessioni conservate: " + data.count +
               " · totali osservate: " + data.total_observed : "");
     const rows = root.querySelector("#rows");
+    const durationLabel = (minutes) => Number.isFinite(Number(minutes)) ?
+      `${Math.floor(Number(minutes) / 60)} h ${String(Math.round(Number(minutes) % 60)).padStart(2, "0")} min` : "—";
     if (data && Array.isArray(data.sessions)) {
       for (const s of data.sessions) {
         const tr = document.createElement("tr");
         let stamp = "—";
         try {
-          if (s.detected_reset_at)
+          if (s.completed_at || s.detected_reset_at)
             stamp = new Intl.DateTimeFormat("it-IT", {
               dateStyle: "short", timeStyle: "short"
-            }).format(new Date(s.detected_reset_at));
+            }).format(new Date(s.completed_at || s.detected_reset_at));
         } catch (_) { /* invalid timestamp displayed as dash */ }
-        for (const value of [stamp, s.energy_kwh, s.duration_min]) {
+        for (const value of [stamp, s.vehicle || "Non identificata",
+                             s.energy_kwh == null ? "—" : `${s.energy_kwh} kWh`,
+                             durationLabel(s.duration_min)]) {
           const cell = document.createElement("td");
           cell.textContent = String(value ?? "—");
           tr.appendChild(cell);
