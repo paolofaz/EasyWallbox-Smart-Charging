@@ -124,8 +124,15 @@ class ChargingSensor(SensorEntity):
             return {"ultima_sessione": archive.sessions[-1] if archive.sessions else None,
                     "totale_osservate": archive.total_observed}
         if self.kind == "finish":
+            # A provisional ETA is not a promise of completion time.
+            # 'Theoretical free' assumes the low-house EV rate persists.
+            earliest = self.c._eta_earliest_at
             return {"qualita_previsione": self.c._forecast_quality,
-                    "potenza_stimata_kw": self.c._forecast_rate_kw}
+                    "potenza_stimata_kw": self.c._forecast_rate_kw,
+                    "potenza_libera_riferimento_kw": self.c._eta_free_kw,
+                    "potenza_effettiva_recente_kw": self.c._eta_now_kw,
+                    "fine_teorica_a_potenza_libera": (
+                        earliest.isoformat() if earliest is not None else None)}
         if self.kind == "state":
             return {
                 "reason": self.c.reason,
