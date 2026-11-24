@@ -2121,9 +2121,9 @@ class ChargingController:
                 self._active_departure = self._active_departure_vehicle = None
                 self._schedule_save()
             if self._trace_session:
-                self._record("session_close", "cable_unplugged")
                 self._record("archive", "verified_unplug_archive_status",
                              **self.session_history.status())
+                self._record("session_close", "cable_unplugged")
                 self.mode = "automatic"
                 # A confirmed pre-plug delay belongs to the user's
                 # appointment, not to a particular cloud vehicle session.
