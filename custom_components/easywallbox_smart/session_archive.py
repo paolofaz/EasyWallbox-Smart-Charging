@@ -55,6 +55,9 @@ class SessionArchive:
         if not self.enabled:
             return
         saved = await self._store.async_load() or {}
+        outcome = saved.get("last_outcome")
+        if isinstance(outcome, str) and len(outcome) <= 100:
+            self._last_outcome = outcome
         items = saved.get("sessions", [])
         if isinstance(items, list):
             self.sessions = [
@@ -351,7 +354,8 @@ class SessionArchive:
         return {"count": len(self.sessions), "total_observed": self.total_observed,
                 "sessions": descending[offset:offset+limit],
                 "offset": offset, "limit": limit,
-                "has_more": offset+limit < len(self.sessions)}
+                "has_more": offset+limit < len(self.sessions),
+                "archive_status": self.status()}
 
     async def _persist(self):
         async with self._write_lock:
@@ -359,6 +363,7 @@ class SessionArchive:
                 "total": self.total_observed,
                 "sessions": self.sessions,
                 "active": self._active,
+                "last_outcome": self._last_outcome,
             })
 
     async def async_prune(self, keep_last: int):
