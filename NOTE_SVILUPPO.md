@@ -46,10 +46,15 @@ Analizzati `decisions_2026-11-23(5).jsonl` e `decisions_2026-11-24.jsonl` della 
 - Aggiunti test per campioni liberi esclusivamente in NORMAL, pause a zero potenza, apprendimento SOC senza gap, stima temporizzata e carichi temporanei.
 - Il gate di pubblicazione deve nuovamente riuscire sul commit di release finale; nessun tag pubblico significa pubblicazione non dimostrata.
 - Risultati di replay: nelle prime ore la stima può restare troppo ottimista poiché i futuri carichi e la vera energia AC/SOC non sono noti. Non assimilare il test offline di Claude a convalida generale.
+### Correzione RC4 — archiviazione dopo ore in attesa del distacco
+- Verificato che il firmware emette BLE Connection quando si connette, senza obbligo di ripubblicare lo stesso ON ogni due minuti. Anche Charging=OFF può essere invariato dalla fine della ricarica (es. 04:20) fino al distacco fisico (es. 08:30).
+- Nella RC3 la verifica di freschezza a 2 minuti per questi stati stabili rischiava di scambiare una connessione sana per BLE offline, impedendo il salvataggio finale. In RC4 gli stati BLE/cavo/Charging della stessa epoca possono rimanere stabili; i contatori numerici continuano a richiedere letture sincronizzate recenti e il distacco necessita Charge State Cable Unplugged.
+- Aggiunto test che invecchia artificialmente il timestamp dei flag di 4 ore e verifica che la ricarica sia archiviata una sola volta quando il cavo viene davvero scollegato.
+- La release v1.0.0rc3 e stata pubblicata, ma va considerata superata: il prossimo candidato consigliato e v1.0.0rc4, solo dopo quality gate completo. Il collaudo fisico resta necessario.
 ### Stato
 Implementazione su main autorizzata per questa occasione dall'utente. Verifica completa in corso; non dichiarare stabile fino ai test automatici e alla prova sul campo.
 
-### Pubblicazione condizionata 1.0.0rc3 con ETA informativa
-Tag previsto: `v1.0.0rc3`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
+### Pubblicazione condizionata 1.0.0rc4 con ETA informativa
+Tag previsto: `v1.0.0rc4`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
 
-**RC3 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La nuova ETA a due regimi è stata ora implementata su main, ma non è ancora collaudata sul campo.
+**RC4 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La nuova ETA a due regimi è stata ora implementata su main, ma non è ancora collaudata sul campo.
