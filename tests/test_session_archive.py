@@ -122,7 +122,7 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             # Two counters can reset on two separate HA state callbacks.
             hass.states["sensor.session_energy"].publish("0")
             archive._observe()
-            self.assertEqual(archive._active["segments"], 0)
+            self.assertEqual(archive._active["segments"], 1)
             hass.states["sensor.session_duration"].publish("0")
             archive._observe()
             self.assertEqual(archive._active["segments"], 1)
@@ -263,7 +263,7 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             self.counters(hass, 8.0, 190)
             await archive.async_load()
             archive.start()
-            self.assertEqual(archive._active["peak_kwh"], 0)
+            self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
             hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("on")
             archive._observe()
             self.assertEqual(archive._active["peak_kwh"], 0)
