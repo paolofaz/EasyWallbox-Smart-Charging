@@ -177,6 +177,29 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(archive.sessions[0]["energy_kwh"], 7.5)
             await archive.async_close()
 
+    async def test_previous_car_stale_counters_not_in_new_session(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            archive = self.make_archive(hass)
+            cfg = archive.cfg
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
+            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Vehicle ready")
+            self.counters(hass, 8.0, 190)
+            await archive.async_load()
+            archive.start()
+            self.assertEqual(archive._active["peak_kwh"], 0)
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("on")
+            archive._observe()
+            self.assertEqual(archive._active["peak_kwh"], 0)
+            self.counters(hass, 0, 0)
+            archive._observe()
+            self.counters(hass, 1.4, 31)
+            archive._observe()
+            self.disconnect(hass, archive)
+            self.assertEqual(archive.sessions[0]["energy_kwh"], 1.4)
+            self.assertEqual(archive.sessions[0]["duration_min"], 31)
+            await archive.async_close()
+
     async def test_unplug_without_measured_charge_is_not_history(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
