@@ -2122,6 +2122,8 @@ class ChargingController:
                 self._schedule_save()
             if self._trace_session:
                 self._record("session_close", "cable_unplugged")
+                self._record("archive", "verified_unplug_archive_status",
+                             **self.session_history.status())
                 self.mode = "automatic"
                 # A confirmed pre-plug delay belongs to the user's
                 # appointment, not to a particular cloud vehicle session.
@@ -2866,6 +2868,8 @@ class ChargingController:
         self._sensor_unsub = async_track_state_change_event(
             self.hass, initial, self._on_event)
         self.session_history.start()  # Read-only counters; no BLE traffic
+        self._record("archive", "archive_configured_at_start",
+                     **self.session_history.status())
         self.refresh()
 
     def _idle_guard_subscribe(self, online, cable):
