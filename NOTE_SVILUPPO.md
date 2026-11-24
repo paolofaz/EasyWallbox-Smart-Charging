@@ -41,10 +41,15 @@ Analizzati `decisions_2026-11-23(5).jsonl` e `decisions_2026-11-24.jsonl` della 
 - Margine falsamente urgente dopo carichi domestici e margine ignoto dopo riavvio: da testare offline prima di modificare la policy.
 - Nessun cambiamento al firmware ESPHome né a soglie STRONG/MODERATE/quiet di 15 minuti.
 
+### Esito qualità automatica in preparazione RC3
+- Una esecuzione completa del gate su main (commit 83008fb8cd674659120e55b1845ed98814befce1) ha superato Python 3.12/3.13, Home Assistant runtime, Hassfest e HACS; commit successivo ha corretto l'arrotondamento ETA vicino alla fine.
+- Aggiunti test per campioni liberi esclusivamente in NORMAL, pause a zero potenza, apprendimento SOC senza gap, stima temporizzata e carichi temporanei.
+- Il gate di pubblicazione deve nuovamente riuscire sul commit di release finale; nessun tag pubblico significa pubblicazione non dimostrata.
+- Risultati di replay: nelle prime ore la stima può restare troppo ottimista poiché i futuri carichi e la vera energia AC/SOC non sono noti. Non assimilare il test offline di Claude a convalida generale.
 ### Stato
 Implementazione su main autorizzata per questa occasione dall'utente. Verifica completa in corso; non dichiarare stabile fino ai test automatici e alla prova sul campo.
 
-### Tentativo di pubblicazione 1.0.0rc2
-Tag previsto: `v1.0.0rc2`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
+### Pubblicazione condizionata 1.0.0rc3 con ETA informativa
+Tag previsto: `v1.0.0rc3`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
 
-**RC2 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La nuova ETA a due regimi è stata ora implementata su main, ma non è ancora collaudata sul campo.
+**RC3 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La nuova ETA a due regimi è stata ora implementata su main, ma non è ancora collaudata sul campo.
