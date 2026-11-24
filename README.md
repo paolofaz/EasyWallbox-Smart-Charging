@@ -40,7 +40,7 @@ Prima del primo collaudo, verificare che le vecchie automazioni HA che comandava
 - **Target SOC**: un target fisso o una entità HA, con Stop SOC soltanto per auto abilitate e con conferme indipendenti.
 - **Riavvio HA e BLE**: verifica le prove di sessione e il limite precedentemente confermato senza ripetere comandi alla cieca. Se non può riconciliare un LIMITED o un override in sicurezza, blocca i nuovi comandi. Lo sblocco ordinario avviene dopo il distacco fisico confermato; non esiste uno switch UI dedicato a forzarlo.
 
-Il supervisore non segue i picchi secondo per secondo. Un LIMITED può rientrare in NORMAL dopo 15 minuti *osservati* di headroom nominale, o in caso di urgenza con effettiva opportunità di potenza. La condizione di quiete è attualmente `DPM - casa - baseline ≥ −0,02 kW`; è **da verificare sui dati reali**, non va modificata preventivamente.
+Il supervisore non segue i picchi secondo per secondo. Un LIMITED può rientrare in NORMAL dopo 15 minuti *osservati* di headroom nominale, o in caso di urgenza con effettiva opportunità di potenza. La condizione di quiete è attualmente `potenza contrattuale - casa - baseline ≥ −0,02 kW`; è **da verificare sui dati reali**, non va modificata preventivamente.
 
 ## Interfaccia
 
