@@ -12,6 +12,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from math import isfinite
 
+from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 
@@ -332,6 +333,7 @@ class SessionArchive:
         return {"removed": removed, "retained": self.total,
                 "total_observed": self.total_observed}
 
+    @callback
     def _on_event(self, event):
         self._observe()
 
