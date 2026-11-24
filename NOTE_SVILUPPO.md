@@ -39,3 +39,5 @@ Implementazione su main autorizzata per questa occasione dall'utente. Verifica c
 
 ### Tentativo di pubblicazione 1.0.0rc2
 Tag previsto: `v1.0.0rc2`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
+
+**RC2 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La previsione ETA a due regimi resta proposta non implementata.
