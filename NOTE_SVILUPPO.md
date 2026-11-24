@@ -36,3 +36,6 @@ Analizzati `decisions_2026-11-23(5).jsonl` e `decisions_2026-11-24.jsonl` della 
 
 ### Stato
 Implementazione su main autorizzata per questa occasione dall'utente. Verifica completa in corso; non dichiarare stabile fino ai test automatici e alla prova sul campo.
+
+### Tentativo di pubblicazione 1.0.0rc1
+Tag previsto: `v1.0.0rc1`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
