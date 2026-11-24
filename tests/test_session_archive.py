@@ -201,6 +201,34 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(archive.sessions[0]["duration_min"], 31)
             await archive.async_close()
 
+    async def test_late_unplug_after_hours_with_stable_ble_and_charging_off(self):
+        # Connection and Charging can remain unchanged for hours after
+        # target SOC is reached; they are states, not periodic samples.
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            archive = self.make_archive(hass)
+            await archive.async_load()
+            archive.start()
+            self.counters(hass, 18.5, 310)
+            archive._observe()
+            cfg = archive.cfg
+            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            old = now - __import__("datetime").timedelta(hours=4)
+            hass.states[cfg[rig.const.CONF_BLE_CONNECTED]].last_reported = old
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].last_reported = old
+            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].last_reported = old
+            archive._observe()
+            self.assertIsNotNone(archive._active)
+            self.assertFalse(archive._active["continuity_uncertain"])
+            hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
+            hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
+            archive._observe()
+            self.assertEqual(archive.total, 1)
+            self.assertEqual(archive.sessions[0]["energy_kwh"], 18.5)
+            self.assertEqual(archive.sessions[0]["duration_min"], 310)
+            await archive.async_close()
+
     async def test_unplug_without_measured_charge_is_not_history(self):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
