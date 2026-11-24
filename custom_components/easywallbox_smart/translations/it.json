@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Wallbox e misure di potenza",
-        "description": "Seleziona le otto entità della stessa wallbox ESPHome, i misuratori domestici e lo Shelly del ramo EV.",
+        "description": "Seleziona le sette entità ESPHome della wallbox (incluso Charge Enabled), i sensori Shelly e la potenza massima contrattuale usata solo per i calcoli. Il DPM fisico è gestito esclusivamente da ESPHome.",
         "data": {
           "house_power_sources": "Sensori di potenza casa (escluso il ramo EV)",
           "ev_power": "Shelly del ramo wallbox",
@@ -14,8 +14,8 @@
           "start_stop_switch": "Start-Stop",
           "requested_limit": "Charge power",
           "confirmed_limit": "Power set",
-          "dpm_confirmed": "Limit house power set -DPM-",
-          "expected_dpm_kw": "Limite DPM normale atteso (kW)",
+          "charge_enabled": "Charge Enabled (stato ON/OFF confermato)",
+          "expected_dpm_kw": "Potenza massima contrattuale (kW)",
           "base_kw": "Potenza predefinita per sessione (kW)",
           "charge_state": "Charge State (sensore ESPHome esistente; necessario per ripristino sicuro dopo Stop SOC)",
           "telemetry_fresh": "Telemetry Fresh (ESPHome: blocca i comandi quando OFF o non disponibile)",
@@ -94,7 +94,7 @@
       },
       "wallbox": {
         "title": "Wallbox e misure di potenza",
-        "description": "Seleziona le otto entità della stessa wallbox ESPHome, i misuratori domestici e lo Shelly del ramo EV.",
+        "description": "Seleziona le sette entità ESPHome della wallbox (incluso Charge Enabled), i sensori Shelly e la potenza massima contrattuale usata solo per i calcoli. Il DPM fisico è gestito esclusivamente da ESPHome.",
         "data": {
           "house_power_sources": "Sensori di potenza casa (escluso il ramo EV)",
           "ev_power": "Shelly del ramo wallbox",
@@ -104,8 +104,8 @@
           "start_stop_switch": "Start-Stop",
           "requested_limit": "Charge power",
           "confirmed_limit": "Power set",
-          "dpm_confirmed": "Limit house power set -DPM-",
-          "expected_dpm_kw": "Limite DPM normale atteso (kW)",
+          "charge_enabled": "Charge Enabled (stato ON/OFF confermato)",
+          "expected_dpm_kw": "Potenza massima contrattuale (kW)",
           "base_kw": "Potenza predefinita per sessione (kW)",
           "charge_state": "Charge State (sensore ESPHome esistente; necessario per ripristino sicuro dopo Stop SOC)",
           "telemetry_fresh": "Telemetry Fresh (ESPHome: blocca i comandi quando OFF o non disponibile)",
