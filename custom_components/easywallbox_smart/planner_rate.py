@@ -7,7 +7,9 @@ reading is not treated as a forecast of an entire night.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 from math import isfinite
+from statistics import median
 
 MIN_AC_KW = 1.4
 HEADROOM_KW = 0.2
@@ -113,6 +115,106 @@ def estimate_forecast_ac_kw(*, now: datetime, dpm_kw: float,
             observed_p75 = powers[(3*(len(powers)-1))//4]
             rate = min(rate, observed_p75)
     return round(rate, 2)
+
+
+# ETA is informational only: NEVER feed this estimate to the charging policy.
+ETA_NEAR_MINUTES = 30
+ETA_FREE_MIN_SAMPLES = 20
+ETA_FREE_MIN_SPAN = timedelta(minutes=10)
+
+
+@dataclass(frozen=True)
+class ChargeETA:
+    """Forecast in seconds from now, without a false precise-time promise."""
+    seconds: float
+    earliest_seconds: float
+    free_kw: float
+    now_kw: float | None
+    average_kw: float
+    quality: str
+
+
+def _recent_power(samples, now, window, minimum=3, min_span=2):
+    """Use independent timestamped reports; ignore gaps and old readings."""
+    ordered = sorted({
+        at: float(value) for at, value in samples
+        if isinstance(at, datetime) and at.tzinfo is not None
+        and isinstance(value, (int, float)) and not isinstance(value, bool)
+        and isfinite(value) and value >= 0
+        and now-window <= at <= now
+    }.items())
+    if (len(ordered) < minimum or
+            ordered[-1][0]-ordered[0][0] < timedelta(minutes=min_span) or
+            now-ordered[-1][0] > MAX_AGE):
+        return None
+    if any(b[0]-a[0] > MAX_SAMPLE_GAP
+           for a, b in zip(ordered, ordered[1:])):
+        return None
+    return [value for _, value in ordered]
+
+
+def estimate_charge_eta(*, now: datetime, remaining_kwh: float,
+                        base_kw: float, contracted_kw: float,
+                        free_ev_samples=(), recent_ev_samples=(),
+                        energy_calibrated=False) -> ChargeETA | None:
+    """Two-regime advisory forecast with a verified free-rate reference.
+
+    - P_free is the median of genuinely measured, uncapped, low-house EV
+      samples in the SAME physical session. Without enough independent
+      samples, a provisional 96% of requested base is used (bounded by
+      contracted power minus the pre-existing 0.2 kW reserve).
+    - P_now is the observed EV mean in the latest 10 minutes, INCLUDING
+      a verified zero-power DPM pause. Only the first 30 forecast minutes
+      use P_now; the rest use P_free. A pause never causes a divide-by-zero.
+    - The conservative deadline margin is deliberately NOT affected.
+    This model makes no prediction of future domestic appliance usage.
+    """
+    if (now.tzinfo is None or not isfinite(remaining_kwh)
+            or remaining_kwh < 0 or not isfinite(base_kw)
+            or not isfinite(contracted_kw) or base_kw < MIN_AC_KW
+            or contracted_kw <= MIN_AC_KW):
+        return None
+    provisional = min(base_kw * .96, contracted_kw-HEADROOM_KW)
+    if provisional <= 0:
+        return None
+    free_valid = sorted({
+        at: float(value) for at, value in free_ev_samples
+        if isinstance(at, datetime) and at.tzinfo is not None
+        and isinstance(value, (float, int)) and not isinstance(value, bool)
+        and isfinite(value) and MIN_AC_KW <= value <= base_kw+.15
+        and now-timedelta(hours=4) <= at <= now
+    }.items())
+    measured_free = (
+        len(free_valid) >= ETA_FREE_MIN_SAMPLES and
+        free_valid[-1][0]-free_valid[0][0] >= ETA_FREE_MIN_SPAN and
+        now-free_valid[-1][0] <= timedelta(hours=4)
+    )
+    free_kw = (median(value for _, value in free_valid)
+               if measured_free else provisional)
+    free_kw = min(base_kw, max(.1, free_kw))
+    recent = _recent_power(recent_ev_samples, now, timedelta(minutes=10))
+    current = min(free_kw, sum(recent)/len(recent)) if recent is not None else None
+    near_kw = free_kw if current is None else max(0, current)
+    near_hours = ETA_NEAR_MINUTES/60
+    first_energy = near_kw*near_hours
+    if remaining_kwh <= 0:
+        elapsed_h = 0.0
+    elif near_kw > .01 and remaining_kwh <= first_energy:
+        elapsed_h = remaining_kwh/near_kw
+    else:
+        elapsed_h = near_hours + max(0.0, remaining_kwh-first_energy)/free_kw
+    seconds = 3600 * elapsed_h
+    return ChargeETA(
+        seconds=seconds,
+        earliest_seconds=3600*remaining_kwh/free_kw,
+        free_kw=round(free_kw, 3),
+        now_kw=(round(current, 3) if current is not None else None),
+        average_kw=(round(3600*remaining_kwh/seconds, 3)
+                    if seconds > 0 else round(free_kw, 3)),
+        quality=("consolidata" if measured_free and recent is not None
+                 and energy_calibrated else "provvisoria"),
+    )
+
 
 def margin_minutes(*, now: datetime, departure: datetime | None,
                    remaining_kwh: float | None, rate_kw: float | None,
