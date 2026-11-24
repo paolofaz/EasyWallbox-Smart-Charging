@@ -266,7 +266,7 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
             hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("on")
             archive._observe()
-            self.assertEqual(archive._active["peak_kwh"], 0)
+            self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
             self.counters(hass, 0, 0)
             archive._observe()
             self.counters(hass, 1.4, 31)
