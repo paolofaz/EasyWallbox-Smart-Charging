@@ -8,7 +8,6 @@ No wallbox service or additional BLE read is issued by this module.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 
@@ -28,14 +27,6 @@ ENERGY_RESET_KWH = 0.15
 DURATION_RESET_MIN = 1.5
 
 
-@dataclass(frozen=True)
-class CounterPair:
-    kwh: float
-    minutes: float
-    at: datetime
-    marker: tuple[datetime, datetime]
-
-
 class SessionArchive:
     """Persist one active physical connection; expose only completed records."""
 
@@ -51,7 +42,6 @@ class SessionArchive:
         self.total = 0
         self.total_observed = 0
         self._active: dict | None = None
-        self._last_marker = None
         self._last_online = None
         self._last_counter_status = {"energy": "awaiting_data",
                                      "duration": "awaiting_data"}
@@ -228,7 +218,10 @@ class SessionArchive:
                 # Preserve the old total and account for the new reading.
                 c["total"] = float(c.get("total", 0)) + value
                 c["last"] = value
-                a["segments"] = int(a.get("segments", 0)) + 1
+                c["resets"] = int(c.get("resets", 0)) + 1
+                # Both sensors resetting at slightly different times
+                # is ONE new charge segment, not two.
+                a["segments"] = max(int(a.get("segments", 0)), c["resets"])
                 changed = True
             elif delta > tolerance:
                 c["total"] = float(c.get("total", 0)) + delta
@@ -269,7 +262,6 @@ class SessionArchive:
         energy = float(counters.get("energy", {}).get("total", 0))
         minutes = float(counters.get("duration", {}).get("total", 0))
         self._active = None
-        self._last_marker = None
         if energy < .2 or minutes < 2:
             self._persist_background()
             return  # A cable insertion with no measurable charge.
@@ -306,7 +298,6 @@ class SessionArchive:
                 self._active["continuity_uncertain"] = True
                 self._persist_background()
             self._last_online = False
-            self._last_marker = None
             return
         self._last_online = True
         cable = self.hass.states.get(self.cfg[CONF_WALLBOX_CONNECTED])
@@ -342,6 +333,9 @@ class SessionArchive:
                              charging.attributes.get("restored") or
                              charging.state != "off")):
             return
+        # The last independent counter reports may arrive at the same BLE
+        # disconnect frame. Read them once more before closing.
+        self._observe_counters()
         self._finish()
 
     def page(self, *, offset=0, limit=20):
