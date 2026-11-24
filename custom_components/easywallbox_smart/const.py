@@ -45,6 +45,8 @@ DEFAULT_DPM_KW = 4.4
 
 
 # Seven required user-selected entities on the same ESPHome device.
+# Contracted power (stored as expected_dpm_kw for backward compatibility)
+# is a mathematical planning input, NEVER a DPM write target.
 WALLBOX_ENTITIES = {
     CONF_BLE_CONNECTED: "binary_sensor",
     CONF_WALLBOX_CONNECTED: "binary_sensor",
@@ -52,5 +54,5 @@ WALLBOX_ENTITIES = {
     CONF_START_STOP: "switch",
     CONF_REQUESTED_LIMIT: "number",
     CONF_CONFIRMED_LIMIT: "sensor",
-    CONF_DPM_CONFIRMED: "sensor",
+    CONF_CHARGE_ENABLED: "binary_sensor",
 }
