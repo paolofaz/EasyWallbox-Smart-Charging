@@ -160,7 +160,7 @@ async def exercise(hass, root):
     @callback
     def station_stop(call):
         publish(cfg["start_stop_switch"], "off")
-        kw(cfg["dpm_confirmed"], 0)
+        publish(cfg["charge_enabled"], "off")
         publish(cfg["wallbox_charging"], "off")
         publish(cfg["charge_state"], "Pause" if hass.states.get(cfg["wallbox_connected"]).state == "on" else "Cable Unplugged")
         kw("sensor.trial_ev", 0)
@@ -172,7 +172,7 @@ async def exercise(hass, root):
     @callback
     def station_start(call):
         publish(cfg["start_stop_switch"], "on")
-        kw(cfg["dpm_confirmed"], 4.4)
+        publish(cfg["charge_enabled"], "on")
         if hass.states.get(cfg["wallbox_connected"]).state == "on":
             publish(cfg["wallbox_charging"], "on")
             publish(cfg["charge_state"], "Charging")
@@ -195,7 +195,7 @@ async def exercise(hass, root):
     publish(cfg["wallbox_connected"], "off")
     kw(cfg["requested_limit"], 3.6, min=1.4, max=6.0, step=.2)
     kw(cfg["confirmed_limit"], 3.6)
-    kw(cfg["dpm_confirmed"], 4.4)
+    publish(cfg["charge_enabled"], "on")
     publish(cfg["charge_state"], "Cable Unplugged")
     publish(cfg["start_stop_switch"], "on")
     publish(cfg["wallbox_charging"], "off")
@@ -275,7 +275,7 @@ async def exercise(hass, root):
     await c.async_change("delay",True)
     await wait_for(lambda: c._pending is None and
                    c.delay_enabled and c._dpm_lease is not None, 8)
-    assert c._setting("dpm_confirmed", datetime.now(timezone.utc))==0
+    assert c._wallbox_flag("charge_enabled") is False
 
     # The 500e cable cloud sensor remains OFF under DPM0. User cancellation
     # must still restore ON without identifying the car in the cloud.
