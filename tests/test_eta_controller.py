@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from tempfile import TemporaryDirectory
 
 import test_controller_smoke as rig
+from easywallbox_test_package.planner_rate import ChargeETA
 
 C = rig.const
 
@@ -62,18 +63,18 @@ class EtaControllerTests(unittest.TestCase):
 
     def test_ten_minute_forecast_bucket_and_max_fifteen_minute_shift(self):
         c = self.ctrl
-        eta = rig.planner_rate.ChargeETA(
+        eta = ChargeETA(
             seconds=3*3600, earliest_seconds=2*3600,
             free_kw=3.8, now_kw=2.3, average_kw=3.0, quality="provvisoria")
         first = self.now.replace(minute=0, second=0, microsecond=0)
         c._eta_publish(first, eta, self.car, 80)
         a = c._eta_last_finish
-        c._eta_publish(first+timedelta(minutes=3), rig.planner_rate.ChargeETA(
+        c._eta_publish(first+timedelta(minutes=3), ChargeETA(
             seconds=6*3600, earliest_seconds=2*3600,
             free_kw=3.8, now_kw=0.0, average_kw=1.3, quality="provvisoria"),
             self.car, 80)
         self.assertEqual(c._eta_last_finish, a)
-        c._eta_publish(first+timedelta(minutes=10), rig.planner_rate.ChargeETA(
+        c._eta_publish(first+timedelta(minutes=10), ChargeETA(
             seconds=6*3600, earliest_seconds=2*3600,
             free_kw=3.8, now_kw=0.0, average_kw=1.3, quality="provvisoria"),
             self.car, 80)
@@ -82,7 +83,7 @@ class EtaControllerTests(unittest.TestCase):
 
     def test_different_target_resets_unsupported_stability_fence(self):
         c = self.ctrl
-        eta = rig.planner_rate.ChargeETA(3600, 3500, 3.8, 3.1, 3.0, "provvisoria")
+        eta = ChargeETA(3600, 3500, 3.8, 3.1, 3.0, "provvisoria")
         c._eta_publish(self.now, eta, self.car, 80)
         old = c._eta_last_finish
         c._eta_publish(self.now+timedelta(seconds=10), eta, self.car, 90)
