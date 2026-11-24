@@ -69,9 +69,14 @@ class SessionArchive:
             ]
         self.total = len(self.sessions)
         observed = saved.get("total")
+        # Old beta recorded phantom partial rows at a joint counter reset.
+        # Historical total must never imply those were completed charges.
+        old_items = saved.get("sessions", [])
+        fully_completed = (isinstance(old_items, list) and
+                           len(self.sessions) == len(old_items))
         self.total_observed = (
-            max(self.total, observed) if isinstance(observed, int)
-            and observed >= 0 else self.total
+            max(self.total, observed) if fully_completed and
+            isinstance(observed, int) and observed >= 0 else self.total
         )
         active = saved.get("active")
         if isinstance(active, dict) and active.get("connected_seen") is True:
@@ -136,6 +141,7 @@ class SessionArchive:
             "completed_kwh": 0.0, "completed_min": 0.0,
             "peak_kwh": 0.0, "peak_min": 0.0, "segments": 0,
             "last_pair_at": None, "continuity_uncertain": False,
+            "seeded": False, "pending_stale": None,
         }
 
     def note_vehicle(self, name):
@@ -162,6 +168,29 @@ class SessionArchive:
             return
         self._last_marker = pair.marker
         a = self._active
+        # On a NEW physical plug the first AD may still contain counters
+        # from the previous car (the wallbox resets them asynchronously).
+        # Never attribute pre-charge idle counters to the new connection.
+        if not a.get("seeded", True):
+            stale = a.get("pending_stale")
+            charging = self.hass.states.get(self.cfg[CONF_WALLBOX_CHARGING])
+            actively_charging = bool(self._recent(charging) and
+                                     charging.state == "on")
+            if stale is not None:
+                if (float(stale[0])-pair.kwh >= ENERGY_RESET_KWH or
+                        float(stale[1])-pair.minutes >= DURATION_RESET_MIN):
+                    a["pending_stale"] = None
+                    a["seeded"] = True
+                else:
+                    return  # Never transfer a prior charge's counters.
+            elif not actively_charging and (pair.kwh >= .2 or pair.minutes >= 2):
+                a["pending_stale"] = [pair.kwh, pair.minutes]
+                self._persist_background()
+                return
+            elif actively_charging or (pair.kwh < .2 and pair.minutes < 2):
+                a["seeded"] = True
+            else:
+                return
         prev_energy = float(a.get("peak_kwh", 0))
         prev_minutes = float(a.get("peak_min", 0))
         energy_reset = prev_energy-pair.kwh >= ENERGY_RESET_KWH
