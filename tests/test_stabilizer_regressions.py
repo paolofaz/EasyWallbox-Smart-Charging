@@ -22,7 +22,7 @@ class OptionalSupply(unittest.IsolatedAsyncioTestCase):
         self.cfg[C.CONF_WALLBOX_POWER_SWITCH] = "switch.shelly_supply"
         self.hass.states["switch.shelly_supply"] = rig.FakeState("on")
         self.hass.states[self.cfg[C.CONF_START_STOP]].publish("off")
-        self.hass.states[self.cfg[C.CONF_DPM_CONFIRMED]].publish("0")
+        self.hass.states[self.cfg[C.CONF_CHARGE_ENABLED]].publish("off")
         self.c = rig.controller.ChargingController(
             self.hass, rig.FakeEntry(self.cfg), rig.VERSION)
         await self.c.async_load()
@@ -55,7 +55,7 @@ class OptionalSupply(unittest.IsolatedAsyncioTestCase):
         charge = self.cfg[C.CONF_CHARGE_STATE]
         self.hass.states[self.cfg[C.CONF_WALLBOX_CONNECTED]].publish("off")
         self.hass.states[self.cfg[C.CONF_WALLBOX_CHARGING]].publish("off")
-        self.hass.states[self.cfg[C.CONF_DPM_CONFIRMED]].publish("0")
+        self.hass.states[self.cfg[C.CONF_CHARGE_ENABLED]].publish("off")
         self.hass.states[self.cfg[C.CONF_TELEMETRY_FRESH]].publish("on")
         self.hass.states[charge].publish("Cable Unplugged")
         # Supply restore is independent of the 69s physical cable-unplug timer.
@@ -89,7 +89,7 @@ class OptionalSupply(unittest.IsolatedAsyncioTestCase):
             [x[:2] for x in self.hass.services.calls if x[0] == "switch"],
             [("switch", "turn_on")])
         self.assertEqual(self.c._pending.kind, "supply_restore")
-        self.hass.states[self.cfg[C.CONF_DPM_CONFIRMED]].publish("4.4")
+        self.hass.states[self.cfg[C.CONF_CHARGE_ENABLED]].publish("on")
         self.hass.states[self.cfg[C.CONF_START_STOP]].publish("on")
         self.c.refresh()
         await asyncio.sleep(.02)
