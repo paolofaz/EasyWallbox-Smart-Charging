@@ -160,7 +160,8 @@ class ArchivePagination(unittest.IsolatedAsyncioTestCase):
             await archive.async_load()
             archive.sessions = [
                 {"energy_kwh": float(i), "duration_min": i*5,
-                 "detected_reset_at": f"2026-11-22T{i%24:02d}:00:00+00:00"}
+                 "detected_reset_at": f"2026-11-22T{i%24:02d}:00:00+00:00",
+                 "completion": "physical_cable_unplug"}
                 for i in range(1, 102)]
             archive.total = 101
             archive.total_observed = 101
@@ -194,9 +195,10 @@ class ArchivePagination(unittest.IsolatedAsyncioTestCase):
             obj._store.async_load = lambda: asyncio.sleep(
                 0,result={"total":35,"sessions":records})
             await obj.async_load()
-            self.assertEqual(obj.total,12)  # 12 retained, not invented 35
-            self.assertEqual(obj.total_observed,35)
-            self.assertEqual(len(obj.sessions),12)
+            # Reset-only records from the old beta were never completed charges.
+            self.assertEqual(obj.total,0)
+            self.assertEqual(obj.total_observed,0)
+            self.assertEqual(len(obj.sessions),0)
 
 
 if __name__ == "__main__":
