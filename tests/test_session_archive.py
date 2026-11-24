@@ -204,9 +204,9 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory() as wd:
             hass = rig.FakeHass(wd)
             archive = self.make_archive(hass)
+            self.counters(hass, 0.0, 0)
             await archive.async_load()
             archive.start()
-            self.counters(hass, 0.0, 0)
             archive._observe()
             self.disconnect(hass, archive)
             self.assertEqual(archive.total, 0)
