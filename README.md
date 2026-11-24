@@ -1,6 +1,6 @@
 # EasyWallbox Smart Charging
 
-**0.9 beta — Home Assistant custom integration.** 
+**1.0 release candidate — Home Assistant custom integration.** 
 
 L'integrazione gestisce la pianificazione della carica e una stabilizzazione *lenta* del limite EV tramite le entità del firmware EasyWallbox ESPHome. Non sostituisce il **DPM della wallbox**, che deve rimanere attivo e continua a occuparsi dei picchi elettrici e delle protezioni.
 
@@ -23,7 +23,7 @@ Aprire *Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Eas
 
 ### Entità richieste
 
-Selezionare le sette entità obbligatorie della **stessa** wallbox ESPHome: Connection BLE, Car Connected, Charging, Start-Stop, Charge power richiesto, limite EV confermato e DPM confermato. Specificare il valore DPM normale atteso, la potenza EV predefinita, le sorgenti Shelly del consumo domestico **senza EV** e lo Shelly EV separato. Sono disponibili fonti opzionali per Charge State, Session Energy, Session Duration e relè fisico di alimentazione.
+Selezionare le sette entità obbligatorie della **stessa** wallbox ESPHome: Connection BLE, Car Connected, Charging, Start-Stop, Charge power richiesto, limite EV confermato e **Charge Enabled**. **Non** è richiesta la lettura numerica del DPM. Specificare **Potenza massima contrattuale** (ad esempio 4,4 kW) come riferimento solo matematico, la potenza EV predefinita, le sorgenti Shelly del consumo domestico **senza EV** e lo Shelly EV separato. Il DPM reale può essere configurato separatamente nel firmware (ad esempio 4,6 kW): la custom integration non lo cambia né lo ripristina. Il solo Start-Stop eventualmente azionato da Smart Charging provoca la pausa a 0 A o il ritorno all'ultimo valore positivo gestito da ESPHome. Prima di aggiornare un'installazione 0.9.x, aprire Opzioni → Wallbox e mappare **Charge Enabled**, quindi riavviare/ricaricare l'integrazione. Sono disponibili fonti opzionali per Charge State, Session Energy, Session Duration e relè fisico di alimentazione.
 
 Configurare uno o più profili auto con sensore cavo, SOC, capacità batteria, rendimento AC, orari feriali/festivi e target SOC da entità o fisso. È possibile selezionare un pulsante di aggiornamento dati veicolo e, se voluto, lo Stop SOC gestito da questa integrazione. Nel setup di riferimento: Fiat 500e e Kia EV3.
 
@@ -44,7 +44,7 @@ Il supervisore non segue i picchi secondo per secondo. Un LIMITED può rientrare
 
 ## Interfaccia
 
-Sono disponibili entità di stato, pianificatore/avvisi, auto identificata, fase stabilizzatore, stime di energia e completamento, selezione modalità, orari, slider potenza sessione e, ove configurato, slider SOC. Non vengono duplicati i sensori di corrente/potenza Shelly o gli stati BLE. È disponibile una card storico sessioni per Lovelace: l'integrazione registra la risorsa JavaScript ma **non crea una dashboard**.
+Sono disponibili entità di stato, pianificatore/avvisi, auto identificata, fase stabilizzatore, stime di energia e completamento, selezione modalità, orari, slider potenza sessione e, ove configurato, slider SOC. Non vengono duplicati i sensori di corrente/potenza Shelly o gli stati BLE. È disponibile una card storico sessioni per Lovelace: l'integrazione registra la risorsa JavaScript ma **non crea una dashboard**. La card legge solo le sessioni **chiuse da distacco fisico del cavo**, una riga per collegamento con colonne **Fine ricarica, Automobile, Energia, Durata**. Le pause e gli azzeramenti dei contatori non producono righe: il modulo conserva le porzioni in .storage e le somma in kWh e minuti. Durante un'interruzione BLE o riavvio conserva lo stato parziale e lo segnala come tale quando la continuità non è certa. Se l'auto non è identificabile, mostra «Non identificata». Una precedente riga beta senza prova del distacco non viene spacciata per una sessione completata.
 
 Un avviso di limite precedente mostra l'**ultimo valore confermato**, non una lettura attuale: verificare sempre il valore effettivo di ESPHome e le misure Shelly prima di intervenire.
 
@@ -52,7 +52,7 @@ Un avviso di limite precedente mostra l'**ultimo valore confermato**, non una le
 
 In **Impostazioni → Dispositivi e servizi → EasyWallbox Smart Charging → Configura → Diario diagnostico** è disponibile il flag **“Scrivi il diario delle decisioni su disco”**.
 
-- **Attivo di default** per il primo collaudo della beta 0.9; può essere disattivato anche in seguito.
+- **Attivo di default** durante il collaudo; può essere disattivato anche in seguito.
 - Quando è attivo, produce file JSONL giornalieri sotto `/config/easywallbox_smart/decision_logs/decisions_YYYY-MM-DD.jsonl`, con eventi, decisioni, comandi richiesti, conferme e motivazioni.
 - Quando è disattivo, **non vengono registrati nuovi eventi**; il salvataggio dell'opzione ricarica l'integrazione. I file già esistenti non vengono cancellati e gli eventuali eventi già in scrittura possono terminare durante il cambio.
 - Il diario usa una coda limitata, scrittura serializzata e permessi locali restrittivi. Non provoca nuove letture o comandi BLE. Evitare di pubblicare i log: possono contenere orari, identificativi e dati d'utilizzo.
@@ -61,6 +61,8 @@ Questa impostazione è destinata a rimanere disponibile anche dopo la beta, senz
 
 ## Collaudo e sicurezza
 
-La beta è passata attraverso prove automatiche del controller, del config flow, della logica di potenza, dei blocchi di sicurezza e dei riavvii, nonché verifiche Hassfest e su Home Assistant. **Un test automatico non conferma un effetto elettrico**.
+La versione precedente 0.9.2b1 è stata collaudata sul campo per NORMAL/LIMITED e ritorno automatico. La release candidate 1.0 modifica l'archivio e l'associazione Charge Enabled, per cui **richiede ancora una verifica reale di scollegamento, somma dei contatori, pausa Start-Stop e riavvio**; i test automatici non sostituiscono la prova elettrica. La logica anti-oscillazione e le soglie dello stabilizzatore restano invariate.
+
+**Rollback:** ripristinare la release 0.9.2b1, riassociare nelle Opzioni la sorgente «Limit house power set -DPM-» e il valore DPM numerico esattamente corrispondente al firmware; non installare 0.9.2 con DPM fisico e riferimento contrattuale diversi. Un backup della directory .storage di HA prima dell'aggiornamento è consigliato per verificare o recuperare lo storico. Non modificare direttamente .storage per correggere le righe.
 
 [Licenza](LICENSE)
