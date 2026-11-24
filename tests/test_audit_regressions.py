@@ -134,8 +134,7 @@ class MarginAndMeterRegressions(unittest.IsolatedAsyncioTestCase):
     def test_margin_uses_observed_ac_during_cloud_soc_plateau(self):
         # EV consumes a constant 3.2 kW. Old SOC remains 60% for 8 min.
         # With a 3.2kW prudent rate the true slack should stay almost flat.
-        with patch.object(rig.controller, "estimate_ac_kw", return_value=3.2), \
-             patch.object(rig.controller, "estimate_forecast_ac_kw", return_value=3.2):
+        with patch.object(rig.controller, "estimate_ac_kw", return_value=3.2):
             self.controller._snapshot(self._advance(0))
             initial = self.controller.margin_minutes
             self.assertIsNotNone(initial)
@@ -152,7 +151,8 @@ class MarginAndMeterRegressions(unittest.IsolatedAsyncioTestCase):
             self.controller._snapshot(self._advance(12))  # 4-minute gap
             self.assertIsNotNone(self.controller.margin_minutes)
             self.assertIsNotNone(self.controller._margin_energy_kwh)
-            self.assertIsNone(self.controller._eta_remaining_ac_kwh)
+            self.assertIsNotNone(self.controller._eta_remaining_ac_kwh)
+            self.assertEqual(self.controller._forecast_quality,"provvisoria")
             self.assertEqual(self.controller._margin_quality,"observed_partial_gap")
             self.assertTrue(self.controller._delivery_gap)
 
