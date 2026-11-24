@@ -105,8 +105,11 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
        data ? "Sessioni conservate: " + data.count +
               " · totali osservate: " + data.total_observed : "");
     const rows = root.querySelector("#rows");
-    const durationLabel = (minutes) => Number.isFinite(Number(minutes)) ?
-      `${Math.floor(Number(minutes) / 60)} h ${String(Math.round(Number(minutes) % 60)).padStart(2, "0")} min` : "—";
+    const durationLabel = (minutes) => {
+      if (minutes == null || !Number.isFinite(Number(minutes))) return "—";
+      const whole = Math.max(0, Math.round(Number(minutes)));
+      return `${Math.floor(whole / 60)} h ${String(whole % 60).padStart(2, "0")} min`;
+    };
     if (data && Array.isArray(data.sessions)) {
       for (const s of data.sessions) {
         const tr = document.createElement("tr");
