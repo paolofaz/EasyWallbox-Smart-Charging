@@ -2,6 +2,7 @@
 import asyncio
 import unittest
 from tempfile import TemporaryDirectory
+from datetime import datetime, timedelta, timezone
 
 import test_controller_smoke as rig
 from easywallbox_test_package.session_archive import SessionArchive
@@ -212,8 +213,8 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             self.counters(hass, 18.5, 310)
             archive._observe()
             cfg = archive.cfg
-            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-            old = now - __import__("datetime").timedelta(hours=4)
+            now = datetime.now(timezone.utc)
+            old = now - timedelta(hours=4)
             hass.states[cfg[rig.const.CONF_BLE_CONNECTED]].last_reported = old
             hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
             hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].last_reported = old
