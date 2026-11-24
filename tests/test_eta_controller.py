@@ -28,7 +28,7 @@ class EtaControllerTests(unittest.TestCase):
         prior_per_pct = self.car[C.CONF_CAPACITY]/self.car[C.CONF_EFFICIENCY]/100
         first = c._eta_energy(self.car, 50, 80, True)
         self.assertAlmostEqual(first, 30*prior_per_pct)
-        c._delivered_ev_kwh = 10.0
+        c._delivered_ev_kwh = 5.2
         adjusted = c._eta_energy(self.car, 60, 80, True)
         self.assertIsNotNone(c._eta_ac_per_soc)
         self.assertGreater(adjusted, 20*prior_per_pct)
