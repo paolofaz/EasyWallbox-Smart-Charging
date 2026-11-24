@@ -265,11 +265,11 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x[:2] for x in self.hass.services.calls],
                          [("switch","turn_off")])
         self.assertEqual(self.c._pending.kind,"delay_arm")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.c.refresh()
         self.assertIsNone(self.c._pending)
-        self.assertEqual(self.c._dpm_lease,4.4)
+        self.assertEqual(self.c._dpm_lease,1.0)
         self.assertTrue(self.c.delay_enabled)
     async def test_invalid_twenty_three_hour_delay_does_not_change_switch_or_charge(self):
         local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
@@ -282,7 +282,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.c.delay_enabled)
         self.assertFalse(any(c[0]=="switch" for c in self.hass.services.calls))
 
-    async def test_delay_switch_clears_only_after_verified_dpm_release(self):
+    async def test_delay_switch_clears_only_after_verified_charge_enabled_release(self):
         await self.c.async_change("real",True)
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
         self.hass.states["binary_sensor.fiat"].publish("off")
@@ -292,7 +292,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
         await self.c.async_change("time",(local+timedelta(hours=1)).time().replace(second=0,microsecond=0))
         await self.c.async_change("delay",True)
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.c.refresh()
         self.assertTrue(self.c.delay_enabled)
@@ -302,7 +302,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await self.settle()
         self.assertEqual(self.c._pending.kind,"delay_release")
         self.assertTrue(self.c.delay_enabled)
-        self.hass.states["sensor.dpm_set"].publish("4.4")
+        self.hass.states["binary_sensor.charge_enabled"].publish("on")
         self.hass.states["switch.wallbox_start_stop"].publish("on")
         self.c.refresh()
         self.assertFalse(self.c.delay_enabled)
@@ -317,7 +317,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         local=datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Rome"))
         await self.c.async_change("time",(local+timedelta(hours=1)).time().replace(second=0,microsecond=0))
         await self.c.async_change("delay",True)
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.c.refresh()
         self.hass.states["binary_sensor.wallbox_cable"].publish("on")
@@ -344,8 +344,8 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
             await self.c.async_change("delay",True)
         self.assertFalse(self.c.delay_enabled)
         self.assertEqual(self.hass.services.calls,[])
-    async def test_missing_dpm_readback_blocks_real_command(self):
-        self.hass.states["sensor.dpm_set"].publish("unavailable")
+    async def test_missing_charge_enabled_readback_blocks_real_command(self):
+        self.hass.states["binary_sensor.charge_enabled"].publish("unavailable")
         self.c.refresh()
         await self.c.async_change("real",True)
         await self.settle()
@@ -411,19 +411,19 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_verified_preplug_delay_restores_dpm_once(self):
         self.hass.states["sensor.ev"].publish("0")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.c._scheduled_at=datetime.now(timezone.utc)+timedelta(hours=1)
         self.c.delay_enabled=True
         self.c._saved_delay_lease={"kind":"preplug","start":self.c._scheduled_at.isoformat(),"dpm":4.4}
-        self.c._dpm_lease=4.4
+        self.c._dpm_lease=1.0
         self.c._idle_park_trace="test-preplug-lease"
         await self.c.async_change("real",True)
         await self.c.async_change("delay",False)
         await self.settle()
         self.assertEqual([x[:2] for x in self.hass.services.calls],[("switch","turn_on")])
         self.assertEqual(self.c._pending.kind,"delay_release")
-        self.hass.states["sensor.dpm_set"].publish("4.4")
+        self.hass.states["binary_sensor.charge_enabled"].publish("on")
         self.hass.states["switch.wallbox_start_stop"].publish("on")
         self.c.refresh()
         self.assertIsNone(self.c._pending)
@@ -448,7 +448,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
     async def test_dpm_zero_with_connected_car_never_auto_restarts(self):
         self.hass.states["sensor.ev"].publish("0")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["sensor.fiat_soc"].publish("70")
         self.c.refresh()
@@ -540,7 +540,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
                              if c[0]=="switch"]),1)
 
         # DPM ACK alone is not physical proof of a stopped charge.
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["sensor.command_status"].publish("Verified DPM")
         self.c.refresh()
@@ -697,7 +697,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
 
     async def test_verified_preplug_delay_reconciles_after_ha_reboot(self):
         now=datetime.now(timezone.utc)
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -712,12 +712,12 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         await other.async_load()
         other.refresh()
         await self.settle()
-        self.assertEqual(other._dpm_lease,4.4)
+        self.assertEqual(other._dpm_lease,1.0)
         self.assertEqual(self.hass.services.calls,[])
         await other.async_close()
     async def test_old_rc4_delay_lease_is_not_adopted_or_released(self):
         now=datetime.now(timezone.utc)
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -763,7 +763,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_rc_park_flag_has_no_preplug_lease_ownership(self):
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         async def old_storage():
             return {"park_owned":True}
@@ -777,7 +777,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
     async def test_connected_car_cannot_start_based_on_cloud_when_dpm_is_parked(self):
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.fiat"].publish("off")
         self.c.refresh()
@@ -802,7 +802,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.hass.states["binary_sensor.wallbox_cable"].publish("on")
         self.hass.states["binary_sensor.wallbox_charging"].publish("on")
         self.hass.states["binary_sensor.fault"].publish("off")
-        self.hass.states["sensor.dpm_set"].publish("4.4")
+        self.hass.states["binary_sensor.charge_enabled"].publish("on")
         self.hass.states["sensor.power_set"].publish("4.0")
         self.hass.states["sensor.ev"].publish("3.2")
         self.c.refresh()
@@ -817,7 +817,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.hass.states["binary_sensor.wallbox_cable"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["binary_sensor.fault"].publish("off")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
         self.c.refresh()
@@ -886,7 +886,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.c._soc_stop_done=True
         self.c._fixed_target_overrides[cable]={"configured":80,"value":85}
         self.hass.states["sensor.fiat_soc"].publish("85")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -897,7 +897,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.c._pending.kind,"soc_resume")
         self.assertEqual([x[:2] for x in self.hass.services.calls],
                          [("switch","turn_on")])
-        self.hass.states["sensor.dpm_set"].publish("4.4")
+        self.hass.states["binary_sensor.charge_enabled"].publish("on")
         self.hass.states["switch.wallbox_start_stop"].publish("on")
         self.c.refresh()
         self.assertIsNone(self.c._pending)
@@ -911,7 +911,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.c._soc_stop_done=True
         self.c._fixed_target_overrides[cable]={"configured":80,"value":85}
         self.hass.states["sensor.fiat_soc"].publish("85")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -939,7 +939,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         # Physical wallbox cable stays ON but Fiat cloud now reports OFF.
         marker_before=self.c._continuity_marker(const.CONF_WALLBOX_CONNECTED)
         self.hass.states["binary_sensor.fiat"].publish("off")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -962,7 +962,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.c._fixed_target_overrides[cable]={"configured":80,"value":85}
         self.hass.states["sensor.fiat_soc"].publish("85")
         self.hass.states["sensor.fiat_soc"].last_reported-=timedelta(minutes=10)
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -988,7 +988,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.c._soc_stop_latch={"vehicle":car[const.CONF_CABLE],"target":85}
         self.c._soc_stop_done=True
         self.hass.states["sensor.fiat_soc"].publish("85")
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -1022,7 +1022,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
 
     async def test_soc_stop_latch_survives_reboot_without_automatic_restart(self):
         car=self.enable_soc_stop_on_fiat(source_timestamp=False)
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -1041,7 +1041,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         car=self.enable_soc_stop_on_fiat(source_timestamp=False)
         self.c._soc_stop_latch={"vehicle":car[const.CONF_CABLE],"target":85}
         self.c._soc_stop_done=True
-        self.hass.states["sensor.dpm_set"].publish("0")
+        self.hass.states["binary_sensor.charge_enabled"].publish("off")
         self.hass.states["switch.wallbox_start_stop"].publish("off")
         self.hass.states["binary_sensor.wallbox_charging"].publish("off")
         self.hass.states["sensor.ev"].publish("0")
@@ -1059,7 +1059,7 @@ class RCAdapterSmoke(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x[:2] for x in self.hass.services.calls],
                          [("switch","turn_on")])
         self.assertEqual(self.c._pending.kind,"normalize_on")
-        self.hass.states["sensor.dpm_set"].publish("4.4")
+        self.hass.states["binary_sensor.charge_enabled"].publish("on")
         self.hass.states["switch.wallbox_start_stop"].publish("on")
         self.c.refresh()
         self.assertIsNone(self.c._soc_stop_latch)
