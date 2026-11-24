@@ -141,7 +141,9 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
       if (!data.sessions.length && !this._error && !this._pending) {
         const status = data.archive_status || {};
         if (status.active) {
-          msg.textContent = "Ricarica ancora collegata: sarà archiviata al distacco.";
+          msg.textContent = status.awaiting_firmware_reset ?
+            "Distacco rilevato: in attesa della chiusura dei contatori ESPHome." :
+            "Sessione attiva: sarà archiviata alla chiusura dei contatori ESPHome.";
         } else if (status.last_outcome ===
                    "discarded_insufficient_observed_counters") {
           msg.textContent = "Ultimo distacco rilevato, ma energia o minuti " +
