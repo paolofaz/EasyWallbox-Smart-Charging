@@ -20,6 +20,10 @@
 - Card aggiornata automaticamente dalla sola API read-only, massimo ogni 30 s quando HA le passa uno stato, mantenendo il pulsante Aggiorna.
 - Test per timestamp indipendenti, reset solo kWh, contatori iniziali nonzero e motivazione dell'archivio disabilitato, oltre a tutti i test esistenti. Richiesto collaudo su Home Assistant: ricarica >0,2 kWh, distacco del cavo, verifica riga e conferma che nessuna riga compaia durante Pause.
 
+### Pubblicazione RC5
+- Candidate solo per collaudo reale, non 1.0.0 stabile. Dopo quality gate completo, pubblicazione prerelease `v1.0.0rc5` dal commit di release. Nessuna modifica ESPHome e nessun comando DPM numerico.
+- La precedente RC4 può mostrare storico vuoto per cache e/o per mancati accoppiamenti di contatori; non possiamo distinguerli nel diario RC4. La RC5 include la diagnostica necessaria.
+
 ### Limitazioni e rollback
 - La sessione del 24/11, se non archiviata da RC4, non può essere recuperata con accuratezza dal solo diario delle decisioni. Il recupero dei record precedenti non è garantito.
 - Continuità durante distacco e nuovo collegamento interamente in BLE offline non dimostrabile: conservare marca di qualità parziale, non attribuire a un'auto non identificata dati inventati.
