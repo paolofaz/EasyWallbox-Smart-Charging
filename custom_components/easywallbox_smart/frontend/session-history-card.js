@@ -138,8 +138,19 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
         }
         rows.appendChild(tr);
       }
-      if (!data.sessions.length && !this._error && !this._pending)
-        msg.textContent = "Nessuna sessione archiviata.";
+      if (!data.sessions.length && !this._error && !this._pending) {
+        const status = data.archive_status || {};
+        if (status.active) {
+          msg.textContent = "Ricarica ancora collegata: sarà archiviata al distacco.";
+        } else if (status.last_outcome ===
+                   "discarded_insufficient_observed_counters") {
+          msg.textContent = "Ultimo distacco rilevato, ma energia o minuti " +
+            "non validi/sufficienti: nessuna riga salvata. Verifica le entità " +
+            "Session Energy e Session Duration nelle Opzioni.";
+        } else {
+          msg.textContent = "Nessuna sessione archiviata.";
+        }
+      }
     }
     const paging = root.querySelector("#paging");
     paging.textContent = data && data.count ?
