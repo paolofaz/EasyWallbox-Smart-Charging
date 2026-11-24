@@ -110,7 +110,7 @@ class RCTwelveEnergyAndMeterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("house_sources_not_synchronized",self.c._facts["issues"])
         self.assertEqual(self.hass.services.calls,[])
 
-    def test_gap_margin_exists_but_advisory_eta_is_suppressed(self):
+    def test_gap_margin_exists_but_advisory_eta_is_provisional(self):
         self.c._active_departure=datetime.now(timezone.utc)+timedelta(hours=5)
         self.c._active_departure_vehicle=self.car[C.CONF_CABLE]
         self.c._record_ev_delivery(self.t0,3.6,True)
@@ -127,7 +127,8 @@ class RCTwelveEnergyAndMeterTests(unittest.IsolatedAsyncioTestCase):
         self.ev.last_reported=self.ev.last_updated=now
         self.c._snapshot(now)
         self.assertEqual(self.c._margin_quality,"observed_partial_gap")
-        self.assertIsNone(self.c._eta_remaining_ac_kwh)
+        self.assertIsNotNone(self.c._eta_remaining_ac_kwh)
+        self.assertEqual(self.c._forecast_quality, "provvisoria")
         self.assertIsNotNone(self.c._margin_energy_kwh)
         self.assertEqual(self.c._facts["margin_quality"],"observed_partial_gap")
         self.assertEqual(self.hass.services.calls,[])
