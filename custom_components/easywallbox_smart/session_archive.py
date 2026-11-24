@@ -246,7 +246,11 @@ class SessionArchive:
         if not self.enabled:
             return
         ble = self.hass.states.get(self.cfg[CONF_BLE_CONNECTED])
-        online = bool(self._recent(ble) and ble.state in ("on", "true", "True"))
+        # BLE connection is a stable state, not a cyclic sample. ESPHome
+        # invalidates it on disconnect; it need not be republished every 2m.
+        online = bool(ble is not None and
+                      not ble.attributes.get("restored") and
+                      ble.state in ("on", "true", "True"))
         if not online:
             if self._active is not None and not self._active.get("continuity_uncertain"):
                 self._active["continuity_uncertain"] = True
@@ -256,7 +260,11 @@ class SessionArchive:
             return
         self._last_online = True
         cable = self.hass.states.get(self.cfg[CONF_WALLBOX_CONNECTED])
-        if not self._recent(cable) or cable.state not in ("on", "off"):
+        # Car Connected is also a stable BLE-epoch flag. Duration/Energy
+        # remain time-fenced in _pair(), but the physical state may have
+        # remained ON since plug-in many hours ago.
+        if (cable is None or cable.attributes.get("restored")
+                or cable.state not in ("on", "off")):
             return
         if cable.state == "on":
             if self._active is None:
@@ -273,10 +281,15 @@ class SessionArchive:
         state = self.hass.states.get(state_id) if state_id else None
         charging_id = self.cfg.get(CONF_WALLBOX_CHARGING)
         charging = self.hass.states.get(charging_id) if charging_id else None
-        if (state_id and (not self._recent(state) or
-                          state.state != "Cable Unplugged")):
+        # An EV can stop charging at 04:20 and remain plugged until 08:30.
+        # 'Charging=off' from that BLE epoch is still valid; rejecting it as
+        # stale would silently lose the completed session. The firmware
+        # invalidates its AD flags during a BLE loss.
+        if (state_id and (state is None or state.attributes.get("restored")
+                          or state.state != "Cable Unplugged")):
             return
-        if (charging_id and (not self._recent(charging) or
+        if (charging_id and (charging is None or
+                             charging.attributes.get("restored") or
                              charging.state != "off")):
             return
         self._finish()
