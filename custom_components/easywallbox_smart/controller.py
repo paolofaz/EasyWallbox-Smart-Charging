@@ -1368,6 +1368,7 @@ class ChargingController:
             # with the old and next instantaneous EV power values.
             if self._delivery_last is not None:
                 self._delivery_gap = True
+                self._eta_learning_gap = True
             self._delivery_last = None
             return
         measured_at = self._age(source)
@@ -1378,6 +1379,7 @@ class ChargingController:
                 return
             if seconds > 150:
                 self._delivery_gap = True
+                self._eta_learning_gap = True
             else:
                 self._delivered_ev_kwh += ((old_kw+ev_kw)/2)*seconds/3600
         self._delivery_last = (measured_at, ev_kw)
@@ -1434,6 +1436,8 @@ class ChargingController:
         house, house_at = self._house(now)
         self._record_planning_power(now, house, house_at, ev_kw, charging, actual_limit)
         self._record_ev_delivery(now, ev_kw, charging)
+        self._eta_observe(now, cable, charging, charge_state, ev_kw,
+                          house, actual_limit)
         if (charging is True and self._connect_since is not None
                 and self._refresh_start_at is None):
             # Refresh once after 15 seconds and, only while unrecognized,
@@ -1456,6 +1460,8 @@ class ChargingController:
         self._margin_quality = None
         self._finish_display = None
         self._eta_remaining_ac_kwh = None
+        self._eta_free_kw = self._eta_now_kw = self._eta_earliest_at = None
+        self._forecast_rate_kw = self._forecast_quality = None
         self.planning_rate_kw = estimate_ac_kw(
             now=now, dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]),
             ev_base_kw=self.session_power_kw,
@@ -1464,13 +1470,6 @@ class ChargingController:
                                  and actual_limit is not None
                                  and actual_limit >= self.session_power_kw-.11
                                  else ()))
-        self._forecast_rate_kw = estimate_forecast_ac_kw(
-            now=now, dpm_kw=float(self.cfg[CONF_EXPECTED_DPM]),
-            ev_base_kw=self.session_power_kw,
-            house_samples=self._house_history, charging_ev_samples=self._ev_history)
-        self._forecast_quality = ("consolidata" if self.planning_rate_kw is not None
-                                  else "provvisoria" if self._forecast_rate_kw is not None
-                                  else None)
         self.departure = None
         target_reached = None
         if car:
@@ -1496,8 +1495,7 @@ class ChargingController:
                         "observed_partial_gap" if self._delivery_gap
                         else "observed_complete"
                     ) if self._margin_energy_kwh is not None else "unavailable"
-                    self._eta_remaining_ac_kwh = (
-                        self._margin_energy_kwh if not self._delivery_gap else None)
+
                 else:
                     self._margin_energy_kwh = remaining
                     self._margin_quality = "soc_only_not_charging"
@@ -1505,16 +1503,30 @@ class ChargingController:
                     now=now, departure=departure,
                     remaining_kwh=self._margin_energy_kwh,
                     rate_kw=self.planning_rate_kw)
-                if (charging is True and remaining > 0 and
-                        self._forecast_rate_kw is not None and
-                        self._eta_remaining_ac_kwh is not None):
-                    estimate = now + timedelta(hours=self._eta_remaining_ac_kwh/self._forecast_rate_kw)
-                    # 10-minute publication buckets, no per-minute countdown.
-                    rounded = round(estimate.timestamp()/600)*600
-                    self._finish_display = datetime.fromtimestamp(
-                        rounded, timezone.utc)
-                else:
-                    self._finish_display = None
+                # Advisory forecast: it must NEVER influence the deadline
+                # margin, the discretionary cap budget or the DPM.
+                eta_applicable = (cable is True and remaining > 0 and
+                                  (charging is True or
+                                   (charging is False and charge_state == "Pause"
+                                    and not self.explicit_pause
+                                    and not self.delay_enabled)))
+                if eta_applicable:
+                    self._eta_remaining_ac_kwh = self._eta_energy(
+                        car, soc, target, charging)
+                    forecast = estimate_charge_eta(
+                        now=now, remaining_kwh=self._eta_remaining_ac_kwh,
+                        base_kw=self.session_power_kw,
+                        contracted_kw=float(self.cfg[CONF_EXPECTED_DPM]),
+                        free_ev_samples=self._eta_free_history,
+                        recent_ev_samples=self._eta_recent_history,
+                        energy_calibrated=self._eta_ac_per_soc is not None)
+                    if forecast is not None:
+                        self._forecast_rate_kw = forecast.average_kw
+                        self._forecast_quality = (
+                            "provvisoria" if self._delivery_gap else forecast.quality)
+                        self._eta_free_kw = forecast.free_kw
+                        self._eta_now_kw = forecast.now_kw
+                        self._eta_publish(now, forecast, car, target)
         # Configured contracted power is a mathematical planning reference.
         # The ON/OFF readback comes independently from ESPHome Charge Enabled.
         contracted_kw = float(self.cfg[CONF_EXPECTED_DPM])
@@ -1654,16 +1666,14 @@ class ChargingController:
         else:
             self.notice = "Nessun avviso"
         # The estimate is advisory; do not change electrical commands here.
-        if (self.charging_verified is True and self.departure is not None and
+        if (self.departure is not None and self._finish_display is not None and
                 self._eta_remaining_ac_kwh is not None and
-                self._eta_remaining_ac_kwh > 0 and
-                self._forecast_rate_kw is not None):
-            finish = now + timedelta(hours=self._eta_remaining_ac_kwh/self._forecast_rate_kw)
+                self._eta_remaining_ac_kwh > 0):
+            finish = self._finish_display
             # Display in 10-minute buckets: notices cannot churn every
             # minute as the cloud SOC remains unchanged. Safety evaluates
             # on the original unrounded times, never on display buckets.
-            shown = datetime.fromtimestamp(
-                round(finish.timestamp()/600)*600, timezone.utc)
+            shown = finish
             local = ZoneInfo(self.hass.config.time_zone)
             deadline = self.departure.astimezone(local)
             if finish > self.departure:
@@ -2142,6 +2152,13 @@ class ChargingController:
             self._delivery_gap = False
             self._soc_anchor = None
             self._eta_remaining_ac_kwh = None
+            self._eta_free_history.clear()
+            self._eta_recent_history.clear()
+            self._eta_base = self.session_power_kw
+            self._eta_soc_ref = self._eta_ac_per_soc = None
+            self._eta_learning_gap = False
+            self._eta_last_bucket = self._eta_last_finish = self._eta_key = None
+            self._eta_free_kw = self._eta_now_kw = self._eta_earliest_at = None
             self.status, self.reason = "Scollegata", "cable_unplugged"
             # No OFF command on unplug, ever.
         else:
