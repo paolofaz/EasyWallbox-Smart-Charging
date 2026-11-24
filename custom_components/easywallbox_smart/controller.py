@@ -1341,6 +1341,8 @@ class ChargingController:
         self.house_kw = round(house, 3) if house is not None else None
         self.vehicle_name = car[CONF_NAME] if car else (
             "Veicolo non identificato" if cable is True and charging is True else None)
+        if cable is True:
+            self.session_history.note_vehicle(self.vehicle_name)
         self.charging_verified = charging
         self.stop_at_target_enabled = bool(car.get(CONF_STOP_AT_TARGET)) if car else None
         self.soc = self.target_soc = self.margin_minutes = self.remaining_kwh = None
