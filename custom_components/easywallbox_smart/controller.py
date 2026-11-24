@@ -1957,7 +1957,7 @@ class ChargingController:
             return  # Never clear an indeterminate past write.
         self._record("reconciliation", ("soc_stop_terminal_unplug_confirmed"
                      if restore else "soc_stop_already_restored_manually"),
-                     operation=attempt.get("operation"), ev_kw=ev, dpm_kw=dpm)
+                     operation=attempt.get("operation"), ev_kw=ev, charge_enabled=dpm)
         self._saved_attempt = self._pending = None
         self._blocked = None
         self.real_enabled = True
@@ -2505,7 +2505,8 @@ class ChargingController:
         if veto:
             self._gate(veto)
             return
-        expected_kw = target if kind in ("power","delay_release","normalize_on","soc_resume","supply_restore","mode_auto_on") else 0.0
+        expected_values = ({"expected_kw": target} if kind == "power" else {
+            "expected_enabled": kind not in ("delay_arm", "soc_stop")})
         p = Pending(kind, target, now, next_state, uuid4().hex, session,
                     cable=self._wallbox_cable(now) if kind in ("delay_arm","delay_release","normalize_on","supply_restore","mode_auto_on") else None,
                     soc_stop_target=self.target_soc if kind == "soc_stop" else None,
@@ -2516,8 +2517,9 @@ class ChargingController:
                                   if kind in ("soc_stop","soc_resume","power") else None))
         self._pending = p
         self._saved_attempt = {"operation": p.operation, "kind": kind,
-                               "session": session, "expected_kw": expected_kw}
-        self._record("intent", reason, operation=p.operation, kind=kind, expected_kw=expected_kw)
+                               "session": session, **expected_values}
+        self._record("intent", reason, operation=p.operation, kind=kind,
+                     **expected_values)
         decision_evidence = (self._facts.get("house_at"), self.soc, self.target_soc,
                              self.departure, self._scheduled_at)
         try:
@@ -2541,10 +2543,11 @@ class ChargingController:
             # A cancelled pre-dispatch attempt does not produce a BLE write.
             return
         p.since, p.dispatched = now, True
-        self.last_command = f"{kind}:{expected_kw:.1f}"
+        self.last_command = (f"{kind}:{target:.1f}" if kind == "power"
+                             else f"{kind}:{'ON' if expected_values['expected_enabled'] else 'OFF'}")
         self.reason = f"requested_{kind}_not_yet_confirmed"
         self._record("dispatched", reason, operation=p.operation, kind=kind,
-                     expected_kw=expected_kw)
+                     **expected_values)
         self._notify()
         try:
             async with asyncio.timeout(ACK_TIMEOUT.total_seconds()):
