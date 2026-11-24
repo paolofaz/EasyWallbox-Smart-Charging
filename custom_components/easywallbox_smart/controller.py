@@ -960,7 +960,7 @@ class ChargingController:
             return
         # Legacy numeric leases are ignored. Independently confirmed OFF
         # and unchanged physical ownership suffice for the switch lease.
-        if (self._setting(CONF_DPM_CONFIRMED, now) != 0.0 or
+        if (self._wallbox_flag(CONF_CHARGE_ENABLED) is not False or
                 self._reported_binary(self.cfg[CONF_START_STOP]) is not False or
                 self._wallbox_flag(CONF_WALLBOX_CHARGING) is not False or
                 self._charge_state(now) == "Error"):
@@ -1006,15 +1006,13 @@ class ChargingController:
                 not (self._standby_restore_due or self._soc_stop_latch)):
             return
         if (self._reported_binary(self.cfg[CONF_START_STOP]) is not False or
-                self._setting(CONF_DPM_CONFIRMED, now) != 0.0 or
+                self._wallbox_flag(CONF_CHARGE_ENABLED) is not False or
                 self._wallbox_flag(CONF_WALLBOX_CHARGING) is not False or
                 self._charge_state(now) == "Error"):
             if (cable is False and (self._standby_restore_due or
                                     self._soc_stop_latch is not None) and
                     self._reported_binary(self.cfg[CONF_START_STOP]) is True and
-                    self._setting(CONF_DPM_CONFIRMED, now) is not None and
-                    abs(self._setting(CONF_DPM_CONFIRMED, now) -
-                        float(self.cfg[CONF_EXPECTED_DPM])) <= .051):
+                    self._wallbox_flag(CONF_CHARGE_ENABLED) is True):
                 self._soc_stop_latch = None
                 self._standby_restore_due = False
                 self._soc_resume_request = None
@@ -1034,9 +1032,9 @@ class ChargingController:
             now = datetime.now(timezone.utc)
             if self._idle_park_trace is None:
                 self._idle_park_trace = uuid4().hex
-            if (self._write_block("normalize_on", float(self.cfg[CONF_EXPECTED_DPM]),
+            if (self._write_block("normalize_on", 1.0,
                                   self._idle_park_trace, now) is None):
-                await self._send("normalize_on", float(self.cfg[CONF_EXPECTED_DPM]),
+                await self._send("normalize_on", 1.0,
                                  None, "normal_on_after_idle_or_soc_unplug")
 
     def _schedule_supply_restore(self, now, cable):
@@ -1058,14 +1056,13 @@ class ChargingController:
         if state is None or self._age(state) <= self._supply_restore_candidate:
             return  # AD must come AFTER the Shelly power event.
         switch = self._reported_binary(self.cfg[CONF_START_STOP])
-        dpm = self._setting(CONF_DPM_CONFIRMED, now)
-        if switch is True and dpm is not None and abs(
-                dpm-float(self.cfg[CONF_EXPECTED_DPM])) <= .051:
+        dpm = self._wallbox_flag(CONF_CHARGE_ENABLED)
+        if switch is True and dpm is True:
             self._record("power_supply", "already_on_after_power_cycle")
             self._supply_restore_candidate = None
             self._supply_ble_rejoined = False
             return
-        if switch is not False or dpm != 0.0:
+        if switch is not False or dpm is not False:
             return
         if (self._wallbox_flag(CONF_WALLBOX_CHARGING) is not False or
                 (ev := self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)) is None
@@ -1081,9 +1078,9 @@ class ChargingController:
             now = datetime.now(timezone.utc)
             if self._idle_park_trace is None:
                 self._idle_park_trace = uuid4().hex
-            if self._write_block("supply_restore", float(self.cfg[CONF_EXPECTED_DPM]),
+            if self._write_block("supply_restore", 1.0,
                                  self._idle_park_trace, now) is None:
-                await self._send("supply_restore", float(self.cfg[CONF_EXPECTED_DPM]),
+                await self._send("supply_restore", 1.0,
                                  None, "observed_shelly_off_on_unplugged_standby")
 
     def _car_update_ready(self, now, car):
@@ -1329,7 +1326,7 @@ class ChargingController:
             charging = False
         else:
             charging = None
-        dpm = self._setting(CONF_DPM_CONFIRMED, now)
+        dpm = self._wallbox_flag(CONF_CHARGE_ENABLED)
         actual_limit = self._setting(CONF_CONFIRMED_LIMIT, now)
         requested = self._setting(CONF_REQUESTED_LIMIT, now)
         house, house_at = self._house(now)
@@ -1416,11 +1413,11 @@ class ChargingController:
                         rounded, timezone.utc)
                 else:
                     self._finish_display = None
-        # The positive configured limit is the *mathematical* DPM reference.
-        # Observed zero means parked, NOT a zero power budget for the stabilizer.
-        expected_dpm = float(self.cfg[CONF_EXPECTED_DPM])
-        dpm_normal = dpm is not None and abs(dpm-expected_dpm) <= .051
-        dpm_parked = dpm == 0.0
+        # Configured contracted power is a mathematical planning reference.
+        # The ON/OFF readback comes independently from ESPHome Charge Enabled.
+        contracted_kw = float(self.cfg[CONF_EXPECTED_DPM])
+        dpm_normal = dpm is True
+        dpm_parked = dpm is False
         issues = []
         for ok, reason in (
             (cable is True, "cable_unknown"),
@@ -1432,7 +1429,7 @@ class ChargingController:
             (charging is not None, "charging_and_meter_unverified"),
             (house is not None, self._house_quality_reason or
              "house_meter_missing_or_stale"),
-            (dpm_normal or dpm_parked, "dpm_unverified"),
+            (dpm_normal or dpm_parked, "charge_enabled_unverified"),
             (actual_limit is not None and requested is not None and
              abs(actual_limit-requested) <= .051, "ev_limit_unverified"),
         ):
@@ -1447,7 +1444,7 @@ class ChargingController:
                            requested_ev_kw=requested, confirmed_ev_kw=actual_limit,
                            session_power_desired_kw=self.session_power_kw,
                            session_power_default_kw=float(self.cfg[CONF_BASE_KW]),
-                           confirmed_dpm_kw=dpm, expected_dpm_kw=expected_dpm,
+                           charge_enabled_confirmed=dpm, contracted_power_kw=contracted_kw,
                            soc=self.soc, target_soc=self.target_soc,
                            remaining_kwh=self.remaining_kwh, margin_min=self.margin_minutes,
                            margin_energy_kwh=(round(self._margin_energy_kwh, 3)
@@ -1475,7 +1472,7 @@ class ChargingController:
                 timedelta(0) <= now-changed_at else None)
         report_sources = {"ev_meter": self.cfg[CONF_EV_POWER],
                           "confirmed_ev": self.cfg[CONF_CONFIRMED_LIMIT],
-                          "confirmed_dpm": self.cfg[CONF_DPM_CONFIRMED]}
+                          "charge_enabled": self.cfg[CONF_CHARGE_ENABLED]}
         if car:
             report_sources["soc"] = car[CONF_SOC]
             if car.get(CONF_VEHICLE_LAST_UPDATE):
@@ -1951,11 +1948,10 @@ class ChargingController:
         if ev is None or ev >= .03:
             return
         switch = self._reported_binary(self.cfg[CONF_START_STOP])
-        dpm = self._setting(CONF_DPM_CONFIRMED, now)
-        expected = float(self.cfg[CONF_EXPECTED_DPM])
-        if switch is False and dpm == 0.0:
+        dpm = self._wallbox_flag(CONF_CHARGE_ENABLED)
+        if switch is False and dpm is False:
             restore = True  # Controller previously dispatched the owned SOC stop.
-        elif switch is True and dpm is not None and abs(dpm-expected) <= .051:
+        elif switch is True and dpm is True:
             restore = False  # A person already safely restored the empty station.
         else:
             return  # Never clear an indeterminate past write.
@@ -2365,9 +2361,9 @@ class ChargingController:
     async def _resume_soc_stopped(self):
         async with self._lock:
             now = datetime.now(timezone.utc)
-            if self._write_block("soc_resume", float(self.cfg[CONF_EXPECTED_DPM]),
+            if self._write_block("soc_resume", 1.0,
                                  self._session_id, now) is None:
-                await self._send("soc_resume", float(self.cfg[CONF_EXPECTED_DPM]),
+                await self._send("soc_resume", 1.0,
                                  None, "explicitly_increased_target_after_soc_stop")
 
     def _write_block(self, kind, target, session, now):
@@ -2377,7 +2373,7 @@ class ChargingController:
             cable = self._wallbox_cable(now)
             charging = self._wallbox_flag(CONF_WALLBOX_CHARGING)
             ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
-            dpm = self._setting(CONF_DPM_CONFIRMED, now)
+            dpm = self._wallbox_flag(CONF_CHARGE_ENABLED)
             switch = self._reported_binary(self.cfg[CONF_START_STOP])
             if (self._closed or not self.real_enabled or self._blocked or
                     self.explicit_pause or self.mode != "automatic" or
@@ -2391,9 +2387,7 @@ class ChargingController:
                         self._scheduled_at is None or now >= self._scheduled_at or
                         self._saved_delay_lease is not None or
                         self._dpm_lease is not None or
-                        switch is not True or dpm is None or
-                        abs(dpm-float(self.cfg[CONF_EXPECTED_DPM])) > .051
-                        or target != 0.0):
+                        switch is not True or dpm is not True or target != 0.0):
                     return "delay_requires_unplugged_positive_dpm"
             elif kind == "delay_release":
                 own = self._saved_delay_lease
@@ -2403,8 +2397,8 @@ class ChargingController:
                         own.get("start") != self._scheduled_at.isoformat() or
                         self._dpm_lease is None or
                         abs(float(self._dpm_lease)-target) > .051 or
-                        abs(float(self.cfg[CONF_EXPECTED_DPM])-target) > .051 or
-                        dpm != 0.0 or switch is not False or
+                        abs(target-1.0) > .051 or
+                        dpm is not False or switch is not False or
                         (self.delay_enabled and now < self._scheduled_at)):
                     return "owned_preplug_release_not_verified"
             elif kind == "supply_restore":
@@ -2419,23 +2413,23 @@ class ChargingController:
                         or charge is None or self._age(charge) <= self._supply_restore_candidate
                         or self.delay_enabled or self._saved_delay_lease is not None
                         or self._dpm_lease is not None or self._soc_stop_latch is not None
-                        or self._standby_restore_due or dpm != 0.0 or switch is not False
-                        or abs(target-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
+                        or self._standby_restore_due or dpm is not False or switch is not False
+                        or abs(target-1.0) > .051):
                     return "supply_restore_requires_verified_power_cycle_and_unplug"
             elif kind == "mode_auto_on":
                 if (self.delay_enabled or self._saved_delay_lease is not None
                         or self._dpm_lease is not None or self._soc_stop_latch is not None
-                        or self._standby_restore_due or dpm != 0.0 or
+                        or self._standby_restore_due or dpm is not False or
                         switch is not False or
-                        abs(target-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
+                        abs(target-1.0) > .051):
                     return "manual_to_auto_requires_verified_idle_dpm0"
             else:  # normalize_on: only after a true state-3 unplug
                 if (self.delay_enabled or self._saved_delay_lease is not None or
                         self._dpm_lease is not None or cable is not False or
                         not (self._standby_restore_due or self._soc_stop_latch) or
                         self._charge_state(now) != "Cable Unplugged" or
-                        dpm != 0.0 or switch is not False or
-                        abs(target-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
+                        dpm is not False or switch is not False or
+                        abs(target-1.0) > .051):
                     return "normal_on_requires_verified_unplug"
             return None
         if kind == "soc_resume":
@@ -2459,10 +2453,10 @@ class ChargingController:
                     self._wallbox_flag(CONF_WALLBOX_CHARGING) is not False or
                     self._charge_state(now) == "Error" or
                     self._reported_binary(self.cfg[CONF_START_STOP]) is not False or
-                    self._setting(CONF_DPM_CONFIRMED, now) != 0.0 or
+                    self._wallbox_flag(CONF_CHARGE_ENABLED) is not False or
                     (ev := self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)) is None or
                     ev >= .03 or
-                    abs(target-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
+                    abs(target-1.0) > .051):
                 return "soc_resume_not_explicit_or_not_electrically_safe"
             return None
         if kind not in ("power","soc_stop"):
@@ -2626,7 +2620,7 @@ class ChargingController:
                 cable = self._wallbox_cable(now)
                 charging = self._wallbox_flag(CONF_WALLBOX_CHARGING)
                 ev = self._power(self.cfg[CONF_EV_POWER], now, SHELLY_TTL)
-                dpm = self._setting(CONF_DPM_CONFIRMED, now)
+                dpm = self._wallbox_flag(CONF_CHARGE_ENABLED)
                 if (not self.real_enabled or self.mode != "automatic" or
                         self.explicit_pause or self._blocked or
                         self._pending or self._saved_attempt or
@@ -2635,7 +2629,7 @@ class ChargingController:
                         ev is None or ev >= .03 or
                         self._reported_binary(self.cfg[CONF_START_STOP]) is not True or
                         dpm is None or
-                        abs(dpm-float(self.cfg[CONF_EXPECTED_DPM])) > .051):
+                        dpm is not True):
                     self._user_warning = (
                         "Posticipo rifiutato: attivarlo prima di collegare "
                         "l'auto, con wallbox libera, DPM normale e BLE disponibile.")
@@ -2737,7 +2731,7 @@ class ChargingController:
                 and self._reported_binary(self.cfg[CONF_START_STOP]) is False):
             self._idle_park_trace = uuid4().hex
             async with self._lock:
-                await self._send("mode_auto_on", float(self.cfg[CONF_EXPECTED_DPM]),
+                await self._send("mode_auto_on", 1.0,
                                  None, "user_changed_manual_to_automatic")
         self.refresh()
 
@@ -2769,7 +2763,7 @@ class ChargingController:
         if monitor and self._idle_guard_unsub is None:
             ids = [self.cfg[k] for k in (
                 CONF_WALLBOX_CHARGING,
-                CONF_DPM_CONFIRMED, CONF_START_STOP, CONF_EV_POWER)]
+                CONF_CHARGE_ENABLED, CONF_START_STOP, CONF_EV_POWER)]
             self._idle_guard_unsub = async_track_state_change_event(
                 self.hass, ids, self._on_event)
         elif not monitor and self._idle_guard_unsub is not None:
