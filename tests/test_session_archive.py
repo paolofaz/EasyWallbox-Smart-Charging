@@ -13,8 +13,8 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
         cfg = rig.setup(hass)
         cfg[rig.const.CONF_SESSION_ENERGY] = "sensor.session_energy"
         cfg[rig.const.CONF_SESSION_DURATION] = "sensor.session_duration"
-        hass.states["sensor.session_energy"] = rig.FakeState("1.2", "kWh")
-        hass.states["sensor.session_duration"] = rig.FakeState("31", "min")
+        hass.states["sensor.session_energy"] = rig.FakeState("0", "kWh")
+        hass.states["sensor.session_duration"] = rig.FakeState("0", "min")
         entry = entry or rig.FakeEntry(cfg)
         return SessionArchive(hass, entry, cfg, lambda: None)
 
@@ -30,6 +30,80 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
         hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
         hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
         archive._observe()
+
+    async def test_independent_counters_are_never_lost_to_stamp_skew(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            archive = self.make_archive(hass)
+            await archive.async_load()
+            archive.start()
+            # A minute counter can update while kWh is stable for >4 sec.
+            # The next kWh update can similarly arrive with old minutes.
+            energy = hass.states["sensor.session_energy"]
+            duration = hass.states["sensor.session_duration"]
+            duration.publish("6")
+            energy.last_reported -= timedelta(seconds=20)
+            archive._observe()
+            self.assertEqual(archive._active["counters"]["duration"]["total"], 6)
+            energy.publish("0.5")
+            duration.last_reported -= timedelta(seconds=20)
+            archive._observe()
+            self.assertAlmostEqual(
+                archive._active["counters"]["energy"]["total"], .5)
+            duration.publish("7")
+            archive._observe()
+            self.disconnect(hass, archive)
+            self.assertEqual(archive.total, 1)
+            self.assertEqual(archive.sessions[0]["energy_kwh"], .5)
+            self.assertEqual(archive.sessions[0]["duration_min"], 7)
+            self.assertEqual(archive.status()["last_outcome"],
+                             "record_saved_on_verified_unplug")
+            await archive.async_close()
+
+    async def test_only_one_counter_resets_other_continues(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            archive = self.make_archive(hass)
+            await archive.async_load()
+            archive.start()
+            self.counters(hass, 2.4, 55)
+            archive._observe()
+            # Energy reset by wallbox but duration does not reset yet.
+            hass.states["sensor.session_energy"].publish(".1")
+            archive._observe()
+            self.counters(hass, .8, 70)
+            archive._observe()
+            self.disconnect(hass, archive)
+            self.assertEqual(archive.total, 1)
+            self.assertAlmostEqual(archive.sessions[0]["energy_kwh"], 3.2)
+            self.assertEqual(archive.sessions[0]["duration_min"], 70)
+            self.assertEqual(archive.sessions[0]["segments"], 2)
+            await archive.async_close()
+
+    async def test_initial_nonzero_counters_do_not_duplicate_previous_session(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            archive = self.make_archive(hass)
+            self.counters(hass, 17.0, 205)
+            await archive.async_load()
+            archive.start()
+            self.assertEqual(archive._active["counters"]["energy"]["total"], 0)
+            self.counters(hass, 18.2, 227)
+            archive._observe()
+            self.disconnect(hass, archive)
+            self.assertEqual(archive.sessions[0]["energy_kwh"], 1.2)
+            self.assertEqual(archive.sessions[0]["duration_min"], 22)
+            self.assertEqual(archive.sessions[0]["quality"], "partial_observed")
+            await archive.async_close()
+
+    async def test_archive_disabled_has_diagnostic_reason(self):
+        with TemporaryDirectory() as wd:
+            hass = rig.FakeHass(wd)
+            archive = self.make_archive(hass)
+            archive.cfg.pop(rig.const.CONF_SESSION_DURATION)
+            archive.enabled = False
+            self.assertEqual(archive.status()["reason_if_disabled"],
+                             "missing_session_energy_or_duration")
 
     async def test_reset_and_pause_sum_only_after_unplug(self):
         with TemporaryDirectory() as wd:
