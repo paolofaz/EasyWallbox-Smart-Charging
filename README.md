@@ -17,7 +17,7 @@ No additional Docker containers, external scripts, solar/PV logic, dynamic tarif
 
 ## Installation and Updating
 
-Requires a Home Assistant version compatible with **2026.11** (quality gate on **2026.11.1**) and an already working EasyWallbox ESPHome setup. Install via HACS/Marketplace as a custom repository from this repo, or copy `custom_components/easywallbox_smart` into `config/custom_components/` and restart HA.
+Requires **Home Assistant 2026.11.0 or later** (quality gate on **2026.11.1**) and an already working EasyWallbox ESPHome setup. Install via HACS/Marketplace as a custom repository from this repo, or copy `custom_components/easywallbox_smart` into `config/custom_components/` and restart HA.
 
 Open *Settings → Devices & services → Add integration → EasyWallbox Smart Charging* and complete the UI config flow. For existing installations, use **Configure** (Options).
 
@@ -25,7 +25,7 @@ Open *Settings → Devices & services → Add integration → EasyWallbox Smart 
 
 ### Required Entities
 
-Select the seven mandatory entities belonging to the **same** ESPHome wallbox: Connection BLE, Car Connected, Charging, Start-Stop, Requested Charge Power, Confirmed EV Limit, and **Charge Enabled**. A numeric DPM reading is **not** required. Specify the **Contractual Max Power** (e.g., 4.4 kW) purely as a mathematical reference, the default EV power, the Shelly sources for household consumption **excluding the EV**, and the separate EV Shelly sensor. The actual hardware DPM can be configured separately in the firmware (e.g., 4.6 kW): this custom integration neither changes nor resets it. Any Start-Stop action triggered by Smart Charging simply pauses charging to 0 A or restores the last positive value managed by ESPHome. Optional sources are available for Charge State, Session Energy, Session Duration, and a physical power relay.
+Select the seven mandatory entities belonging to the **same** ESPHome wallbox: Connection BLE, Car Connected, Charging, Start-Stop, Charge power, Power set, and **Charge Enabled**. A numeric DPM reading is **not** required. Specify the **Contracted power limit** (e.g., 4.4 kW) purely as a mathematical reference, the default EV power, the Shelly sources for household consumption **excluding the EV**, and the separate EV Shelly sensor. The actual hardware DPM can be configured separately in the firmware (e.g., 4.6 kW): this custom integration neither changes nor resets it. Any Start-Stop action triggered by Smart Charging simply pauses charging to 0 A or restores the last positive value managed by ESPHome. Optional sources are available for Charge State, Session Energy, Session Duration, and a physical power relay.
 
 Configure one or more vehicle profiles with cable sensor, SOC, battery capacity, AC charging efficiency, weekday/weekend schedules, and target SOC (from an entity or fixed value). You can optionally select a vehicle data refresh button and enable Stop SOC managed by this integration. Reference setup vehicles: Fiat 500e and Kia EV3.
 
@@ -52,7 +52,7 @@ Version 1.0.0 adopts a **two-regime prediction model:**
 
 - **Reference Free Power**: Median of at least 20 independent EV readings (at least 10 minutes) within the current session, with household consumption ≤ 0.3 kW and the EV limit actually at `NORMAL`. If this data is unavailable, it temporarily falls back to the lesser of 96% of desired power or contractual power minus 0.2 kW. This fallback is *not* a measurement.
 - **Current Power**: Average of EV Shelly measurements over the last 10 minutes, including any observed DPM pauses. This estimate applies only to the next **30 minutes**; the remaining energy is projected using the reference free power. Running an oven right now is not projected across the entire night.
-- **Remaining Energy**: Vehicle profile capacity/efficiency minus AC Shelly energy observed since the last SOC update. Within the same session, after at least **5 measured SOC points** without Shelly data gaps, the kWh/% coefficient can be adjusted with progressive weighting up to ±15%. It is not permanently learned from a single charging session.
+- **Remaining Energy**: Vehicle profile capacity/efficiency minus AC Shelly energy observed since the last SOC update. Within the same session, after at least **5 percentage points of SOC increase** without Shelly data gaps, the kWh/% coefficient can be adjusted with progressive weighting up to ±15%. It is not permanently learned from a single charging session.
 - **Stability**: The displayed ETA updates in 10-minute blocks and normally does not shift by more than 15 minutes per update. Explicitly changing the vehicle, target SOC, or desired power starts a new prediction.
 - **Transparency**: The Estimated Charge End sensor reports its quality (*provisional/consolidated*), reference free power, recent power, and a *theoretical* completion time at free power. These are calculation references, not guarantees. If SOC is missing, inconsistent, or stale, the prediction remains unavailable.
 
@@ -61,6 +61,12 @@ The model has no knowledge of future usage of ovens, dishwashers, or other appli
 ## User Interface
 
 Available entities include status indicators, scheduler/alerts, identified vehicle, stabilizer phase, energy and completion estimates, mode selector, schedules, session power slider, and (where configured) SOC slider. Shelly current/power sensors and BLE states are not duplicated. The Lovelace session history card is automatically registered as a resource; the integration **does not create a dashboard**.
+
+To display the charging history, add a manual card to your Lovelace dashboard using the following YAML:
+
+```yaml
+type: custom:easywallbox-session-history-card
+```
 
 ### Charging History — ESPHome Cumulative Counters
 
