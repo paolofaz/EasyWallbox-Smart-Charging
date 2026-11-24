@@ -28,9 +28,16 @@ Analizzati `decisions_2026-11-23(5).jsonl` e `decisions_2026-11-24.jsonl` della 
 4. Controllare il distacco reale e la somma dello storico; recupero dopo spegnimento HA/BLE.
 5. Rollback: ripristinare 0.9.2b1 e impostare il DPM effettivo e il DPM atteso al medesimo valore prima di riabilitare il controllo automatico.
 
+### Aggiornamento ETA richiesto per la 1.0 (24/11)
+- La proposta di Claude è stata adottata e resa più prudente: un solo rate domestico su un'ora proiettava il forno acceso su tutta la notte e talvolta spariva.
+- Doppio regime: P_libera = mediana di almeno 20 campioni EV in NORMAL con casa ≤0,3 kW; ripiego provvisorio min(0,96 × base, potenza contrattuale - 0,2 kW). P_ora = Shelly EV ultimi 10 minuti, comprese pause; usata solo nei primi 30 minuti del futuro, poi P_libera.
+- Energia residua: coefficiente kWh/% SOC appreso solo nella sessione e soltanto dopo almeno 5 punti SOC con Shelly continuo, esclusi gap e outlier, variazione massima ±15% rispetto al profilo. Nessun apprendimento permanente dopo una singola notte.
+- Previsione in blocchi di 10 minuti, variazioni ordinarie limitate a ±15 minuti. Cambio auto, target o base ricomincia la previsione. Attributi diagnostici: qualità, potenza libera, recente e orario teorico a potenza libera.
+- NON toccati il modello prudente estimate_ac_kw, il margine di partenza, il budget LIMIT, i comandi BLE né le soglie STRONG/MODERATE/quiet.
+- Test dedicati di forecast e controller; replay iniziale mostra meno picchi durante carichi forti, ma nelle prime ore le previsoni restano incerte e i numeri di Claude non sono prova generale. Necessario il collaudo reale.
 ### Non introdotto in questa revisione
 - Modifica manuale della potenza mentre è in LIMITED: criticità riconosciuta, non cambiata.
-- ETA: confronto con proposta Claude del 24/11 (due potenze, apprendimento kWh/% SOC, intervallo di incertezza). Interessante, ma necessita replay su più sessioni e non deve influire sul margine prudente usato dalle decisioni.
+- ETA: restano rinviate l'analisi dei carichi per fascia oraria e la calibrazione persistente per automobile: servono più sessioni valide.
 - Margine falsamente urgente dopo carichi domestici e margine ignoto dopo riavvio: da testare offline prima di modificare la policy.
 - Nessun cambiamento al firmware ESPHome né a soglie STRONG/MODERATE/quiet di 15 minuti.
 
@@ -40,4 +47,4 @@ Implementazione su main autorizzata per questa occasione dall'utente. Verifica c
 ### Tentativo di pubblicazione 1.0.0rc2
 Tag previsto: `v1.0.0rc2`, prerelease. La GitHub Action `publish-rc` pubblica **solo se** hanno successo test Python (3.12 e 3.13), Home Assistant 2026.11.1, Hassfest e HACS. La pubblicazione non è una prova di funzionamento reale del DPM né di una sessione archiviata dalla wallbox; resta obbligatorio il collaudo fisico prima di chiamare la versione stabile.
 
-**RC2 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La previsione ETA a due regimi resta proposta non implementata.
+**RC2 trigger:** commit con messaggio di release finale e gate automatico; eventuale tag pubblicato soltanto dopo tutti i quality checks. Nessun aggiornamento al firmware ESPHome. La nuova ETA a due regimi è stata ora implementata su main, ma non è ancora collaudata sul campo.
