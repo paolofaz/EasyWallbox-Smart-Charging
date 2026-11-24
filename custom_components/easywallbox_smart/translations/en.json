@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Wallbox and power meters",
-        "description": "Select the eight entities from the same ESPHome wallbox, the household meters and the EV circuit meter.",
+        "description": "Select the seven ESPHome wallbox entities (including Charge Enabled), household and EV power meters. Contracted power is a planning input only; ESPHome exclusively manages the physical DPM.",
         "data": {
           "house_power_sources": "Household power meters (exclude the EV)",
           "ev_power": "EV circuit power meter",
@@ -14,8 +14,8 @@
           "start_stop_switch": "Start-Stop",
           "requested_limit": "Charge power",
           "confirmed_limit": "Power set",
-          "dpm_confirmed": "Limit house power set -DPM-",
-          "expected_dpm_kw": "Expected positive DPM (kW)",
+          "charge_enabled": "Charge Enabled (confirmed ON/OFF status)",
+          "expected_dpm_kw": "Contracted power limit (kW)",
           "base_kw": "Default session charging power (kW)",
           "charge_state": "Charge State (existing ESPHome sensor; required for safe SOC stop recovery)",
           "telemetry_fresh": "Telemetry Fresh (ESPHome AD watchdog; blocks commands when OFF)",
@@ -94,7 +94,7 @@
       },
       "wallbox": {
         "title": "Wallbox and power meters",
-        "description": "Select the eight entities from the same ESPHome wallbox, the household meters and the EV circuit meter.",
+        "description": "Select the seven ESPHome wallbox entities (including Charge Enabled), household and EV power meters. Contracted power is a planning input only; ESPHome exclusively manages the physical DPM.",
         "data": {
           "house_power_sources": "Household power meters (exclude the EV)",
           "ev_power": "EV circuit power meter",
@@ -104,8 +104,8 @@
           "start_stop_switch": "Start-Stop",
           "requested_limit": "Charge power",
           "confirmed_limit": "Power set",
-          "dpm_confirmed": "Limit house power set -DPM-",
-          "expected_dpm_kw": "Expected positive DPM (kW)",
+          "charge_enabled": "Charge Enabled (confirmed ON/OFF status)",
+          "expected_dpm_kw": "Contracted power limit (kW)",
           "base_kw": "Default session charging power (kW)",
           "charge_state": "Charge State (existing ESPHome sensor; required for safe SOC stop recovery)",
           "telemetry_fresh": "Telemetry Fresh (ESPHome AD watchdog; blocks commands when OFF)",
