@@ -51,6 +51,7 @@ WALLBOX = vol.Schema({
     vol.Optional(CONF_SESSION_ENERGY): entity("sensor"),
     vol.Optional(CONF_SESSION_DURATION): entity("sensor"),
     vol.Optional(CONF_WALLBOX_POWER_SWITCH): entity("switch"),
+    # Existing storage key is preserved: this is only a planning reference.
     vol.Required(CONF_EXPECTED_DPM, default=DEFAULT_DPM_KW): number(1.4, 6.0, .1),
     vol.Required(CONF_BASE_KW, default=DEFAULT_BASE_KW): number(1.4, 6.0, .2),
 })
