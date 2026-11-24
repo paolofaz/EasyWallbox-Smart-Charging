@@ -14,6 +14,7 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
     this._pending = false;
     this._error = "";
     this._loaded = false;
+    this._lastFetchAt = 0;
   }
 
   setConfig(config) {
@@ -26,13 +27,20 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
     this._size = Number(config.page_size || 20);
     this._offset = 0;
     this._loaded = false;
+    this._lastFetchAt = 0;
     this._render();
     if (this._ha) this._fetch();
   }
 
   set hass(hass) {
     this._ha = hass;
-    if (this._config && !this._loaded && !this._pending) this._fetch();
+    // A physical unplug can happen while the dashboard remains open.
+    // Refresh the read-only websocket page at most every 30 seconds;
+    // never poll the wallbox or request BLE traffic.
+    if (this._config && !this._pending &&
+        (!this._loaded || Date.now() - this._lastFetchAt >= 30000)) {
+      this._fetch();
+    }
   }
 
   getCardSize() { return 4; }
@@ -41,6 +49,7 @@ class EasyWallboxSessionHistoryCard extends HTMLElement {
     if (!this._config || !this._ha || this._pending) return;
     this._pending = true;
     this._loaded = true;
+    this._lastFetchAt = Date.now();
     this._render();
     try {
       const request = {type: "easywallbox_smart/sessions",
