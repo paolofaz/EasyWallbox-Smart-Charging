@@ -150,6 +150,7 @@ class ArchiveIntegration(unittest.IsolatedAsyncioTestCase):
             archive._observe()
             hass.states[cfg[rig.const.CONF_WALLBOX_CONNECTED]].publish("off")
             hass.states[cfg[rig.const.CONF_CHARGE_STATE]].publish("Cable Unplugged")
+            hass.states[cfg[rig.const.CONF_WALLBOX_CHARGING]].publish("off")
             archive._observe()
             self.assertEqual(archive.total, 0)
             self.assertIsNotNone(archive._active)
