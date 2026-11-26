@@ -20,7 +20,16 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_utc_time, async_track_state_change_event
 from homeassistant.helpers.storage import Store
 
-from .const import *
+from .const import (
+    CONF_HOUSE_SOURCES, CONF_EV_POWER, CONF_WALLBOX_CONNECTED, CONF_DIAGNOSTIC_LOGGING,
+    DEFAULT_DIAGNOSTIC_LOGGING, CONF_BLE_CONNECTED, CONF_WALLBOX_CHARGING,
+    CONF_CHARGE_STATE, CONF_WALLBOX_POWER_SWITCH, CONF_TELEMETRY_FRESH,
+    CONF_CHARGE_ENABLED, CONF_START_STOP, CONF_REQUESTED_LIMIT, CONF_CONFIRMED_LIMIT,
+    CONF_EXPECTED_DPM, CONF_BASE_KW, CONF_VEHICLES, CONF_NAME, CONF_CABLE, CONF_SOC,
+    CONF_VEHICLE_REFRESH, CONF_VEHICLE_LAST_UPDATE, CONF_TARGET_ENTITY,
+    CONF_TARGET_FIXED, CONF_STOP_AT_TARGET, CONF_CAPACITY, CONF_EFFICIENCY,
+    CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, WALLBOX_ENTITIES,
+)
 from .decision_journal import DecisionJournal
 from .session_archive import SessionArchive
 from .sources import finite_number, on, power_kw, next_departure
@@ -773,7 +782,7 @@ class ChargingController:
 
     def _schedule_save(self):
         task = self.entry.async_create_background_task(
-            self.hass, self._save(), "EasyWallbox beta save session")
+            self.hass, self._save(), "EasyWallbox save session")
         self._save_tasks.add(task)
         task.add_done_callback(self._save_tasks.discard)
 
@@ -1825,7 +1834,7 @@ class ChargingController:
                     self._schedule_save()
                     self.entry.async_create_background_task(
                         self.hass, self._refresh_soc_for_explicit_resume_once(car),
-                        "EasyWallbox beta one-shot Fiat SOC refresh")
+                        "EasyWallbox one-shot Fiat SOC refresh")
                 else:
                     self._soc_resume_request = None
                     self._schedule_save()
@@ -2020,7 +2029,7 @@ class ChargingController:
             if self._refresh_task is None or self._refresh_task.done():
                 self._refresh_task = self.entry.async_create_background_task(
                     self.hass, self._request_one_shot_updates(),
-                    "EasyWallbox beta vehicle data refresh")
+                    "EasyWallbox vehicle data refresh")
         # Five-minute read-only heartbeat: repeated identical blockers
         # previously produced no log rows for the entire charging session.
         if (snapshot["charging"] is True and self._trace_session is not None
@@ -2045,7 +2054,7 @@ class ChargingController:
                 and self._saved_delay_lease is None):
             if self._task is None or self._task.done():
                 self._task = self.entry.async_create_background_task(
-                    self.hass, self._actuate(self._session_id), "EasyWallbox beta evaluate")
+                    self.hass, self._actuate(self._session_id), "EasyWallbox evaluate")
 
     def _reconcile_terminal_soc_stop(self, now):
         """Clear only an already issued SOC stop after verified physical unplug.
@@ -2650,7 +2659,7 @@ class ChargingController:
             await self._save()
         except Exception as error:
             self._fail_command(p, "command_intent_not_saved")
-            _LOGGER.error("Intento beta non salvato (%s)", type(error).__name__)
+            _LOGGER.error("Intento non salvato (%s)", type(error).__name__)
             return
         now = datetime.now(timezone.utc)
         veto = self._write_block(kind, target, session, now)
@@ -2688,7 +2697,7 @@ class ChargingController:
         except Exception as error:
             if self._pending is p:
                 self._fail_command(p, "service_error_" + kind)
-            _LOGGER.warning("Servizio beta %s fallito (%s)", kind, type(error).__name__)
+            _LOGGER.warning("Servizio %s fallito (%s)", kind, type(error).__name__)
         self.refresh()
 
     def add_listener(self, cb, value):
@@ -2850,7 +2859,7 @@ class ChargingController:
         elif field == "clear_pause":
             self.explicit_pause = False
         else:
-            raise ValueError("invalid beta control")
+            raise ValueError("invalid charging control")
         self._record("user_intent", field, value=str(value))
         if field in ("mode", "real", "delay", "time", "departure", "ready_by"):
             await self._save()
