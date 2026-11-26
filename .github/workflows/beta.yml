@@ -55,7 +55,7 @@ jobs:
       - run: python -m pip install "homeassistant==2026.11.1"
       - run: python tests/ha_field_trial.py
   publish-stable:
-    if: github.event_name == 'push' && github.event.head_commit.message == 'Release 1.0.0'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [tests, hassfest, marketplace, ha-runtime]
     runs-on: ubuntu-latest
     permissions:
@@ -64,12 +64,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Publish tested stable 1.0.0
+      - name: Publish exact tested stable version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$GITHUB_SHA" || exit 0
           version=$(jq -r .version custom_components/easywallbox_smart/manifest.json)
-          test "$version" = "1.0.0"
-          gh release create "v$version" --target "$GITHUB_SHA" --latest \
-            --title "EasyWallbox Smart Charging 1.0.0" --notes "Prima release stabile 1.0.0. Richiede firmware EasyWallbox ESPHome aggiornato con contatori cumulativi Session Energy e Session Duration. ESPHome somma e chiude le sessioni, Home Assistant archivia i totali assoluti dopo azzeramento confermato; breve replug e perdita BLE non generano righe premature. Conservati i record precedenti validi. ETA a due regimi informativa, potenza contrattuale separata dal DPM, stabilizzatore invariato. Aggiornare a cavo scollegato e cumulativi a zero, verificare le associazioni delle entita e la configurazione del fallback DPM. Test automatici non equivalgono a collaudo fisico."
+          notes="docs/releases/v${version}.md"
+          test -f "$notes" || exit 0
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh release create "v$version" --target "$GITHUB_SHA" --latest --title "EasyWallbox Smart Charging $version" --notes-file "$notes"
