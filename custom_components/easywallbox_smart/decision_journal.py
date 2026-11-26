@@ -3,12 +3,31 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from itertools import groupby
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 _LOGGER = logging.getLogger(__name__)
+RETENTION_DAYS = 90
+
+
+def _prune_decision_logs(folder: Path, today: date) -> None:
+    """Remove only dated diagnostic journals older than the retention window."""
+    cutoff = today - timedelta(days=RETENTION_DAYS - 1)
+    for path in folder.glob("decisions_*.jsonl"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            day = date.fromisoformat(path.stem.removeprefix("decisions_"))
+        except ValueError:
+            continue
+        if path.name != f"decisions_{day.isoformat()}.jsonl" or day >= cutoff:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            _LOGGER.warning("Unable to prune decision journal (%s)", type(error).__name__)
 
 
 def _append(folder, rows):
@@ -37,6 +56,7 @@ class DecisionJournal:
         self._seq = 0
         self._retry_after = None
         self._gap = 0
+        self._last_prune_day = None
 
     def record(self, session, event, reason, **facts):
         if not session or not self._enabled:
@@ -55,7 +75,7 @@ class DecisionJournal:
         self._queue.append(row)
         if self._task is None or self._task.done():
             self._task = self._entry.async_create_background_task(
-                self._hass, self._drain(), "EasyWallbox beta decision journal")
+                self._hass, self._drain(), "EasyWallbox decision journal")
 
     async def _drain(self):
         while self._queue:
@@ -67,11 +87,19 @@ class DecisionJournal:
                                  for row in (*batch, *self._queue))
                 self._queue.clear()
                 if self._retry_after is None:
-                    _LOGGER.warning("Diario beta non scrivibile (%s). Verificare il file locale.",
+                    _LOGGER.warning("Diario decisioni non scrivibile (%s). Verificare il file locale.",
                                     type(error).__name__)
                 self._retry_after = datetime.now(timezone.utc) + timedelta(minutes=1)
                 return
             self._retry_after = None
+            today = datetime.now(self._zone).date()
+            if self._last_prune_day != today:
+                try:
+                    await self._hass.async_add_executor_job(_prune_decision_logs, self._folder, today)
+                except OSError as error:
+                    _LOGGER.warning("Unable to prune decision journals (%s)", type(error).__name__)
+                else:
+                    self._last_prune_day = today
 
     async def async_flush(self):
         if self._task is not None:
