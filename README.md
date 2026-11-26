@@ -1,8 +1,14 @@
 # EasyWallbox Smart Charging
 
-**1.0.0 — Stable Home Assistant release. Requires EasyWallbox ESPHome firmware with cumulative counters for history tracking.**
+[![Release](https://img.shields.io/github/v/release/paolofaz/EasyWallbox-Smart-Charging)](https://github.com/paolofaz/EasyWallbox-Smart-Charging/releases/latest)
+
+**Stable Home Assistant release. Requires EasyWallbox ESPHome firmware with cumulative counters for history tracking.**
 
 This integration handles charging scheduling and *slow* EV current limit stabilization through the entities provided by the EasyWallbox ESPHome firmware. It does **not** replace the **wallbox's built-in DPM (Dynamic Power Management)**, which must remain active and continues to handle electrical spikes and safety protections.
+
+## Maintenance update (v1.0.1)
+
+Diagnostic decision logs retain 90 calendar days; the charging history is unaffected. Runtime labels and imports have been cleaned up without changing the charging policy.
 
 ## Architecture
 
@@ -21,7 +27,7 @@ Requires **Home Assistant 2026.11.0 or later** (quality gate on **2026.11.1**) a
 
 Open *Settings → Devices & services → Add integration → EasyWallbox Smart Charging* and complete the UI config flow. For existing installations, use **Configure** (Options).
 
-**1.0.0 Installation:** First, update ESPHome to the version featuring cumulative counters and the 60 s / 5 min fallback ([reference firmware](https://github.com/paolofaz/Easywallbox---Esphome/blob/main/wallbox.yaml)).
+**Installation and upgrade from earlier versions:** First, update ESPHome to the version featuring cumulative counters and the 60 s / 5 min fallback ([reference firmware](https://github.com/paolofaz/Easywallbox---Esphome/blob/main/wallbox.yaml)).
 
 ### Required Entities
 
