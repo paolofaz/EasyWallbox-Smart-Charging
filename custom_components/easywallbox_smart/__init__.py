@@ -1,4 +1,4 @@
-"""EasyWallbox Smart Charging beta — supervised release candidate."""
+"""EasyWallbox Smart Charging integration."""
 from pathlib import Path
 
 from homeassistant.components.http import StaticPathConfig
@@ -9,7 +9,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import config_validation as cv
 from homeassistant.loader import async_get_loaded_integration
 
-from .const import *
+from .const import (
+    DOMAIN, PLATFORMS, CONF_HOUSE_SOURCES, CONF_EV_POWER, CONF_CHARGE_ENABLED,
+    CONF_EXPECTED_DPM, CONF_BASE_KW, CONF_VEHICLES, WALLBOX_ENTITIES,
+)
 from .controller import ChargingController
 from .session_api import register_archive_endpoints
 from .lovelace_resources import async_register_card_resource
@@ -57,7 +60,7 @@ def _remove_superseded_controls(hass: HomeAssistant, entry: ConfigEntry) -> None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Only new beta config entries have the required proof/command sources."""
+    """Only supported config entries have the required proof/command sources."""
     required = (*WALLBOX_ENTITIES, CONF_HOUSE_SOURCES, CONF_EV_POWER,
                 CONF_EXPECTED_DPM, CONF_BASE_KW, CONF_VEHICLES)
     cfg = {**entry.data, **entry.options}
