@@ -88,7 +88,7 @@ A previous-limit warning displays the **last confirmed value**, not a live readi
 Under **Settings → Devices & services → EasyWallbox Smart Charging → Configure → Diagnostic Journal**, you can enable the **"Write decision journal to disk"** flag.
 
 - **Enabled by default** during testing; can be disabled at any time.
-- When enabled, writes daily JSONL files to `/config/easywallbox_smart/decision_logs/decisions_YYYY-MM-DD.jsonl`, recording events, decisions, requested commands, confirmations, and reasoning.
+- When enabled, writes daily JSONL files to `/config/easywallbox_smart/decision_logs/decisions_YYYY-MM-DD.jsonl`, recording events, decisions, requested commands, confirmations, and reasoning. The diagnostic journal retains the current day and the previous 89 days; older dated journal files are removed when logging next runs. The charging session archive is unaffected.
 - When disabled, **no new events are logged**; saving the option reloads the integration. Existing files are not deleted, and any events currently being written may finish flushing during the reload.
 - The journal uses a bounded queue, serialized writes, and restrictive local file permissions. It triggers no extra BLE reads or commands. Avoid sharing these logs publicly, as they may contain timestamps, identifiers, and usage data.
 
