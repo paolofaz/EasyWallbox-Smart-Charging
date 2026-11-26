@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -64,6 +65,21 @@ class TestDiagnosticLogOption(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(found), 1)
             self.assertIn("diagnostic_flag_on", found[0].read_text())
             await c.async_close()
+
+    def test_retention_removes_only_old_dated_diagnostic_logs(self):
+        from easywallbox_test_package.decision_journal import _prune_decision_logs
+        today = date(2026, 11, 26)
+        with TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            old = folder / f"decisions_{today - timedelta(days=90)}.jsonl"
+            keep = folder / f"decisions_{today - timedelta(days=89)}.jsonl"
+            other = folder / "sessions.jsonl"
+            invalid = folder / "decisions_notes.jsonl"
+            for path in (old, keep, other, invalid):
+                path.write_text("test")
+            _prune_decision_logs(folder, today)
+            self.assertFalse(old.exists())
+            self.assertTrue(all(p.exists() for p in (keep, other, invalid)))
 
     async def test_missing_flag_is_enabled_for_first_beta_trial(self):
         with TemporaryDirectory() as tmp:
