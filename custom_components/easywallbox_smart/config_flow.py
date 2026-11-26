@@ -1,4 +1,4 @@
-"""Graphical setup of the beta without hard-coded device, car or meter IDs."""
+"""Graphical setup of the integration without hard-coded device, car or meter IDs."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -10,7 +10,16 @@ from homeassistant.helpers.selector import (
     NumberSelector, NumberSelectorConfig, NumberSelectorMode,
     TextSelector,
 )
-from .const import *
+from .const import (
+    DOMAIN, CONF_HOUSE_SOURCES, CONF_EV_POWER, CONF_DIAGNOSTIC_LOGGING,
+    DEFAULT_DIAGNOSTIC_LOGGING, CONF_AUTOMATIC_CONTROL_ENABLED, CONF_CHARGE_STATE,
+    CONF_SESSION_ENERGY, CONF_SESSION_DURATION, CONF_WALLBOX_POWER_SWITCH,
+    CONF_TELEMETRY_FRESH, CONF_EXPECTED_DPM, CONF_BASE_KW, CONF_VEHICLES, CONF_NAME,
+    CONF_CABLE, CONF_SOC, CONF_VEHICLE_REFRESH, CONF_VEHICLE_LAST_UPDATE,
+    CONF_TARGET_ENTITY, CONF_TARGET_FIXED, CONF_STOP_AT_TARGET, CONF_CAPACITY,
+    CONF_EFFICIENCY, CONF_DEPARTURE_WEEKDAY, CONF_DEPARTURE_WEEKEND, CONF_ADD_ANOTHER,
+    CONF_LEGACY_DISABLED, DEFAULT_BASE_KW, DEFAULT_DPM_KW, WALLBOX_ENTITIES,
+)
 from .vehicle_profiles import configured_vehicles, upsert_vehicle, remove_vehicle
 from .wallbox_mapping import mapping_error
 
